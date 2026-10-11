@@ -1,0 +1,11 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Phase 2 introduces tenant-scoped business models and the first reviewed migration.
+// Phase 1 uses a read-only PostgreSQL probe and does not modify any database schema.
