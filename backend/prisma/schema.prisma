@@ -266,6 +266,8 @@ model TenantProfile {
   serviceChargeBp    Int      @default(0)
   // When false, completing an order that would drive stock below zero is rejected.
   allowNegativeStock Boolean  @default(true)
+  // Public website and table-QR ordering (off until the owner enables it).
+  publicOrdering     Boolean  @default(false)
   updatedAt          DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -480,6 +482,8 @@ enum OrderChannel {
 // DRAFT/PLACED. Transitions are enforced in modules/orders/state.ts.
 enum OrderStatus {
   DRAFT
+  // Online (QR/web) order waiting for staff approval.
+  PENDING
   PLACED
   PREPARING
   READY
@@ -590,6 +594,8 @@ model Order {
   paidTotal       Int          @default(0)
   refundedTotal   Int          @default(0)
   idempotencyKey  String
+  // Customer-facing tracking link for online orders (random, unguessable).
+  trackingToken   String?      @unique
   createdById     String?      @db.Uuid
   version         Int          @default(1)
   placedAt        DateTime?

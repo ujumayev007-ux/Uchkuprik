@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-009 — Online ordering flow (2026-10-12)
+
+- **Decision:** QR and website orders enter a dedicated `PENDING` status and are approved by staff with `orders.approve` (waiters and cashiers by default) before the kitchen sees them; customers track via a token link with polling; payment happens at the counter until verified online payments exist (Phase 8). Online ordering is disabled per tenant by default.
+- **Reason:** The master prompt requires approval of unpaid online orders and forbids treating unverified payments as paid.
+- **Reversal:** Auto-accept paid orders once provider-verified payments land in Phase 8.
+
 ## D-008 — Inventory model (2026-10-12)
 
 - **Decision:** Base-unit decimal quantities (g/ml/pcs) with packaging-unit conversion at entry; weighted average costing per warehouse; recipes per variant deducted when an order is COMPLETED (not when placed), so cancellations need no reversal; one default warehouse per branch; inter-branch transfers are immediate (no in-transit state); negative stock allowed by default and configurable per tenant.

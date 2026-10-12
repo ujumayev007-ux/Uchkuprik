@@ -27,6 +27,11 @@ import { InventoryPage } from './pages/InventoryPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
 import { PrintersPage } from './pages/PrintersPage';
+import {
+  TableMenuPage,
+  TrackingPage,
+  WebsiteMenuPage,
+} from './pages/public/PublicPages';
 import { QueuePage } from './pages/QueuePage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PosPage } from './pages/PosPage';
@@ -42,6 +47,7 @@ import './styles.css';
 import './ui.css';
 import './pos.css';
 import './kitchen.css';
+import './public.css';
 
 /** The next step a partially authenticated session must complete, if any. */
 function pendingStep(me: Me): string | null {
@@ -162,6 +168,10 @@ const router = createBrowserRouter([
     ),
   },
   { path: '/pin', element: <PinPage /> },
+  // Public customer pages: no staff session required.
+  { path: '/t/:token', element: <TableMenuPage /> },
+  { path: '/r/:slug', element: <WebsiteMenuPage /> },
+  { path: '/buyurtma/:token', element: <TrackingPage /> },
   {
     path: '/navbat',
     element: (

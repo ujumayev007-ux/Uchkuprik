@@ -207,7 +207,14 @@ export function ordersRouter(services: Services) {
           ...(query.scope === 'active'
             ? {
                 status: {
-                  in: ['DRAFT', 'PLACED', 'PREPARING', 'READY', 'SERVED'],
+                  in: [
+                    'DRAFT',
+                    'PENDING',
+                    'PLACED',
+                    'PREPARING',
+                    'READY',
+                    'SERVED',
+                  ],
                 },
               }
             : query.scope === 'today'
@@ -756,6 +763,9 @@ export function ordersRouter(services: Services) {
         const payment = await mutate(auth, id, async (tx, order) => {
           if (!editableStatuses.includes(order.status))
             throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+          // Online orders are approved before money is taken.
+          if (order.status === 'PENDING')
+            throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
           const shift = await findOpenShift(tx, auth, order.branchId);
           if (!shift)
             throw new AppError(409, 'SHIFT_REQUIRED', 'shiftRequired');

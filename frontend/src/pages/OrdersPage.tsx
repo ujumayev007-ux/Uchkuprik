@@ -26,6 +26,7 @@ const tone: Record<
   'neutral' | 'success' | 'warning' | 'danger' | 'accent'
 > = {
   DRAFT: 'neutral',
+  PENDING: 'warning',
   PLACED: 'accent',
   PREPARING: 'warning',
   READY: 'success',

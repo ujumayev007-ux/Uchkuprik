@@ -21,6 +21,7 @@ import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
 import { menuRouter } from './modules/menu/menu.routes.js';
+import { onlineRouter } from './modules/online/online.routes.js';
 import { ordersRouter } from './modules/orders/orders.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
 import { shiftsRouter } from './modules/shifts/shifts.routes.js';
@@ -157,6 +158,7 @@ export function createApp({
       kitchenRouter,
       printersRouter,
       inventoryRouter,
+      onlineRouter,
     ])
       app.use('/api', router(services));
   }

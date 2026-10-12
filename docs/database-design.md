@@ -43,3 +43,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 6 schema (migration `warehouse_recipes`)
 
 `stock_items` (base unit G/ML/PCS, min stock), `stock_units` (packaging factors), `warehouses` (one default per branch, partial unique index), `stock_balances` (quantity, weighted average cost; row-locked on every change), `stock_movements` (append-only ledger with `balanceAfter`, typed RECEIPT/SALE/WASTE/ADJUSTMENT/TRANSFER_IN/TRANSFER_OUT/STOCKTAKE and references), `suppliers`, `purchases` + `purchase_lines` (entered unit, factor, base quantity, so‘m prices), `supplier_payments` (append-only), `recipe_lines` (per variant), `tenant_profiles.allowNegativeStock`. Quantities use NUMERIC(14,3), costs NUMERIC(14,4); money stays integer so‘m.
+
+## Phase 7 schema (migration `public_ordering`)
+
+`OrderStatus` gains `PENDING`; `orders.trackingToken` (unique, random); `tenant_profiles.publicOrdering`. Online orders use the same order engine (server pricing, modifiers, numbering, events) with channel QR or WEB.

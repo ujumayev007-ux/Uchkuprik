@@ -11,8 +11,9 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)              |
 | 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)              |
 | 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)              |
-| 6 Warehouse and recipes         | Implemented and validated locally; CI pending on push |
-| 7–16                            | Not started                                           |
+| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)              |
+| 7 Customer ordering             | Implemented and validated locally; CI pending on push |
+| 8–16                            | Not started                                           |
 
 ## Phase 2 — delivered
 
@@ -60,6 +61,14 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 48 integration (7 new), 20 Playwright tests.
 - Deferred within §9: batch/lot and expiry tracking (FEFO), prepared-ingredient production, approval-based purchasing, demand forecasting (Phase 14), modifier-option recipes.
 
+## Phase 7 — delivered
+
+- Public storefront `/r/:slug` (branch, takeaway/delivery, menu, cart, checkout) and table QR menu `/t/:token`; order tracking `/buyurtma/:token`.
+- PENDING online orders through the shared engine; staff approve/reject from a live banner (chime), approval sends the order to the kitchen.
+- Settings toggle with public link; printable table QR cards.
+- Evidence: 40 unit, 53 integration (5 new), 24 Playwright tests (guest QR order → live approval → tracking; website delivery).
+- Deferred: Telegram Mini App channel (Phase 9/14), customer accounts and loyalty (Phase 9), online payment (Phase 8).
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -74,4 +83,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 7 — Customer ordering: public QR table menu and website ordering through the shared order engine, customer cart, order submission without login, approval by waiter/cashier for unpaid online orders, order status tracking page for customers.
+Phase 8 — Payments and fiscal integrations: provider adapter interface (Click, Payme, Uzum), signed webhook verification with replay protection, idempotent payment capture into the existing ledger, reconciliation report, fiscal receipt adapter interface. Real provider credentials and fiscal certification are external dependencies and must be documented, not simulated.

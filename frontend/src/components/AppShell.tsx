@@ -5,6 +5,7 @@ import { can, meKey, useMe, type Me } from '../auth/session';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { useRealtime } from '../lib/realtime';
+import { PendingOrders } from './PendingOrders';
 import { ReauthDialog } from './ReauthDialog';
 import { useTheme, useToast } from './ui';
 
@@ -288,6 +289,9 @@ export function AppShell() {
           </button>
         </header>
         <main className="shell-content" id="main">
+          {can(me, 'orders.approve') && me.activeBranchId && (
+            <PendingOrders branchId={me.activeBranchId} />
+          )}
           <Outlet />
         </main>
       </div>

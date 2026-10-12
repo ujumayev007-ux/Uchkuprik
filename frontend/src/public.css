@@ -1,0 +1,183 @@
+/* Customer storefront, order tracking and the staff pending-orders banner. */
+
+.store {
+  max-width: 980px;
+  margin: 0 auto;
+  min-height: 100svh;
+  padding: 16px 16px 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.store-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.store-header h1 {
+  margin: 0;
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: clamp(24px, 4vw, 34px);
+}
+.store-header p {
+  margin: 4px 0 0;
+}
+.store-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.store-categories {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 8px 0;
+  background: var(--bg, color-mix(in srgb, var(--surface) 92%, transparent));
+  backdrop-filter: blur(8px);
+}
+.store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.store-item {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  text-align: left;
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  align-items: center;
+}
+.store-item img,
+.store-item .pos-tile-letter {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  aspect-ratio: auto;
+}
+.store-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.store-cart-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: 0 16px 40px -12px #0007;
+  z-index: 20;
+}
+.track-card {
+  text-align: center;
+}
+.track-steps {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  font-size: 12px;
+}
+.track-steps li {
+  padding-top: 12px;
+  border-top: 4px solid var(--line);
+  color: var(--muted);
+}
+.track-steps li.done {
+  border-top-color: var(--green);
+  color: var(--text);
+}
+.track-steps li.current {
+  border-top-color: var(--accent);
+  color: var(--accent);
+  font-weight: 800;
+}
+.track-hint {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+.track-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.text-link.inline {
+  display: inline;
+  padding: 0;
+}
+.break {
+  word-break: break-all;
+}
+
+/* Staff banner for online orders awaiting approval */
+.pending-orders {
+  margin-bottom: 18px;
+  border: 2px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  overflow: hidden;
+}
+.pending-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 0;
+  background: none;
+  color: var(--warning);
+  font-weight: 800;
+  text-align: left;
+}
+.pending-count {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--warning);
+  color: var(--surface);
+}
+.pending-orders ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pending-orders li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+.pending-actions {
+  display: flex;
+  gap: 8px;
+}

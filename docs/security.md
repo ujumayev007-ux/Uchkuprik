@@ -46,3 +46,7 @@ WebSocket handshakes use the same session/device-cookie validation as HTTP, reje
 ## Inventory controls (Phase 6)
 
 Every stock change goes through one ledger function that locks the balance row, enforces the negative-stock policy and records an immutable movement (concurrency tested: five simultaneous withdrawals against three available units yield exactly three successes). Purchase receipt is single-shot under a row lock. Supplier payments are append-only. Costs and valuations are hidden from roles without inventory.manage/finance.view. Recipes and purchases cannot reference another tenant's stock items.
+
+## Public ordering (Phase 7)
+
+Public endpoints are opt-in per tenant, scoped by an unguessable table token or the tenant slug, never accept prices (recomputed server-side), never expose costs or staff identifiers, and are rate limited. Customers can only read their own order through a 144-bit tracking token. Unpaid online orders require staff approval before reaching the kitchen, and payment is blocked while an order is pending. Printed table cards are built with DOM APIs so table names cannot inject markup.

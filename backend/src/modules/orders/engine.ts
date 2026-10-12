@@ -10,6 +10,8 @@ import { priceVariants } from '../menu/pricing.js';
 
 export const transitions: Record<OrderStatus, OrderStatus[]> = {
   DRAFT: ['PLACED', 'CANCELLED'],
+  // Online orders: approved by staff (PLACED) or rejected (CANCELLED).
+  PENDING: ['PLACED', 'CANCELLED'],
   PLACED: ['PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'],
   PREPARING: ['READY', 'SERVED', 'COMPLETED'],
   // New items added to a ready/served order send it back to the kitchen.
@@ -30,6 +32,7 @@ export function assertTransition(from: OrderStatus, to: OrderStatus) {
 /** Orders whose content may still change (items, discount, table). */
 export const editableStatuses: OrderStatus[] = [
   'DRAFT',
+  'PENDING',
   'PLACED',
   'PREPARING',
   'READY',

@@ -3,6 +3,7 @@ import { api } from './api';
 
 export type OrderStatus =
   | 'DRAFT'
+  | 'PENDING'
   | 'PLACED'
   | 'PREPARING'
   | 'READY'

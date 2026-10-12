@@ -155,7 +155,7 @@ export function Dialog({
 }: {
   open: boolean;
   title: string;
-  description?: string;
+  description?: string | undefined;
   onClose: () => void;
   children?: ReactNode;
   footer?: ReactNode;

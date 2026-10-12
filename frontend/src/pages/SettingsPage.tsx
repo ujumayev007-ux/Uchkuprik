@@ -26,6 +26,7 @@ type Settings = {
   receiptFooter: string | null;
   serviceChargeBp: number;
   allowNegativeStock: boolean;
+  publicOrdering: boolean;
 };
 
 export function useSettings() {
@@ -86,6 +87,7 @@ export function SettingsPage() {
               serviceChargeBp: form.serviceChargeBp,
               requireMfaForAdmins: form.requireMfaForAdmins,
               allowNegativeStock: form.allowNegativeStock,
+              publicOrdering: form.publicOrdering,
             });
             toast(t.common.saved);
             await client.invalidateQueries({ queryKey: ['settings'] });
@@ -164,6 +166,25 @@ export function SettingsPage() {
               setForm({ ...form, requireMfaForAdmins })
             }
           />
+          <Checkbox
+            label={t.online.enable}
+            description={t.online.enableHint}
+            checked={form.publicOrdering}
+            onChange={(publicOrdering) => setForm({ ...form, publicOrdering })}
+          />
+          {form.publicOrdering && (
+            <p className="muted small">
+              {t.online.publicLink}:{' '}
+              <a
+                className="text-link inline"
+                href={`/r/${form.slug}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {window.location.origin}/r/{form.slug}
+              </a>
+            </p>
+          )}
           <Checkbox
             label={t.inventory.allowNegative}
             description={t.inventory.allowNegativeHint}

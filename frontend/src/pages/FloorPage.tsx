@@ -18,6 +18,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
+import { TableQrDialog } from '../components/TableQrDialog';
 
 export type Table = {
   id: string;
@@ -208,6 +209,7 @@ export function FloorPage() {
   const toast = useToast();
   const { confirm, element: confirmElement } = useConfirm();
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [qrFor, setQrFor] = useState<Table | null>(null);
   const manage = can(me, 'tables.manage');
   const refresh = () => client.invalidateQueries({ queryKey: ['floor'] });
   const rooms = floor.data?.rooms ?? [];
@@ -306,6 +308,14 @@ export function FloorPage() {
                         >
                           {t.common.edit}
                         </button>
+                        {table.qrToken && (
+                          <button
+                            className="text-link"
+                            onClick={() => setQrFor(table)}
+                          >
+                            {t.online.qr}
+                          </button>
+                        )}
                         <button
                           className="text-link"
                           onClick={async () => {
@@ -373,6 +383,13 @@ export function FloorPage() {
             />
           ))}
       </Dialog>
+      {qrFor?.qrToken && (
+        <TableQrDialog
+          tableName={qrFor.name}
+          token={qrFor.qrToken}
+          onClose={() => setQrFor(null)}
+        />
+      )}
       {confirmElement}
     </>
   );

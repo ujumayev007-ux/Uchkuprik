@@ -107,3 +107,18 @@ Quantities are decimal strings in the item's base unit (g, ml, dona) with up to 
 | `GET`/`PUT /recipes/:variantId`                                                                                                  | menu.manage or inventory.manage              |
 
 Completing an order deducts recipe ingredients (SALE movements) in the same transaction; with `allowNegativeStock = false` (settings) the completion is rejected with `INSUFFICIENT_STOCK` and nothing changes.
+
+## Phase 7: customer ordering (public)
+
+Public endpoints need no session, return 404 unless the tenant is active and `publicOrdering` is enabled, never return costs, and order creation is rate limited per IP. Online orders start as `PENDING` and reach the kitchen only after staff approval; they cannot be paid before approval.
+
+| Endpoint                                                                                                                                                                                          | Access                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `GET /public/r/:slug` (name, branches)                                                                                                                                                            | Public                     |
+| `GET /public/r/:slug/menu?branchId` (available items, branch prices)                                                                                                                              | Public                     |
+| `GET /public/t/:qrToken` (table, branch, menu)                                                                                                                                                    | Public                     |
+| `POST /public/orders` {idempotencyKey, source: {kind: table, token} or {kind: web, slug, branchId, type}, customerName, customerPhone?, deliveryAddress?, note?, items} → {trackingToken, number} | Public, rate limited       |
+| `GET /public/orders/:trackingToken` (status, items, totals)                                                                                                                                       | Public (unguessable token) |
+| `POST /orders/:id/approve`; `POST /orders/:id/reject` {reason}                                                                                                                                    | orders.approve             |
+
+Settings: `publicOrdering` (default off). Tables expose a printable QR code for `/t/:qrToken`; rotating the token invalidates printed codes.
