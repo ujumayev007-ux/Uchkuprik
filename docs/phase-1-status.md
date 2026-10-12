@@ -32,3 +32,7 @@ Phase 1 is not fully accepted. Phase 2 has not started. No authentication, POS, 
 ## Update — foundation commit without database gate
 
 Per user decision (see `decisions.md` D-003), the non-database foundation was re-validated (`npm run check`, `test:deploy`, `db:validate` all passed) and committed. The database gate remains open; Phase 1 is still not accepted. The untracked `fastfood-saas/` scaffold is excluded and not committed (D-002).
+
+## Acceptance — 2026-10-12
+
+GitHub Actions run 38213267724 on commit `63f26c5` succeeded end to end against a real PostgreSQL (Compose): `check`, `test:deploy`, `db:validate`, `db:check`, `test:integration`, E2E with `REQUIRE_DATABASE=true`, and `npm audit --audit-level=high`. Phase 1 is accepted. Local database runs remain unavailable on this machine (Docker virtualization disabled).

@@ -2,6 +2,11 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-004 — CI is the authoritative database gate (2026-10-12)
+
+- **Decision:** Database acceptance gates are satisfied by the GitHub Actions run against a real PostgreSQL, since no local database is available. Phase 1 accepted on run 38213267724.
+- **Reversal:** Run gates locally too once Docker or native PostgreSQL is available.
+
 ## D-003 — Commit the non-database Phase 1 foundation before the database gate (2026-10-12)
 
 - **Decision:** Commit and push the foundation that passes formatting, typecheck, unit/API tests, builds, and the deploy smoke test, even though the real PostgreSQL integration gate has not passed.

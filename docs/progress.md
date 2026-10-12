@@ -2,25 +2,25 @@
 
 Read this first when resuming work. Details: `phase-1-status.md`, `implementation-plan.md`, `decisions.md`.
 
-## Current phase: 1 — Foundation (not accepted)
+## Phase 1 — Foundation: accepted 2026-10-12 (CI run 38213267724, commit `63f26c5`)
 
-| Item                                                                  | Status                       |
-| --------------------------------------------------------------------- | ---------------------------- |
-| Workspaces, strict TypeScript, env validation, setup script           | Done, verified               |
-| Express health/readiness API, security headers, rate limit, CORS      | Done, unit/API tests pass    |
-| Uzbek status UI (light/dark, responsive, error/retry states)          | Done, builds                 |
-| Single-service production start (`npm start`) and Render config       | Done, deploy smoke passes    |
-| Prisma configuration and schema validation                            | Done                         |
-| CI workflow (includes real PostgreSQL service via Compose)            | Committed, first run pending |
-| Real PostgreSQL connectivity (`db:check`, integration, connected E2E) | **Blocked** — no local DB    |
-| Required documentation set                                            | Done; register missing       |
+| Item                                                                  | Status                    |
+| --------------------------------------------------------------------- | ------------------------- |
+| Workspaces, strict TypeScript, env validation, setup script           | Done, verified            |
+| Express health/readiness API, security headers, rate limit, CORS      | Done, unit/API tests pass |
+| Uzbek status UI (light/dark, responsive, error/retry states)          | Done, E2E pass in CI      |
+| Single-service production start (`npm start`) and Render config       | Done, deploy smoke passes |
+| Prisma configuration and schema validation                            | Done                      |
+| CI workflow (real PostgreSQL via Compose)                             | Passing                   |
+| Real PostgreSQL connectivity (`db:check`, integration, connected E2E) | Passed in CI; no local DB |
+| Required documentation set                                            | Done; register missing    |
 
-## Blockers
+## Open items
 
-1. **No PostgreSQL locally.** Docker needs Windows virtualization enabled (admin + reboot); alternatives: native PostgreSQL or a hosted dev database in `.env`. CI may close this gate instead.
+1. **No PostgreSQL locally** (not blocking; CI is the database gate, D-004). Enable Docker virtualization or install PostgreSQL for local integration runs.
 2. **Approved 100-item requirements register not supplied.** Traceability cannot be completed without it; nothing is invented.
-3. **`fastfood-saas/` ownership undecided** (see D-002).
+3. **`fastfood-saas/` ownership undecided** (D-002).
 
 ## Next step
 
-Confirm the CI run for the pushed commit. When a real database is available (CI or local), run the database gates and mark Phase 1 accepted. Then begin Phase 2, increment 1: tenant/branch/user schema with the first versioned migration.
+Phase 2, increment 1: tenant/branch/user schema with the first versioned migration, tenant-scoped data access, and isolation tests.
