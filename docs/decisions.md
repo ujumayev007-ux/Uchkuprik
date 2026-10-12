@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-018 — Developer API, metrics and "AI analytics" scope (2026-10-13)
+
+- **Decision:** The public API is a small, versioned, read-only surface (`/api/v1`) with scoped keys; integrations receive changes through signed webhooks rather than polling write APIs. Observability starts with a token-protected Prometheus endpoint. Forecasting and risk detection use transparent statistics (weekday averages, peer medians and thresholds) — no external AI/LLM service is called, so no tenant data leaves the platform and no AI usage governance is yet required.
+- **Reason:** Delivers useful, explainable capabilities without new external processors, costs or data-protection obligations.
+- **Reversal:** Add write endpoints with idempotency keys, OpenTelemetry tracing, and an AI provider behind a governed adapter (consent, redaction, usage quotas) once approved.
+
 ## D-017 — Transactional notification outbox (2026-10-12)
 
 - **Decision:** Notifications are rows in `notification_jobs` written in the same transaction as the triggering change and delivered asynchronously by a polling worker; Telegram is the first channel behind a transport interface (tests use a fake transport, production the real Bot API). The local development database was recreated as UTF8 after the Windows default (WIN1251) rejected emoji; production must be UTF8.

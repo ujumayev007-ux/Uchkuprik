@@ -50,6 +50,8 @@ import { BrandsPage } from './pages/BrandsPage';
 import { OperationsPage } from './pages/OperationsPage';
 import { AssetsPage } from './pages/AssetsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { DeveloperPage } from './pages/DeveloperPage';
+import { InsightsPage } from './pages/InsightsPage';
 import { ApprovalsPage, TrainingPage } from './pages/TrainingPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -541,6 +543,25 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => can(me, 'notifications.manage')}>
             <NotificationsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/integratsiyalar',
+        element: (
+          <Guard
+            feature="developer_api"
+            allow={(me) => can(me, 'developer.manage')}
+          >
+            <DeveloperPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/tahlil',
+        element: (
+          <Guard allow={(me) => can(me, 'reports.view')}>
+            <InsightsPage />
           </Guard>
         ),
       },

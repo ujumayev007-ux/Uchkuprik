@@ -3,6 +3,7 @@ import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { entitlementsOf } from '../billing/entitlements.js';
 import { notifyOnlineOrder } from '../notifications/hooks.js';
+import { emitWebhook } from '../developer/webhooks.js';
 import type { Services } from '../../context.js';
 import type { Db, Tx } from '../../db.js';
 import {
@@ -406,6 +407,12 @@ export function onlineRouter(services: Services) {
         const final = await tx.order.findUniqueOrThrow({
           where: { id: created.id },
           select: { total: true },
+        });
+        await emitWebhook(tx, tenantId, 'order.online_created', {
+          id: created.id,
+          number: created.number,
+          branchId,
+          total: final.total,
         });
         await notifyOnlineOrder(tx, {
           tenantId,

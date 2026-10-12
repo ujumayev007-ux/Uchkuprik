@@ -3,6 +3,7 @@ import { AppError } from '../../http/errors.js';
 import { onOrderCompleted } from '../crm/loyalty.js';
 import { consumeOrderIngredients } from '../inventory/ledger.js';
 import { recordFiscalReceipt } from '../payments/fiscal.js';
+import { emitWebhook } from '../developer/webhooks.js';
 import { addEvent, assertTransition, netPaid } from './engine.js';
 
 /**
@@ -32,6 +33,11 @@ export async function completeOrder(
   await tx.order.update({
     where: { id: order.id },
     data: { status: 'COMPLETED', completedAt: now, version: { increment: 1 } },
+  });
+  await emitWebhook(tx, order.tenantId, 'order.completed', {
+    id: order.id,
+    total: order.total,
+    completedAt: now.toISOString(),
   });
   await addEvent(tx, order.tenantId, order.id, actorId, 'status', {
     from: order.status,

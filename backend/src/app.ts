@@ -4,6 +4,7 @@ import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { sha256 } from './lib/crypto.js';
+import { recordRequest } from './lib/metrics.js';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
 import type { AppConfig } from './config.js';
@@ -20,6 +21,11 @@ import { operationsRouter } from './modules/operations/operations.routes.js';
 import { assetsRouter } from './modules/assets/assets.routes.js';
 import { peopleRouter } from './modules/assets/people.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
+import { insightsRouter } from './modules/insights/insights.routes.js';
+import {
+  developerRouter,
+  publicApiRouter,
+} from './modules/developer/developer.routes.js';
 import { enforcePlanFeatures } from './modules/billing/entitlements.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
@@ -45,7 +51,7 @@ import { usersRouter } from './modules/users/users.routes.js';
 
 type Dependencies = {
   config: Pick<AppConfig, 'APP_ORIGIN'> &
-    Partial<Pick<AppConfig, 'TRUST_PROXY'>>;
+    Partial<Pick<AppConfig, 'TRUST_PROXY' | 'METRICS_TOKEN'>>;
   // Business APIs are mounted only when persistence services are provided.
   services?: Services;
   database: DatabaseProbe;
@@ -76,13 +82,18 @@ export function createApp({
       },
     }),
   );
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
     const requestId = randomUUID();
     const started = performance.now();
     res.locals.requestId = requestId;
     res.setHeader('X-Request-Id', requestId);
     res.setHeader('Cache-Control', 'no-store');
     res.on('finish', () => {
+      recordRequest(
+        req.method,
+        res.statusCode,
+        (performance.now() - started) / 1000,
+      );
       // Do not record URLs, headers, bodies or raw errors: they can contain secrets.
       logger.info(
         {
@@ -195,6 +206,9 @@ export function createApp({
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));
     app.use('/api', notificationsRouter(services, config.APP_ORIGIN));
+    app.use('/api', developerRouter(services));
+    app.use('/api', publicApiRouter(services));
+    app.use('/api', insightsRouter(services, config.METRICS_TOKEN));
   }
   // Never return the SPA document for an unknown API endpoint.
   app.use('/api', (_req, res) => {

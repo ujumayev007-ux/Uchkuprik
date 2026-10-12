@@ -4,23 +4,23 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                           | Status                                                       |
-| ------------------------------- | ------------------------------------------------------------ |
-| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                     |
-| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                     |
-| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                     |
-| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                     |
-| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                     |
-| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                     |
-| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix)   |
-| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                     |
-| 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364)   |
-| 10 Finance, HR, reporting       | Accepted 2026-10-12 (CI 38247414281)                         |
-| 11 SaaS commercial platform     | Accepted 2026-10-12 (CI 38274348733)                         |
-| 12 Multi-brand and franchise    | Accepted 2026-10-12 (CI 38279114456)                         |
-| 13 Enterprise operations        | Accepted 2026-10-12 (13a CI 38281367731, 13b CI 38283346522) |
-| 14a Notifications               | Implemented and validated locally; CI pending on push        |
-| 14b–16                          | Not started                                                  |
+| Phase                              | Status                                                               |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| 1 Foundation                       | Accepted 2026-10-12 (CI run 38213267724)                             |
+| 2 Core database and security       | Accepted 2026-10-12 (CI run 38217691786)                             |
+| 3 Core restaurant configuration    | Accepted 2026-10-12 (CI run 38220426823)                             |
+| 4 Admin and cashier POS            | Accepted 2026-10-12 (CI run 38233375759)                             |
+| 5 Kitchen and real-time            | Accepted 2026-10-12 (CI run 38236006895)                             |
+| 6 Warehouse and recipes            | Accepted 2026-10-12 (CI run 38237834743)                             |
+| 7 Customer ordering                | Accepted (CI run 38241814729 after the E2E rate-limit fix)           |
+| 8 Payments and fiscal              | Accepted 2026-10-12 (CI run 38241814729)                             |
+| 9 Delivery, CRM, loyalty           | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364)           |
+| 10 Finance, HR, reporting          | Accepted 2026-10-12 (CI 38247414281)                                 |
+| 11 SaaS commercial platform        | Accepted 2026-10-12 (CI 38274348733)                                 |
+| 12 Multi-brand and franchise       | Accepted 2026-10-12 (CI 38279114456)                                 |
+| 13 Enterprise operations           | Accepted 2026-10-12 (13a CI 38281367731, 13b CI 38283346522)         |
+| 14 Infrastructure and intelligence | 14a accepted (CI 38285013868); 14b–14c validated locally, CI pending |
+| 15–16                              | Not started                                                          |
 
 ## Phase 2 — delivered
 
@@ -161,6 +161,14 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Startup guard: production refuses a non-UTF8 database; local DB recreated as UTF8.
 - Evidence: 3 new integration tests (fake Telegram transport), Playwright notifications flow on desktop and mobile.
 
+## Phases 14b–14c — delivered
+
+- Integrations page (`/integratsiyalar`): scoped API keys (shown once, revocable), public read API `/api/v1` (branches, menu, orders, sales), signed webhooks with SSRF protection, delivery log, retry and ping.
+- Analytics page (`/tahlil`): 7-day weekday-average sales forecast; employee risk signals (cancellations, voids, refunds, discounts, cash shortages) for audit/finance roles.
+- Prometheus metrics endpoint protected by `METRICS_TOKEN`.
+- Evidence: 5 new integration tests, Playwright developer and analytics flows on desktop and mobile.
+- Not implemented as placeholders (per master prompt §19): marketplace/add-ons, partner/reseller CRM, data warehouse pipelines, AI services, multi-region HA/IaC — they require approved providers, contracts or infrastructure beyond the single Render service; tracked in Open items.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -175,4 +183,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 14b — Developer platform: scoped API keys, public read API (orders, menu, sales), HMAC-signed outgoing webhooks with delivery log; then 14c observability (metrics endpoint), risk/fraud signals and sales forecasting.
+Phase 15 — Multi-platform delivery: installable PWA (manifest, service worker with offline shell), POS terminal kiosk mode, device fleet view (last seen, app version) and update lifecycle.

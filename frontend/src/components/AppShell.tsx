@@ -75,6 +75,12 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'reports.view'),
   },
   {
+    to: '/tahlil',
+    label: t.nav.insights,
+    icon: '↗',
+    visible: (me) => can(me, 'reports.view'),
+  },
+  {
     to: '/ombor',
     label: t.nav.warehouse,
     icon: '▥',
@@ -243,6 +249,13 @@ export const navItems: NavItem[] = [
     label: t.nav.notifications,
     icon: '✉',
     visible: (me) => can(me, 'notifications.manage'),
+  },
+  {
+    to: '/integratsiyalar',
+    label: t.nav.developer,
+    icon: '⌘',
+    visible: (me) =>
+      hasFeature(me, 'developer_api') && can(me, 'developer.manage'),
   },
   {
     to: '/audit',

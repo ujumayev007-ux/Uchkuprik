@@ -87,3 +87,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 14a schema (migration `notifications`)
 
 `telegram_configs` (encrypted bot token, hashed webhook secret, daily summary hour and last sent date), `notification_subscribers` (chat id unique per tenant, link code, events, branch filter), `notification_templates` (per-tenant overrides), `notification_jobs` (outbox: status, attempts, sanitized last error, next try). The database must use UTF8 encoding (emoji and Uzbek text); the API refuses to start in production on a non-UTF8 database.
+
+## Phase 14b schema (migration `developer_platform`)
+
+`api_keys` (hash unique, prefix, scopes, last used, revoked), `webhook_endpoints` (encrypted signing secret, events), `webhook_deliveries` (outbox with status, attempts, response status, sanitized error). The Enterprise plan gains `developer_api`.

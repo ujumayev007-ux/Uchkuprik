@@ -3,6 +3,7 @@ import type { Db } from './db.js';
 import type { SecretBox } from './lib/crypto.js';
 import type { EventBus } from './realtime/bus.js';
 import type { TelegramTransport } from './modules/notifications/notify.js';
+import type { WebhookSender } from './modules/developer/webhooks.js';
 
 export type Services = {
   db: Db;
@@ -17,6 +18,8 @@ export type Services = {
   afterOrderChange?: (orderId: string) => Promise<void>;
   // Telegram Bot API client; tests inject a fake, production uses the real API.
   telegram?: TelegramTransport;
+  // Outgoing webhook HTTP client; tests inject a recorder.
+  webhookSender?: WebhookSender;
   // Requests per minute. Defaults suit production; tests raise them.
   limits?: {
     credentialsPerMinute?: number;

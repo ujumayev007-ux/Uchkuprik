@@ -67,6 +67,8 @@ const schema = z
       .min(1)
       .max(10_000)
       .default(20),
+    // Bearer token for the Prometheus /api/metrics endpoint; unset disables it.
+    METRICS_TOKEN: z.string().min(32).max(200).optional(),
     // Self-service sign-ups per IP per hour; 0 disables public registration.
     SIGNUP_RATE_LIMIT: z.coerce.number().int().min(0).max(10_000).default(5),
     LOG_LEVEL: z

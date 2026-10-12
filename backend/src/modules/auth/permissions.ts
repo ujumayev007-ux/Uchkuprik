@@ -41,6 +41,7 @@ export const permissionCatalog = {
   'assets.manage': 'Uskunalar va ta’mirni boshqarish',
   'training.manage': 'O‘qitish va sertifikatlarni boshqarish',
   'approvals.decide': 'So‘rovlarni tasdiqlash',
+  'developer.manage': 'API kalitlari va webhooklarni boshqarish',
   'brands.manage': 'Brendlarni boshqarish',
   'franchise.manage': 'Franshiza va shartnomalarni boshqarish',
   'franchise.portal': 'Franchayzi portaliga kirish',

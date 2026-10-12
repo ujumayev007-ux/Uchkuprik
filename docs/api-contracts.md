@@ -284,3 +284,32 @@ Automation: an hourly worker turns due maintenance plans into operations tasks (
 | `POST /webhooks/telegram/:tenantId` — Telegram updates; requires `X-Telegram-Bot-Api-Secret-Token`; `/start CODE` links the chat                                    | public, secret-verified                                      |
 
 Events: `order.online` (new pending online order), `incident` (HIGH/CRITICAL incidents incl. temperature alarms and failed safety checks), `shift.closed` (cash report), `stock.low` (a decrease crosses the item minimum), `summary.daily` (orders, revenue, cancellations per branch at the configured Tashkent hour, once per day). Messages are queued in the same transaction as the business change and delivered by a worker (SKIP LOCKED, exponential backoff, FAILED after 6 attempts, manual retry).
+
+## Phase 14b: developer platform
+
+Management (`developer.manage`, plan feature `developer_api`):
+
+| Endpoint                                                                                                                                                                               | Notes                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `GET /developer/api-keys`; `POST /developer/api-keys` {name, scopes} → {key} shown once (step-up); `POST /developer/api-keys/:id/revoke` (step-up)                                     | keys stored as SHA-256 hashes, prefix shown                  |
+| `GET /developer/webhooks`; `POST /developer/webhooks` {url (public HTTPS), events} → {secret} shown once (step-up); `PUT /developer/webhooks/:id`; `POST /developer/webhooks/:id/test` | 400 `WEBHOOK_URL_INVALID` for non-HTTPS or private addresses |
+| `GET /developer/webhooks/:id/deliveries`; `POST /developer/deliveries/:id/retry`                                                                                                       | delivery log                                                 |
+
+Public API (`Authorization: Bearer ffk_…`, 120 requests/min per key; 401 `API_KEY_REQUIRED`/`API_KEY_INVALID`, 403 `API_SCOPE_MISSING`/`FEATURE_NOT_IN_PLAN`):
+
+| Endpoint                                                                                                     | Scope                |
+| ------------------------------------------------------------------------------------------------------------ | -------------------- |
+| `GET /v1/branches`                                                                                           | any valid key        |
+| `GET /v1/menu?branchId`                                                                                      | menu.read (no costs) |
+| `GET /v1/orders?from&to&branchId&status&cursor&limit` (cursor pagination, no costs or customer contact data) | orders.read          |
+| `GET /v1/reports/sales?from&to` (completed revenue and orders per day and branch)                            | reports.read         |
+
+Webhook events: `order.completed`, `order.cancelled`, `order.online_created` (and `ping`). Body `{id, createdAt, event, data}`; headers `X-Fastfood-Event`, `X-Fastfood-Delivery`, `X-Fastfood-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`. Delivery: 10 s timeout, no redirects, 2xx = success, exponential backoff, FAILED after 8 attempts.
+
+## Phase 14c: observability and insights
+
+| Endpoint                                                                                                                                                                        | Access                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `GET /metrics` (Prometheus text: request counters/latency by method and status class, process memory/uptime, pending print/notification/webhook queues)                         | `Authorization: Bearer <METRICS_TOKEN>`; 404 when unset or wrong |
+| `GET /reports/forecast?branchId&days` (weekday average of the last 8 weeks)                                                                                                     | reports.view                                                     |
+| `GET /reports/risk?from&to` (per employee: post-placement cancellations, item voids, refunds, discounts, cash shortages; flags vs colleagues' median and thresholds; ≤ 93 days) | audit.view or finance.view                                       |

@@ -12,6 +12,7 @@ import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { startMaintenanceWorker } from './modules/assets/assets.routes.js';
 import { startNotificationWorker } from './modules/notifications/notify.js';
+import { startWebhookWorker } from './modules/developer/webhooks.js';
 import { createLogger } from './logger.js';
 
 async function main(): Promise<void> {
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
   const stopBilling = startBillingWorker(services);
   const stopMaintenance = startMaintenanceWorker(services);
   const stopNotifications = startNotificationWorker(services);
+  const stopWebhooks = startWebhookWorker(services);
   let shuttingDown = false;
   const app = createApp({
     config,
@@ -97,6 +99,7 @@ async function main(): Promise<void> {
     stopBilling();
     stopMaintenance();
     stopNotifications();
+    stopWebhooks();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

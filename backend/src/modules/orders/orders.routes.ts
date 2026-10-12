@@ -10,6 +10,7 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { emitWebhook } from '../developer/webhooks.js';
 import {
   getAuth,
   requireAuth,
@@ -689,6 +690,10 @@ export function ordersRouter(services: Services) {
             cancelReason: reason,
             version: { increment: 1 },
           },
+        });
+        await emitWebhook(tx, auth.tenantId, 'order.cancelled', {
+          id,
+          reason,
         });
         await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
           from: order.status,

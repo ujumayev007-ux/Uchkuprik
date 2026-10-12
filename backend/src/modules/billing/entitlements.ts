@@ -16,6 +16,7 @@ export const planFeatures = [
   'multi_brand',
   'franchise',
   'operations',
+  'developer_api',
 ] as const;
 export type PlanFeature = (typeof planFeatures)[number];
 
@@ -93,6 +94,7 @@ const gatedPaths: [RegExp, PlanFeature][] = [
   [/^\/reports\/brands$/, 'multi_brand'],
   [/^\/(franchise|supplier-agreements)(\/|$)/, 'franchise'],
   [/^\/operations(\/|$)/, 'operations'],
+  [/^\/developer(\/|$)/, 'developer_api'],
   [
     /^\/(assets|repair-tickets|maintenance-plans|service-contracts|training|approvals)(\/|$)/,
     'operations',

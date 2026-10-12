@@ -90,3 +90,7 @@ Approval decisions require `approvals.decide`, a recent password re-authenticati
 ## Telegram (Phase 14a)
 
 The bot token stays on the server: AES-GCM encrypted at rest, write-only in the API, changed only with step-up, never logged or included in audit data, and Telegram errors are reduced to status codes so URLs containing the token never reach logs or the delivery screen. Webhook calls must present the per-tenant secret (stored as a SHA-256 hash, compared in constant time). Linking uses one-time codes; a chat can belong to one subscriber per tenant. Message text is sent without parse mode, so user-entered names cannot inject markup.
+
+## Developer platform and observability (Phases 14b–14c)
+
+API keys and webhook secrets are shown once; keys are stored only as SHA-256 hashes, secrets AES-GCM encrypted. Keys are tenant-bound, scope-limited, rate-limited, revocable and blocked when the tenant is suspended or the plan lacks the feature; the public API never returns costs or customer contact data. Outgoing webhooks are HMAC-signed with a timestamp (receivers should reject old timestamps), sent only to public HTTPS hosts: the host is resolved at every delivery and private, loopback, link-local and metadata ranges are refused; redirects are not followed. The metrics endpoint is disabled unless `METRICS_TOKEN` is set and contains no tenant, user or path labels. Risk signals are review prompts restricted to audit/finance roles.

@@ -2265,3 +2265,67 @@ model NotificationJob {
   @@index([tenantId, createdAt])
   @@map("notification_jobs")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 14b: developer platform (API keys and signed webhooks).
+
+model ApiKey {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  tenantId    String    @db.Uuid
+  name        String
+  // First characters shown in the UI to recognise a key; the key itself is never stored.
+  prefix      String
+  keyHash     String    @unique
+  scopes      String[]
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  url       String
+  // HMAC signing secret, AES-GCM encrypted.
+  secretEnc String
+  events    String[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@unique([tenantId, id])
+  @@map("webhook_endpoints")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model WebhookDelivery {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  tenantId       String                @db.Uuid
+  endpointId     String                @db.Uuid
+  event          String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  responseStatus Int?
+  lastError      String?
+  nextTryAt      DateTime              @default(now())
+  sentAt         DateTime?
+  createdAt      DateTime              @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [tenantId, endpointId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([status, nextTryAt])
+  @@index([endpointId, createdAt])
+  @@map("webhook_deliveries")
+}
