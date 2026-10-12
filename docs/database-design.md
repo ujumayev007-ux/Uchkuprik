@@ -91,3 +91,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 14b schema (migration `developer_platform`)
 
 `api_keys` (hash unique, prefix, scopes, last used, revoked), `webhook_endpoints` (encrypted signing secret, events), `webhook_deliveries` (outbox with status, attempts, response status, sanitized error). The Enterprise plan gains `developer_api`.
+
+## Phase 15 schema (migration `device_fleet`)
+
+`devices.appVersion`, `devices.userAgent` for fleet monitoring.

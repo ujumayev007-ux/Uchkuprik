@@ -12,6 +12,7 @@ import { AppShell } from './components/AppShell';
 import { ErrorState, LoadingState, ToastProvider } from './components/ui';
 import { t } from './i18n';
 import { ApiError } from './lib/api';
+import { registerServiceWorker } from './lib/pwa';
 import { AccountPage } from './pages/AccountPage';
 import { AuditPage } from './pages/AuditPage';
 import { ChangePasswordPage } from './pages/auth/ChangePasswordPage';
@@ -616,6 +617,8 @@ queryClient.getQueryCache().subscribe((event) => {
   )
     void queryClient.invalidateQueries({ queryKey: ['auth'] });
 });
+
+registerServiceWorker();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element is missing.');

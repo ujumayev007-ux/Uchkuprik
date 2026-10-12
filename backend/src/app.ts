@@ -57,6 +57,8 @@ type Dependencies = {
   database: DatabaseProbe;
   logger: Logger;
   isShuttingDown?: () => boolean;
+  // Build identifier shared with the frontend bundle (fleet update tracking).
+  appVersion?: string;
   frontendDirectory?: string;
 };
 
@@ -67,6 +69,7 @@ export function createApp({
   isShuttingDown = () => false,
   frontendDirectory,
   services,
+  appVersion = 'dev',
 }: Dependencies) {
   const app = express();
   app.disable('x-powered-by');
@@ -120,7 +123,7 @@ export function createApp({
     cors({ origin: config.APP_ORIGIN, methods: ['GET'], credentials: false }),
   );
   app.get('/api/health/live', (_req, res) => {
-    res.json({ status: 'ok', message: messages.live });
+    res.json({ status: 'ok', message: messages.live, version: appVersion });
   });
   app.use(
     '/api',

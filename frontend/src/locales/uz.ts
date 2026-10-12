@@ -1579,6 +1579,16 @@ export const uz = {
       CASH_SHORTAGE: 'Kassa kamomadi',
     },
   },
+  pwa: {
+    install: 'Ilovani o‘rnatish',
+    fullscreen: 'To‘liq ekran (kiosk rejimi)',
+    updateReady: 'Yangi versiya tayyor.',
+    update: 'Yangilash',
+    version: 'Ilova versiyasi',
+    outdated: 'Yangilash kerak',
+    online: 'Aloqada',
+    offline: 'Aloqa yo‘q',
+  },
   register: {
     title: 'Ro‘yxatdan o‘tish',
     subtitle: 'Restoraningizni bir necha daqiqada ulang. Sinov davri bepul.',

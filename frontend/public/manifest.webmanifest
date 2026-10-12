@@ -1,0 +1,33 @@
+{
+  "name": "FAST FOOD — Restoran boshqaruvi",
+  "short_name": "FAST FOOD",
+  "description": "Kassa, oshxona, ombor va restoran boshqaruvi.",
+  "lang": "uz",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f6f2",
+  "theme_color": "#e95324",
+  "categories": ["business", "food"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Kassa", "url": "/kassa" },
+    { "name": "Oshxona", "url": "/oshxona" },
+    { "name": "Buyurtmalar", "url": "/buyurtmalar" }
+  ]
+}

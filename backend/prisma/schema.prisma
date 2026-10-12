@@ -208,6 +208,9 @@ model Device {
   status         DeviceStatus @default(ACTIVE)
   registeredById String       @db.Uuid
   lastSeenAt     DateTime?
+  // Reported by the installed app (heartbeat) for fleet monitoring.
+  appVersion     String?
+  userAgent      String?
   createdAt      DateTime     @default(now())
   revokedAt      DateTime?
 

@@ -1,10 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, hasFeature, meKey, useMe, type Me } from '../auth/session';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
+import {
+  appVersion,
+  applyUpdate,
+  promptInstall,
+  toggleFullscreen,
+  usePwa,
+} from '../lib/pwa';
 import { useRealtime } from '../lib/realtime';
 import { PendingOrders } from './PendingOrders';
 import { ReauthDialog } from './ReauthDialog';
@@ -363,12 +370,40 @@ function BillingBanner({ me }: { me: Me }) {
   );
 }
 
+/** Reports this terminal's app version and liveness for the device fleet view. */
+function useDeviceHeartbeat() {
+  useEffect(() => {
+    const beat = () =>
+      void post('/devices/heartbeat', { version: appVersion }).catch(
+        () => undefined,
+      );
+    beat();
+    const timer = setInterval(beat, 5 * 60_000);
+    return () => clearInterval(timer);
+  }, []);
+}
+
+function UpdateBanner() {
+  const pwa = usePwa();
+  if (!pwa.updateReady) return null;
+  return (
+    <div className="billing-banner info" role="status">
+      <span>{t.pwa.updateReady}</span>
+      <button className="btn btn-sm btn-primary" onClick={applyUpdate}>
+        {t.pwa.update}
+      </button>
+    </div>
+  );
+}
+
 export function AppShell() {
   const { data: me } = useMe();
   const theme = useTheme();
   const navigate = useNavigate();
   const client = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const pwa = usePwa();
+  useDeviceHeartbeat();
   const online = useRealtime(
     me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
   );
@@ -437,6 +472,24 @@ export function AppShell() {
               aria-label={online ? t.live.online : t.live.offline}
             />
           )}
+          {pwa.installable && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => void promptInstall()}
+            >
+              {t.pwa.install}
+            </button>
+          )}
+          {document.fullscreenEnabled && (
+            <button
+              className="icon-button"
+              onClick={() => void toggleFullscreen()}
+              aria-label={t.pwa.fullscreen}
+              title={t.pwa.fullscreen}
+            >
+              ⛶
+            </button>
+          )}
           <button
             className="icon-button"
             onClick={theme.toggle}
@@ -459,6 +512,7 @@ export function AppShell() {
           {can(me, 'orders.approve') && me.activeBranchId && (
             <PendingOrders branchId={me.activeBranchId} />
           )}
+          <UpdateBanner />
           <BillingBanner me={me} />
           <Outlet />
         </main>

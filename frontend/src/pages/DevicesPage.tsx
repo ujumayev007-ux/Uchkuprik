@@ -17,6 +17,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { appVersion } from '../lib/pwa';
 import { api, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 
@@ -27,6 +28,7 @@ type Device = {
   branchName: string;
   status: 'ACTIVE' | 'REVOKED';
   lastSeenAt: string | null;
+  appVersion: string | null;
   createdAt: string;
 };
 
@@ -129,6 +131,7 @@ export function DevicesPage() {
                 <th>{t.nav.branch}</th>
                 <th>{t.common.status}</th>
                 <th>{t.devices.lastSeen}</th>
+                <th>{t.pwa.version}</th>
                 <th className="right">{t.common.actions}</th>
               </tr>
             </thead>
@@ -146,7 +149,33 @@ export function DevicesPage() {
                       <Badge tone="danger">{t.devices.revoked}</Badge>
                     )}
                   </td>
-                  <td>{formatDateTime(device.lastSeenAt, t.common.never)}</td>
+                  <td>
+                    {formatDateTime(device.lastSeenAt, t.common.never)}
+                    {device.status === 'ACTIVE' && device.lastSeenAt && (
+                      <>
+                        {' '}
+                        <Badge
+                          tone={
+                            Date.now() - new Date(device.lastSeenAt).getTime() <
+                            10 * 60_000
+                              ? 'success'
+                              : 'neutral'
+                          }
+                        >
+                          {Date.now() - new Date(device.lastSeenAt).getTime() <
+                          10 * 60_000
+                            ? t.pwa.online
+                            : t.pwa.offline}
+                        </Badge>
+                      </>
+                    )}
+                  </td>
+                  <td className="nowrap">
+                    {device.appVersion ?? '—'}{' '}
+                    {device.appVersion && device.appVersion !== appVersion && (
+                      <Badge tone="warning">{t.pwa.outdated}</Badge>
+                    )}
+                  </td>
                   <td className="right">
                     {device.status === 'ACTIVE' && (
                       <Button

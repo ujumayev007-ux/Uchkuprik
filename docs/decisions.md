@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-019 — PWA instead of native apps (2026-10-13)
+
+- **Decision:** Ship one installable PWA for Windows POS terminals, Android/iOS phones and kitchen screens instead of separate native apps; fleet updates follow deployments automatically.
+- **Reason:** One codebase, instant updates, no store review; printing already goes through the server (LAN ESC/POS), so no native printer driver is required.
+- **Reversal:** Wrap the PWA (e.g. Capacitor/Tauri) if a store listing or native hardware access (cash drawer via USB, NFC) becomes required.
+
 ## D-018 — Developer API, metrics and "AI analytics" scope (2026-10-13)
 
 - **Decision:** The public API is a small, versioned, read-only surface (`/api/v1`) with scoped keys; integrations receive changes through signed webhooks rather than polling write APIs. Observability starts with a token-protected Prometheus endpoint. Forecasting and risk detection use transparent statistics (weekday averages, peer medians and thresholds) — no external AI/LLM service is called, so no tenant data leaves the platform and no AI usage governance is yet required.

@@ -13,6 +13,7 @@ import {
   requirePermission,
   requireRecentAuth,
   setCookie,
+  readCookie,
 } from '../auth/session.js';
 
 const DEVICE_COOKIE_MS = 365 * 24 * 60 * 60_000;
@@ -46,11 +47,38 @@ export function devicesRouter(services: Services) {
           branchName: device.branch.name,
           status: device.status,
           lastSeenAt: device.lastSeenAt,
+          appVersion: device.appVersion,
+          userAgent: device.userAgent,
           createdAt: device.createdAt,
         })),
       });
     },
   );
+
+  /**
+   * Heartbeat from an installed terminal: records last contact and app version for the
+   * fleet view. Identified only by the httpOnly device cookie; no user session needed.
+   */
+  router.post('/devices/heartbeat', async (req, res) => {
+    const token = readCookie(req, cookieNames(services.secureCookies).device);
+    const { version } = parse(
+      z.object({ version: z.string().regex(/^[A-Za-z0-9._-]{1,40}$/) }),
+      req.body,
+    );
+    if (!token) {
+      res.json({ registered: false });
+      return;
+    }
+    const result = await db.device.updateMany({
+      where: { tokenHash: sha256(token), status: 'ACTIVE' },
+      data: {
+        lastSeenAt: services.now?.() ?? new Date(),
+        appVersion: version,
+        userAgent: req.get('user-agent')?.slice(0, 200) ?? null,
+      },
+    });
+    res.json({ registered: result.count > 0 });
+  });
 
   // Registers the browser that sends this request. The device token is only ever
   // delivered as an httpOnly cookie, so it cannot be copied from the UI.

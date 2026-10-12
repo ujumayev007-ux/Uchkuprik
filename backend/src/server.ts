@@ -15,6 +15,15 @@ import { startNotificationWorker } from './modules/notifications/notify.js';
 import { startWebhookWorker } from './modules/developer/webhooks.js';
 import { createLogger } from './logger.js';
 
+/** Same rule as the frontend build: the deployed commit, else the package version. */
+function appVersion() {
+  return (
+    process.env.RENDER_GIT_COMMIT?.slice(0, 7) ||
+    process.env.npm_package_version ||
+    'dev'
+  );
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.LOG_LEVEL);
@@ -69,6 +78,7 @@ async function main(): Promise<void> {
     logger,
     services,
     isShuttingDown: () => shuttingDown,
+    appVersion: appVersion(),
     ...(config.SERVE_FRONTEND ? { frontendDirectory } : {}),
   });
   const server = app.listen(config.PORT, config.HOST, () => {

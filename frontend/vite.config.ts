@@ -10,8 +10,14 @@ export default defineConfig(({ mode }) => {
     'PORT',
   );
   const target = `http://127.0.0.1:${env.PORT || '4000'}`;
+  // Same rule as the API server so terminals can be checked for outdated builds.
+  const version =
+    process.env.RENDER_GIT_COMMIT?.slice(0, 7) ||
+    process.env.npm_package_version ||
+    'dev';
   return {
     plugins: [react()],
+    define: { __APP_VERSION__: JSON.stringify(version) },
     server: {
       port: 5173,
       strictPort: true,

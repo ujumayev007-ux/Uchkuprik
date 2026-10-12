@@ -94,3 +94,7 @@ The bot token stays on the server: AES-GCM encrypted at rest, write-only in the 
 ## Developer platform and observability (Phases 14b–14c)
 
 API keys and webhook secrets are shown once; keys are stored only as SHA-256 hashes, secrets AES-GCM encrypted. Keys are tenant-bound, scope-limited, rate-limited, revocable and blocked when the tenant is suspended or the plan lacks the feature; the public API never returns costs or customer contact data. Outgoing webhooks are HMAC-signed with a timestamp (receivers should reject old timestamps), sent only to public HTTPS hosts: the host is resolved at every delivery and private, loopback, link-local and metadata ranges are refused; redirects are not followed. The metrics endpoint is disabled unless `METRICS_TOKEN` is set and contains no tenant, user or path labels. Risk signals are review prompts restricted to audit/finance roles.
+
+## PWA (Phase 15)
+
+The service worker never intercepts or caches `/api` requests, so business data and authorization are always live and nothing sensitive is stored in the browser cache. Updates are versioned by the deployed commit and applied only when the user accepts. The device heartbeat accepts only a version string and identifies the terminal by its httpOnly device cookie.

@@ -313,3 +313,12 @@ Webhook events: `order.completed`, `order.cancelled`, `order.online_created` (an
 | `GET /metrics` (Prometheus text: request counters/latency by method and status class, process memory/uptime, pending print/notification/webhook queues)                         | `Authorization: Bearer <METRICS_TOKEN>`; 404 when unset or wrong |
 | `GET /reports/forecast?branchId&days` (weekday average of the last 8 weeks)                                                                                                     | reports.view                                                     |
 | `GET /reports/risk?from&to` (per employee: post-placement cancellations, item voids, refunds, discounts, cash shortages; flags vs colleagues' median and thresholds; ≤ 93 days) | audit.view or finance.view                                       |
+
+## Phase 15: multi-platform delivery
+
+| Endpoint                                                                                                                                                          | Access        |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `GET /health/live` now returns `version` (deployed commit)                                                                                                        | public        |
+| `POST /devices/heartbeat` {version} — records last contact, app version and user agent of the registered terminal identified by its device cookie; `{registered}` | device cookie |
+
+`GET /devices` returns `appVersion` and `userAgent`. The frontend is an installable PWA: `/manifest.webmanifest`, `/sw.js?v=<version>` (caches only the app shell and hashed assets, never `/api`).

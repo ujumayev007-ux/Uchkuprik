@@ -4,23 +4,24 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                              | Status                                                               |
-| ---------------------------------- | -------------------------------------------------------------------- |
-| 1 Foundation                       | Accepted 2026-10-12 (CI run 38213267724)                             |
-| 2 Core database and security       | Accepted 2026-10-12 (CI run 38217691786)                             |
-| 3 Core restaurant configuration    | Accepted 2026-10-12 (CI run 38220426823)                             |
-| 4 Admin and cashier POS            | Accepted 2026-10-12 (CI run 38233375759)                             |
-| 5 Kitchen and real-time            | Accepted 2026-10-12 (CI run 38236006895)                             |
-| 6 Warehouse and recipes            | Accepted 2026-10-12 (CI run 38237834743)                             |
-| 7 Customer ordering                | Accepted (CI run 38241814729 after the E2E rate-limit fix)           |
-| 8 Payments and fiscal              | Accepted 2026-10-12 (CI run 38241814729)                             |
-| 9 Delivery, CRM, loyalty           | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364)           |
-| 10 Finance, HR, reporting          | Accepted 2026-10-12 (CI 38247414281)                                 |
-| 11 SaaS commercial platform        | Accepted 2026-10-12 (CI 38274348733)                                 |
-| 12 Multi-brand and franchise       | Accepted 2026-10-12 (CI 38279114456)                                 |
-| 13 Enterprise operations           | Accepted 2026-10-12 (13a CI 38281367731, 13b CI 38283346522)         |
-| 14 Infrastructure and intelligence | 14a accepted (CI 38285013868); 14b–14c validated locally, CI pending |
-| 15–16                              | Not started                                                          |
+| Phase                              | Status                                                         |
+| ---------------------------------- | -------------------------------------------------------------- |
+| 1 Foundation                       | Accepted 2026-10-12 (CI run 38213267724)                       |
+| 2 Core database and security       | Accepted 2026-10-12 (CI run 38217691786)                       |
+| 3 Core restaurant configuration    | Accepted 2026-10-12 (CI run 38220426823)                       |
+| 4 Admin and cashier POS            | Accepted 2026-10-12 (CI run 38233375759)                       |
+| 5 Kitchen and real-time            | Accepted 2026-10-12 (CI run 38236006895)                       |
+| 6 Warehouse and recipes            | Accepted 2026-10-12 (CI run 38237834743)                       |
+| 7 Customer ordering                | Accepted (CI run 38241814729 after the E2E rate-limit fix)     |
+| 8 Payments and fiscal              | Accepted 2026-10-12 (CI run 38241814729)                       |
+| 9 Delivery, CRM, loyalty           | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364)     |
+| 10 Finance, HR, reporting          | Accepted 2026-10-12 (CI 38247414281)                           |
+| 11 SaaS commercial platform        | Accepted 2026-10-12 (CI 38274348733)                           |
+| 12 Multi-brand and franchise       | Accepted 2026-10-12 (CI 38279114456)                           |
+| 13 Enterprise operations           | Accepted 2026-10-12 (13a CI 38281367731, 13b CI 38283346522)   |
+| 14 Infrastructure and intelligence | Accepted 2026-10-13 (14a CI 38285013868, 14b–c CI 38286901541) |
+| 15 Multi-platform delivery         | Implemented 2026-10-13                                         |
+| 16 Final acceptance                | Documentation delivered; production pilot pending              |
 
 ## Phase 2 — delivered
 
@@ -169,6 +170,18 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 5 new integration tests, Playwright developer and analytics flows on desktop and mobile.
 - Not implemented as placeholders (per master prompt §19): marketplace/add-ons, partner/reseller CRM, data warehouse pipelines, AI services, multi-region HA/IaC — they require approved providers, contracts or infrastructure beyond the single Render service; tracked in Open items.
 
+## Phase 15 — delivered
+
+- Installable PWA (Uzbek manifest, icons, shortcuts to Kassa/Oshxona/Buyurtmalar), service worker with offline app shell and versioned updates ("Yangi versiya tayyor" banner), install button, kiosk fullscreen toggle.
+- Device fleet: terminals report app version and liveness; Devices page shows online state, version and "Yangilash kerak".
+- Native Windows/Android packaging is not needed for operation: the PWA installs on Windows (Edge/Chrome), Android and iOS. Store distribution can wrap the same build later.
+
+## Phase 16 — final acceptance
+
+- Runbook for deployment, release/rollback, backups and DR drills, monitoring, security operations and pilot rollout: `operations-runbook.md`.
+- Acceptance evidence per phase is the CI history listed above (format, typecheck, unit, PostgreSQL integration, Playwright desktop and mobile, dependency audit on every push).
+- Remaining before go-live (require the owner's accounts/decisions): Render production service and UTF8 database with backups, `APP_SECRET_KEY` and admin creation, certified OFD fiscal provider, Payme/Click merchant contracts, Telegram bot, pilot day in one branch.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -183,4 +196,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 15 — Multi-platform delivery: installable PWA (manifest, service worker with offline shell), POS terminal kiosk mode, device fleet view (last seen, app version) and update lifecycle.
+All 16 phases are implemented. Next: production pilot (see `operations-runbook.md` §6), then review of shortcomings found during the pilot.
