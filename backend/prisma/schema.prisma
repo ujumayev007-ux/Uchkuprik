@@ -255,22 +255,25 @@ model AuditLog {
 // currency's smallest unit in use (so‘m for UZS); never floating point.
 
 model TenantProfile {
-  tenantId           String   @id @db.Uuid
-  legalName          String?
-  taxId              String?
-  phone              String?
-  address            String?
-  receiptHeader      String?
-  receiptFooter      String?
+  tenantId             String   @id @db.Uuid
+  legalName            String?
+  taxId                String?
+  phone                String?
+  address              String?
+  receiptHeader        String?
+  receiptFooter        String?
   // Percentage in basis points (1000 = 10%).
-  serviceChargeBp    Int      @default(0)
+  serviceChargeBp      Int      @default(0)
   // When false, completing an order that would drive stock below zero is rejected.
-  allowNegativeStock Boolean  @default(true)
+  allowNegativeStock   Boolean  @default(true)
   // Public website and table-QR ordering (off until the owner enables it).
-  publicOrdering     Boolean  @default(false)
+  publicOrdering       Boolean  @default(false)
   // Loyalty earn rate in basis points of the paid amount (0 = loyalty off).
-  loyaltyEarnBp      Int      @default(0)
-  updatedAt          DateTime @updatedAt
+  loyaltyEarnBp        Int      @default(0)
+  // Configurable labour rules (review for the applicable jurisdiction).
+  overtimeAfterMinutes Int      @default(480)
+  overtimeMultiplierBp Int      @default(15000)
+  updatedAt            DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -1265,4 +1268,153 @@ model CourierProfile {
 
   @@index([tenantId])
   @@map("courier_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10: HR (attendance, schedules, payroll) and finance (expenses, closing).
+
+enum PayType {
+  NONE
+  HOURLY
+  MONTHLY
+}
+
+enum PayrollStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum AdjustmentType {
+  BONUS
+  PENALTY
+  ADVANCE
+}
+
+model EmployeeProfile {
+  userId    String    @id @db.Uuid
+  tenantId  String    @db.Uuid
+  position  String?
+  payType   PayType   @default(NONE)
+  // so‘m per hour (HOURLY) or per month (MONTHLY).
+  rate      Int       @default(0)
+  hireDate  DateTime? @db.Date
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("employee_profiles")
+}
+
+model AttendanceRecord {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @db.Uuid
+  branchId      String    @db.Uuid
+  userId        String    @db.Uuid
+  clockIn       DateTime
+  clockOut      DateTime?
+  note          String?
+  correctedById String?   @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, userId, clockIn])
+  @@index([tenantId, branchId, clockIn])
+  @@map("attendance_records")
+}
+
+model ScheduledShift {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String   @db.Uuid
+  userId    String   @db.Uuid
+  startsAt  DateTime
+  endsAt    DateTime
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, branchId, startsAt])
+  @@index([userId, startsAt])
+  @@map("scheduled_shifts")
+}
+
+model PayrollPeriod {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  tenantId     String        @db.Uuid
+  startDate    DateTime      @db.Date
+  endDate      DateTime      @db.Date
+  status       PayrollStatus @default(DRAFT)
+  approvedById String?       @db.Uuid
+  approvedAt   DateTime?
+  paidAt       DateTime?
+  createdAt    DateTime      @default(now())
+
+  lines PayrollLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, startDate, endDate])
+  @@map("payroll_periods")
+}
+
+model PayrollLine {
+  id              String  @id @default(uuid(7)) @db.Uuid
+  tenantId        String  @db.Uuid
+  periodId        String  @db.Uuid
+  userId          String  @db.Uuid
+  payType         PayType
+  rate            Int
+  workedMinutes   Int     @default(0)
+  overtimeMinutes Int     @default(0)
+  baseAmount      Int     @default(0)
+  overtimeAmount  Int     @default(0)
+  bonuses         Int     @default(0)
+  penalties       Int     @default(0)
+  advances        Int     @default(0)
+  total           Int     @default(0)
+
+  period PayrollPeriod @relation(fields: [tenantId, periodId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([periodId, userId])
+  @@map("payroll_lines")
+}
+
+// Bonuses, penalties and advances; applied to the payroll period containing their date.
+model PayrollAdjustment {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  tenantId    String         @db.Uuid
+  userId      String         @db.Uuid
+  type        AdjustmentType
+  amount      Int
+  date        DateTime       @db.Date
+  reason      String
+  createdById String         @db.Uuid
+  createdAt   DateTime       @default(now())
+
+  @@index([tenantId, userId, date])
+  @@map("payroll_adjustments")
+}
+
+model Expense {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  branchId    String   @db.Uuid
+  category    String
+  amount      Int
+  date        DateTime @db.Date
+  note        String?
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, branchId, date])
+  @@map("expenses")
+}
+
+// Closed months reject back-dated financial changes (expenses, payroll adjustments).
+model ClosedPeriod {
+  tenantId   String   @db.Uuid
+  month      String
+  closedById String   @db.Uuid
+  closedAt   DateTime @default(now())
+
+  @@id([tenantId, month])
+  @@map("closed_periods")
 }

@@ -168,3 +168,22 @@ Payments accept method `LOYALTY` (requires an attached customer; 1 point = 1 so�
 | `GET /delivery/report?from&to` (delivered, failed, fees, average minutes per courier)                        | delivery.manage or reports.view                          |
 
 Delivering a fully paid order completes it (stock deduction, fiscal status, loyalty) through the same completion function as the cashier; unpaid deliveries stay SERVED until the cashier records the collected cash. Website delivery orders must choose a zone when the branch has zones (`zones` in the public menu).
+
+## Phase 10: HR, payroll, finance and reports
+
+| Endpoint                                                                                                                                   | Access                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `GET /hr/employees`; `PUT /hr/employees/:userId` {position, payType NONE/HOURLY/MONTHLY, rate, hireDate}                                   | hr.manage (+ step-up for PUT)                     |
+| `GET /attendance/me`, `POST /attendance/clock-in`, `POST /attendance/clock-out`                                                            | any business session (one open record per person) |
+| `GET /attendance?from&to`; `PATCH /attendance/:id` {clockIn, clockOut, note} (audited correction)                                          | hr.manage                                         |
+| `GET /schedule?from&to` (own shifts, or the branch for hr.manage); `POST /schedule`; `DELETE /schedule/:id`                                | session / hr.manage (no overlapping shifts)       |
+| `POST /payroll/adjustments` {userId, type BONUS/PENALTY/ADVANCE, amount, date, reason}                                                     | hr.manage + step-up                               |
+| `GET /payroll/periods`, `GET /payroll/periods/:id`                                                                                         | hr.manage or finance.view                         |
+| `POST /payroll/periods` {startDate, endDate}; `/:id/recalculate` (DRAFT); `/:id/export.csv`                                                | hr.manage                                         |
+| `POST /payroll/periods/:id/approve` (step-up); `/:id/paid`                                                                                 | finance.manage                                    |
+| `GET /expenses?from&to`; `POST /expenses`; `DELETE /expenses/:id`                                                                          | finance.view; finance.manage                      |
+| `GET /finance/closed-periods`; `POST /finance/close` {month} (finished months only, step-up)                                               | finance.view; finance.manage                      |
+| `GET /reports/pnl`, `/reports/pnl.csv` (revenue, COGS from stock ledger + manual costs, expenses, approved payroll, net profit)            | finance.view                                      |
+| `GET /reports/branches` (costs only with finance.view), `GET /reports/kitchen` (average prep minutes, on-time %), `GET /reports/sales.csv` | reports.view                                      |
+
+Payroll: HOURLY = regular minutes × rate/60 + daily overtime beyond `overtimeAfterMinutes` × `overtimeMultiplierBp`; MONTHLY = salary prorated by calendar days of the starting month; bonuses add, penalties and advances deduct. CSV files use a UTF-8 BOM and semicolons for Excel.

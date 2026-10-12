@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import { useMe } from '../auth/session';
 import { navItems, useBranches } from '../components/AppShell';
 import { Badge, PageHeader } from '../components/ui';
+import { ClockCard } from './AttendancePage';
 import { t } from '../i18n';
 
 export function DashboardPage() {
@@ -17,6 +18,7 @@ export function DashboardPage() {
         subtitle={me.tenant.name}
       />
       <div className="grid-cards">
+        <ClockCard />
         <section className="card">
           <h2>{t.dashboard.activeBranch}</h2>
           <p className="big">

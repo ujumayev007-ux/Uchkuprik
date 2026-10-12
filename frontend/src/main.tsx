@@ -20,16 +20,19 @@ import { MfaSetupPage } from './pages/auth/MfaSetupPage';
 import { MfaVerifyPage } from './pages/auth/MfaVerifyPage';
 import { PinPage } from './pages/auth/PinPage';
 import { BranchesPage } from './pages/BranchesPage';
+import { AttendancePage } from './pages/AttendancePage';
 import { CourierPage } from './pages/CourierPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { DeliveryPage } from './pages/DeliveryPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
+import { FinancePage } from './pages/FinancePage';
 import { FloorPage } from './pages/FloorPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
 import { PaymentsPage } from './pages/PaymentsPage';
+import { PayrollPage } from './pages/PayrollPage';
 import { PrintersPage } from './pages/PrintersPage';
 import {
   TableMenuPage,
@@ -299,6 +302,32 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => can(me, 'customers.view')}>
             <CustomersPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/ish-vaqti',
+        element: (
+          <Guard allow={(me) => me.tenantKind === 'BUSINESS'}>
+            <AttendancePage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/ish-haqi',
+        element: (
+          <Guard
+            allow={(me) => can(me, 'hr.manage') || can(me, 'finance.view')}
+          >
+            <PayrollPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/moliya',
+        element: (
+          <Guard allow={(me) => can(me, 'finance.view')}>
+            <FinancePage />
           </Guard>
         ),
       },

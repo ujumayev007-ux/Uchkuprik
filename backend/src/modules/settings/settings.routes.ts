@@ -36,6 +36,8 @@ const settingsInput = z.object({
   allowNegativeStock: z.boolean().default(true),
   publicOrdering: z.boolean().default(false),
   loyaltyEarnBp: z.number().int().min(0).max(5000).default(0),
+  overtimeAfterMinutes: z.number().int().min(60).max(1440).default(480),
+  overtimeMultiplierBp: z.number().int().min(10000).max(30000).default(15000),
 });
 
 export function settingsRouter(services: Services) {
@@ -63,6 +65,8 @@ export function settingsRouter(services: Services) {
       allowNegativeStock: tenant.profile?.allowNegativeStock ?? true,
       publicOrdering: tenant.profile?.publicOrdering ?? false,
       loyaltyEarnBp: tenant.profile?.loyaltyEarnBp ?? 0,
+      overtimeAfterMinutes: tenant.profile?.overtimeAfterMinutes ?? 480,
+      overtimeMultiplierBp: tenant.profile?.overtimeMultiplierBp ?? 15000,
     });
   });
 
@@ -85,6 +89,8 @@ export function settingsRouter(services: Services) {
         allowNegativeStock: input.allowNegativeStock,
         publicOrdering: input.publicOrdering,
         loyaltyEarnBp: input.loyaltyEarnBp,
+        overtimeAfterMinutes: input.overtimeAfterMinutes,
+        overtimeMultiplierBp: input.overtimeMultiplierBp,
       };
       await db.$transaction(async (tx) => {
         await tx.tenant.update({

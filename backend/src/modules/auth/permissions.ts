@@ -34,6 +34,7 @@ export const permissionCatalog = {
   'customers.view': 'Mijozlarni ko‘rish',
   'customers.manage': 'Mijozlarni boshqarish',
   'hr.manage': 'Ish vaqti va maoshni boshqarish',
+  'finance.manage': 'Xarajatlar va moliyaviy davrlarni boshqarish',
   'notifications.manage': 'Bildirishnomalarni sozlash',
   'operations.manage': 'Operatsion nazoratni boshqarish',
 } as const;

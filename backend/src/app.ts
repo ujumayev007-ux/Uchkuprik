@@ -18,7 +18,9 @@ import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
 import { crmRouter } from './modules/crm/crm.routes.js';
 import { deliveryRouter } from './modules/delivery/delivery.routes.js';
+import { financeRouter } from './modules/finance/finance.routes.js';
 import { floorRouter } from './modules/floor/floor.routes.js';
+import { hrRouter } from './modules/hr/hr.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
@@ -164,6 +166,8 @@ export function createApp({
       onlineRouter,
       crmRouter,
       deliveryRouter,
+      hrRouter,
+      financeRouter,
     ])
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));

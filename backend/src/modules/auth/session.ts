@@ -5,6 +5,7 @@ import type { AuthMethod } from '../../generated/prisma/client.js';
 import { AppError, errors } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
 import {
+  allPermissions,
   isPermission,
   privilegedPermissions,
   type Permission,
@@ -176,9 +177,13 @@ export async function authenticate(
   if (!valid) return { status: 'invalid' };
   if (session.tenant.status !== 'ACTIVE') return { status: 'suspended' };
   const permissions = new Set<Permission>();
-  for (const { role } of user.roles)
+  for (const { role } of user.roles) {
+    // Owners always hold the full catalog, including permissions added after seeding.
+    if (role.systemKey === 'owner')
+      for (const key of allPermissions) permissions.add(key);
     for (const key of role.permissions)
       if (isPermission(key)) permissions.add(key);
+  }
   const isPrivileged = privilegedPermissions.some((key) =>
     permissions.has(key),
   );

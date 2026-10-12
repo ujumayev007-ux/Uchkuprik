@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-011 — Payroll and P&L conventions (2026-10-12)
+
+- **Decision:** Overtime is computed per Tashkent calendar day for hourly staff only; monthly salaries are prorated by days of the starting month. P&L assigns payroll to the range containing the period start date; COGS = recipe-based SALE movements valued at average cost plus manual unit costs for items without recipes. Months are closed explicitly by finance managers and cannot be reopened through the API.
+- **Reason:** Simple, explainable rules that owners can verify; labour-law specifics vary and are configurable.
+- **Reversal:** Add per-employee overtime rules, payroll accrual across periods and a supervised reopen workflow if required.
+
 ## D-010 — Payment providers and fiscalization scope (2026-10-12)
 
 - **Decision:** Implement the public Payme Merchant API and Click SHOP API protocols directly (no SDK), per-tenant credentials, full-amount online payments only, provider-initiated cancel of performed payments rejected (refunds stay a staff-approved action recorded in the ledger and executed in the provider cabinet). Uzum Bank and fiscal (OFD) registration are adapter boundaries only.

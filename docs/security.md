@@ -62,3 +62,7 @@ Points move only through a ledger function that locks the customer row and rejec
 ## Delivery and courier privacy (Phase 9b)
 
 Couriers act only on orders assigned to them (other orders return 404) and never see costs. Location is accepted only after explicit consent, is shown to dispatchers only while fresh (10 minutes), and is erased immediately when consent is withdrawn; consent changes are audited. Owners and administrators are not offered as couriers even though their roles include the courier permission.
+
+## HR and finance controls (Phase 10)
+
+Pay rates, payroll adjustments, payroll approval and period closing require re-authentication and are audited; approved payroll is locked. Closed months reject back-dated expenses, expense deletion, attendance corrections and payroll adjustments. Profit, cost and payroll figures require finance.view. Owners always hold the full permission catalog, so permissions introduced after seeding (such as `finance.manage`) are not lost. Labour rules are configurable and must be reviewed for the applicable jurisdiction.

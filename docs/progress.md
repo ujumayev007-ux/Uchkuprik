@@ -4,18 +4,19 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                           | Status                                                                             |
-| ------------------------------- | ---------------------------------------------------------------------------------- |
-| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                                           |
-| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                                           |
-| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                                           |
-| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                                           |
-| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                                           |
-| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                                           |
-| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix)                         |
-| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                                           |
-| 9 Delivery, CRM, loyalty        | 9a accepted (CI run 38243872772); 9b implemented and validated locally, CI pending |
-| 10–16                           | Not started                                                                        |
+| Phase                           | Status                                                     |
+| ------------------------------- | ---------------------------------------------------------- |
+| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                   |
+| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                   |
+| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                   |
+| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                   |
+| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                   |
+| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                   |
+| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix) |
+| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                   |
+| 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364) |
+| 10 Finance, HR, reporting       | Implemented and validated locally; CI pending on push      |
+| 11–16                           | Not started                                                |
 
 ## Phase 2 — delivered
 
@@ -99,6 +100,15 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 66 integration (5 new), 29 Playwright (full POS → kitchen → dispatch → courier delivery).
 - Deferred: polygon/geo zones and routing optimisation (map provider integration), courier payroll (Phase 10).
 
+## Phase 10 — delivered
+
+- Attendance clock in/out (dashboard card), manager corrections with reason, shift schedule.
+- Employee pay profiles, bonuses/penalties/advances, payroll periods with overtime, approval (step-up), paid status, CSV export.
+- Expenses, P&L with real COGS, branch comparison, kitchen performance, sales/P&L CSV, monthly closing.
+- Owners dynamically receive new permissions.
+- Evidence: 40 unit, 71 integration (5 new), 30 Playwright tests.
+- Deferred: shift swaps, leave management, performance KPIs (Phase 13 with training), PDF export (browser print covers reports), accounting system exports (1C) once formats are specified.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -113,4 +123,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 10 — Finance, HR and reporting: attendance (clock in/out), shift scheduling, payroll calculation with bonuses/penalties/advances and configurable rules, expense tracking, profit and loss report, branch comparison, CSV/Excel export, period closing.
+Phase 11 — SaaS commercial platform: self-service tenant registration with trial, subscription plans (Basic/Pro/Enterprise) with server-enforced entitlements and limits (branches, devices, users, features), subscription lifecycle (trial → active → past due → suspended), invoices, payment reminders, tenant data export and closure, platform analytics.

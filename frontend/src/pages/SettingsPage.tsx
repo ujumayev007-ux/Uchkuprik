@@ -28,6 +28,8 @@ type Settings = {
   allowNegativeStock: boolean;
   publicOrdering: boolean;
   loyaltyEarnBp: number;
+  overtimeAfterMinutes: number;
+  overtimeMultiplierBp: number;
 };
 
 export function useSettings() {
@@ -90,6 +92,8 @@ export function SettingsPage() {
               allowNegativeStock: form.allowNegativeStock,
               publicOrdering: form.publicOrdering,
               loyaltyEarnBp: form.loyaltyEarnBp,
+              overtimeAfterMinutes: form.overtimeAfterMinutes,
+              overtimeMultiplierBp: form.overtimeMultiplierBp,
             });
             toast(t.common.saved);
             await client.invalidateQueries({ queryKey: ['settings'] });
@@ -181,6 +185,39 @@ export function SettingsPage() {
                 ...form,
                 loyaltyEarnBp: Math.round(
                   Number(event.target.value || 0) * 100,
+                ),
+              })
+            }
+          />
+          <TextField
+            label={t.hr.overtimeAfter}
+            hint={t.hr.laborNote}
+            type="number"
+            min={1}
+            max={24}
+            step={0.5}
+            value={form.overtimeAfterMinutes / 60}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                overtimeAfterMinutes: Math.round(
+                  Number(event.target.value || 8) * 60,
+                ),
+              })
+            }
+          />
+          <TextField
+            label={t.hr.overtimeMultiplier}
+            type="number"
+            min={1}
+            max={3}
+            step={0.1}
+            value={form.overtimeMultiplierBp / 10000}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                overtimeMultiplierBp: Math.round(
+                  Number(event.target.value || 1.5) * 10000,
                 ),
               })
             }

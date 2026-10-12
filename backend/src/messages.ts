@@ -61,6 +61,10 @@ export const messages = {
   zoneMinOrder: 'Bu hudud uchun buyurtma summasi yetarli emas.',
   orderNotReady: 'Buyurtma hali tayyor emas.',
   consentRequired: 'Avval joylashuvni ulashishga rozilik bering.',
+  periodClosed: 'Bu oy moliyaviy jihatdan yopilgan. O‘zgartirib bo‘lmaydi.',
+  alreadyClockedIn: 'Siz allaqachon ishga kelganingizni belgilagansiz.',
+  notClockedIn: 'Avval ishga kelganingizni belgilang.',
+  payrollLocked: 'Ish haqi davri tasdiqlangan, o‘zgartirib bo‘lmaydi.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

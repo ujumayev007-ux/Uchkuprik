@@ -97,6 +97,24 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'customers.view'),
   },
   {
+    to: '/ish-vaqti',
+    label: t.hr.attendanceTitle,
+    icon: '◷',
+    visible: (me) => me.tenantKind === 'BUSINESS',
+  },
+  {
+    to: '/ish-haqi',
+    label: t.hr.payrollTitle,
+    icon: '₴',
+    visible: (me) => can(me, 'hr.manage') || can(me, 'finance.view'),
+  },
+  {
+    to: '/moliya',
+    label: t.finance.title,
+    icon: '∑',
+    visible: (me) => can(me, 'finance.view'),
+  },
+  {
     to: '/menyu',
     label: t.nav.menu,
     icon: '☷',

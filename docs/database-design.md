@@ -59,3 +59,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 9b schema (migration `delivery_couriers`)
 
 `delivery_zones` (per branch fee, minimum order, ETA), `courier_profiles` (consent with timestamp and last position), order delivery fields (`deliveryZoneId`, `deliveryFee` included in totals, `courierId`, `deliveryStatus` UNASSIGNED/ASSIGNED/PICKED_UP/DELIVERED/FAILED, timestamps, proof, failure reason).
+
+## Phase 10 schema (migration `hr_finance`)
+
+`employee_profiles`, `attendance_records` (one open record per user via partial unique index, clockOut after clockIn), `scheduled_shifts`, `payroll_periods` (unique per tenant and dates; DRAFT/APPROVED/PAID), `payroll_lines`, `payroll_adjustments` (append-only), `expenses`, `closed_periods` (YYYY-MM), tenant overtime rules.
