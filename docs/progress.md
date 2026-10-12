@@ -10,8 +10,9 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)              |
 | 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)              |
 | 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)              |
-| 5 Kitchen and real-time         | Implemented and validated locally; CI pending on push |
-| 6–16                            | Not started                                           |
+| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)              |
+| 6 Warehouse and recipes         | Implemented and validated locally; CI pending on push |
+| 7–16                            | Not started                                           |
 
 ## Phase 2 — delivered
 
@@ -49,6 +50,16 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 41 integration (5 new: socket isolation/auth, routing, status derivation, priority, TCP printing with retry), 18 Playwright (live POS → kitchen → queue).
 - Deferred: Redis adapter (multi-instance), local print agent for cloud deployments, kitchen performance metrics (Phase 10).
 
+## Phase 6 — delivered
+
+- Stock items with packaging units, default warehouse per branch, immutable stock ledger with row-locked balances and weighted average cost.
+- Suppliers with debt and payments; purchases (draft → receive) in packaging units.
+- Recipes per variant with live recipe cost; automatic deduction on order completion; configurable negative-stock rule.
+- Waste, adjustments, stocktake with differences, inter-branch transfers, low-stock alerts with reorder suggestion.
+- UI: Ombor page (stock, purchases, suppliers, ledger), recipe dialog on menu cards, settings toggle.
+- Evidence: 40 unit, 48 integration (7 new), 20 Playwright tests.
+- Deferred within §9: batch/lot and expiry tracking (FEFO), prepared-ingredient production, approval-based purchasing, demand forecasting (Phase 14), modifier-option recipes.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -63,4 +74,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 6 — Warehouse and recipes: stock items and units, warehouses per branch, suppliers and purchases (receipts), recipe-based automatic deductions on order completion, waste/spoilage, stock movement ledger, negative-stock policy, low-stock alerts, stocktaking.
+Phase 7 — Customer ordering: public QR table menu and website ordering through the shared order engine, customer cart, order submission without login, approval by waiter/cashier for unpaid online orders, order status tracking page for customers.

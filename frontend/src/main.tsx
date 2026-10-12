@@ -23,6 +23,7 @@ import { BranchesPage } from './pages/BranchesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FloorPage } from './pages/FloorPage';
+import { InventoryPage } from './pages/InventoryPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
 import { PrintersPage } from './pages/PrintersPage';
@@ -234,6 +235,18 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => can(me, 'reports.view')}>
             <ReportsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/ombor',
+        element: (
+          <Guard
+            allow={(me) =>
+              can(me, 'inventory.view') || can(me, 'purchasing.manage')
+            }
+          >
+            <InventoryPage />
           </Guard>
         ),
       },

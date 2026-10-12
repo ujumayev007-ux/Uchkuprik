@@ -508,3 +508,25 @@ tr.clickable {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 }
+
+/* Inventory */
+.purchase-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.4fr;
+  gap: 10px;
+  align-items: end;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
+}
+.alert-card {
+  background: var(--warning-soft);
+  border-color: transparent;
+}
+.card.alert-card h2 {
+  color: var(--warning);
+}
+@media (max-width: 820px) {
+  .purchase-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

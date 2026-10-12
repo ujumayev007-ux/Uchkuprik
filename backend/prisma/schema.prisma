@@ -77,15 +77,16 @@ model Branch {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  users    UserBranch[]
-  devices  Device[]
-  sessions Session[]
-  rooms    Room[]
-  tables   DiningTable[]
-  prices   BranchVariantPrice[]
-  shifts   CashShift[]
-  orders   Order[]
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  users      UserBranch[]
+  devices    Device[]
+  sessions   Session[]
+  rooms      Room[]
+  tables     DiningTable[]
+  prices     BranchVariantPrice[]
+  shifts     CashShift[]
+  orders     Order[]
+  warehouses Warehouse[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -254,16 +255,18 @@ model AuditLog {
 // currency's smallest unit in use (so‘m for UZS); never floating point.
 
 model TenantProfile {
-  tenantId        String   @id @db.Uuid
-  legalName       String?
-  taxId           String?
-  phone           String?
-  address         String?
-  receiptHeader   String?
-  receiptFooter   String?
+  tenantId           String   @id @db.Uuid
+  legalName          String?
+  taxId              String?
+  phone              String?
+  address            String?
+  receiptHeader      String?
+  receiptFooter      String?
   // Percentage in basis points (1000 = 10%).
-  serviceChargeBp Int      @default(0)
-  updatedAt       DateTime @updatedAt
+  serviceChargeBp    Int      @default(0)
+  // When false, completing an order that would drive stock below zero is rejected.
+  allowNegativeStock Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -383,6 +386,7 @@ model ProductVariant {
   product      Product              @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
   branchPrices BranchVariantPrice[]
   orderItems   OrderItem[]
+  recipe       RecipeLine[]
 
   @@unique([tenantId, id])
   @@index([productId])
@@ -787,4 +791,219 @@ model PrintJob {
 
   @@index([status, nextTryAt])
   @@map("print_jobs")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: warehouse, purchasing and recipes. Quantities are exact decimals in the
+// item's base unit (grams, millilitres or pieces); costs are so‘m per base unit.
+
+enum BaseUnit {
+  G
+  ML
+  PCS
+}
+
+enum StockMovementType {
+  RECEIPT
+  SALE
+  WASTE
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  STOCKTAKE
+}
+
+enum PurchaseStatus {
+  DRAFT
+  RECEIVED
+  CANCELLED
+}
+
+model StockItem {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  sku       String?
+  baseUnit  BaseUnit
+  // Low-stock alert threshold per warehouse, in base units.
+  minStock  Decimal  @default(0) @db.Decimal(14, 3)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units     StockUnit[]
+  balances  StockBalance[]
+  movements StockMovement[]
+  recipes   RecipeLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@unique([tenantId, sku])
+  @@map("stock_items")
+}
+
+// Packaging units, e.g. "kg" = 1000 g, "qop (25 kg)" = 25000 g, "quti (24 dona)" = 24 pcs.
+model StockUnit {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  tenantId    String  @db.Uuid
+  stockItemId String  @db.Uuid
+  name        String
+  factor      Decimal @db.Decimal(14, 3)
+
+  stockItem StockItem @relation(fields: [tenantId, stockItemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([stockItemId, name])
+  @@map("stock_units")
+}
+
+model Warehouse {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String   @db.Uuid
+  name      String
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  branch    Branch          @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  balances  StockBalance[]
+  movements StockMovement[]
+
+  @@unique([tenantId, id])
+  @@unique([branchId, name])
+  @@map("warehouses")
+}
+
+model StockBalance {
+  tenantId    String   @db.Uuid
+  warehouseId String   @db.Uuid
+  stockItemId String   @db.Uuid
+  quantity    Decimal  @default(0) @db.Decimal(14, 3)
+  // Weighted average cost per base unit.
+  avgCost     Decimal  @default(0) @db.Decimal(14, 4)
+  updatedAt   DateTime @updatedAt
+
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  stockItem StockItem @relation(fields: [tenantId, stockItemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([warehouseId, stockItemId])
+  @@index([tenantId, stockItemId])
+  @@map("stock_balances")
+}
+
+// Append-only inventory ledger; balances are derived from it transactionally.
+model StockMovement {
+  id            BigInt            @id @default(autoincrement())
+  tenantId      String            @db.Uuid
+  warehouseId   String            @db.Uuid
+  stockItemId   String            @db.Uuid
+  type          StockMovementType
+  quantity      Decimal           @db.Decimal(14, 3)
+  unitCost      Decimal           @db.Decimal(14, 4)
+  balanceAfter  Decimal           @db.Decimal(14, 3)
+  referenceType String?
+  referenceId   String?
+  reason        String?
+  createdById   String?           @db.Uuid
+  createdAt     DateTime          @default(now())
+
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  stockItem StockItem @relation(fields: [tenantId, stockItemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, warehouseId, createdAt])
+  @@index([stockItemId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+model Supplier {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  phone     String?
+  taxId     String?
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  purchases Purchase[]
+  payments  SupplierPayment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("suppliers")
+}
+
+model Purchase {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  tenantId     String         @db.Uuid
+  supplierId   String         @db.Uuid
+  warehouseId  String         @db.Uuid
+  status       PurchaseStatus @default(DRAFT)
+  invoiceNo    String?
+  note         String?
+  // Money in so‘m.
+  total        Int            @default(0)
+  createdById  String         @db.Uuid
+  receivedById String?        @db.Uuid
+  receivedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  supplier Supplier       @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
+  lines    PurchaseLine[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, createdAt])
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  tenantId     String  @db.Uuid
+  purchaseId   String  @db.Uuid
+  stockItemId  String  @db.Uuid
+  // Entered quantity and packaging unit, plus the converted base quantity.
+  quantity     Decimal @db.Decimal(14, 3)
+  unitName     String
+  factor       Decimal @db.Decimal(14, 3)
+  baseQuantity Decimal @db.Decimal(14, 3)
+  // Price per entered unit and line total, in so‘m.
+  unitPrice    Int
+  lineTotal    Int
+
+  purchase Purchase @relation(fields: [tenantId, purchaseId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@map("purchase_lines")
+}
+
+model SupplierPayment {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  supplierId  String   @db.Uuid
+  amount      Int
+  note        String?
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  supplier Supplier @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([supplierId])
+  @@map("supplier_payments")
+}
+
+// Ingredients consumed per sold unit of a product variant.
+model RecipeLine {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  tenantId    String  @db.Uuid
+  variantId   String  @db.Uuid
+  stockItemId String  @db.Uuid
+  quantity    Decimal @db.Decimal(14, 3)
+
+  variant   ProductVariant @relation(fields: [tenantId, variantId], references: [tenantId, id], onDelete: Cascade)
+  stockItem StockItem      @relation(fields: [tenantId, stockItemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([variantId, stockItemId])
+  @@map("recipe_lines")
 }

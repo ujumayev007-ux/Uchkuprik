@@ -72,6 +72,12 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'reports.view'),
   },
   {
+    to: '/ombor',
+    label: t.nav.warehouse,
+    icon: '▥',
+    visible: (me) => can(me, 'inventory.view') || can(me, 'purchasing.manage'),
+  },
+  {
     to: '/menyu',
     label: t.nav.menu,
     icon: '☷',

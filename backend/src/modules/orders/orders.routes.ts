@@ -18,6 +18,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { consumeOrderIngredients } from '../inventory/ledger.js';
 import { findOpenShift } from '../shifts/shifts.routes.js';
 import {
   addEvent,
@@ -616,6 +617,9 @@ export function ordersRouter(services: Services) {
       }
       if (to === 'COMPLETED' && netPaid(order) < order.total)
         throw new AppError(409, 'NOT_FULLY_PAID', 'notFullyPaid');
+      // Sold items consume recipe ingredients in the same transaction.
+      if (to === 'COMPLETED')
+        await consumeOrderIngredients(tx, id, auth.userId);
       await tx.order.update({
         where: { id },
         data: {

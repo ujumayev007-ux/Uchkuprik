@@ -20,6 +20,7 @@ import {
 import { t } from '../i18n';
 import { api, del, patch, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
+import { RecipeDialog } from '../components/RecipeDialog';
 import { useStations } from './KitchenPage';
 
 export type Variant = {
@@ -831,6 +832,7 @@ export function MenuPage() {
     | null
   >(null);
 
+  const [recipeFor, setRecipeFor] = useState<Product | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ['menu'] });
   const tree = useMemo(
     () => categoryTree(menu.data?.categories ?? []),
@@ -1072,6 +1074,12 @@ export function MenuPage() {
                           </Button>
                           <Button
                             size="sm"
+                            onClick={() => setRecipeFor(product)}
+                          >
+                            {t.inventory.recipe}
+                          </Button>
+                          <Button
+                            size="sm"
                             variant="danger"
                             onClick={async () => {
                               if (!(await confirm(t.menu.deleteConfirm)))
@@ -1139,6 +1147,9 @@ export function MenuPage() {
           <GroupForm group={dialog.group} showCost={showCost} onDone={done} />
         )}
       </Dialog>
+      {recipeFor && (
+        <RecipeDialog product={recipeFor} onClose={() => setRecipeFor(null)} />
+      )}
       {confirmElement}
     </>
   );

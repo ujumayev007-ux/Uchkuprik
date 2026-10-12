@@ -33,6 +33,7 @@ const settingsInput = z.object({
   receiptFooter: optionalText(300),
   serviceChargeBp: z.number().int().min(0).max(3000),
   requireMfaForAdmins: z.boolean(),
+  allowNegativeStock: z.boolean().default(true),
 });
 
 export function settingsRouter(services: Services) {
@@ -57,6 +58,7 @@ export function settingsRouter(services: Services) {
       receiptHeader: tenant.profile?.receiptHeader ?? null,
       receiptFooter: tenant.profile?.receiptFooter ?? null,
       serviceChargeBp: tenant.profile?.serviceChargeBp ?? 0,
+      allowNegativeStock: tenant.profile?.allowNegativeStock ?? true,
     });
   });
 
@@ -76,6 +78,7 @@ export function settingsRouter(services: Services) {
         receiptHeader: input.receiptHeader ?? null,
         receiptFooter: input.receiptFooter ?? null,
         serviceChargeBp: input.serviceChargeBp,
+        allowNegativeStock: input.allowNegativeStock,
       };
       await db.$transaction(async (tx) => {
         await tx.tenant.update({

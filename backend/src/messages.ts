@@ -48,6 +48,10 @@ export const messages = {
     'To‘langan buyurtmani bekor qilishdan oldin pulni qaytaring.',
   providerNotConfigured: 'Bu to‘lov usuli hali ulanmagan.',
   orderClosed: 'Yopilgan buyurtmani o‘zgartirib bo‘lmaydi.',
+  insufficientStock: 'Omborda mahsulot yetarli emas.',
+  unknownUnit: 'O‘lchov birligi noto‘g‘ri.',
+  purchaseClosed: 'Bu xarid allaqachon qabul qilingan yoki bekor qilingan.',
+  sameWarehouse: 'Bir xil omborga ko‘chirib bo‘lmaydi.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

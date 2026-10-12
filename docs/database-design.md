@@ -39,3 +39,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 5 schema (migrations `kitchen_realtime_printing`, `kitchen_print_tracking`)
 
 `kitchen_stations`; `menu_categories.stationId`; order item kitchen fields (`stationId` and `prepTimeMinutes` snapshots, `kitchenStatus`, `prepStartedAt`, `readyAt`, `kitchenPrintedAt`); `orders.priority` (0/1) and `readyAt`; `printers`; `print_jobs` (payload bytes, status, attempts, backoff `nextTryAt`; claimed with `FOR UPDATE SKIP LOCKED`).
+
+## Phase 6 schema (migration `warehouse_recipes`)
+
+`stock_items` (base unit G/ML/PCS, min stock), `stock_units` (packaging factors), `warehouses` (one default per branch, partial unique index), `stock_balances` (quantity, weighted average cost; row-locked on every change), `stock_movements` (append-only ledger with `balanceAfter`, typed RECEIPT/SALE/WASTE/ADJUSTMENT/TRANSFER_IN/TRANSFER_OUT/STOCKTAKE and references), `suppliers`, `purchases` + `purchase_lines` (entered unit, factor, base quantity, so‘m prices), `supplier_payments` (append-only), `recipe_lines` (per variant), `tenant_profiles.allowNegativeStock`. Quantities use NUMERIC(14,3), costs NUMERIC(14,4); money stays integer so‘m.

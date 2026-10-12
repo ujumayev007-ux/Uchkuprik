@@ -25,6 +25,7 @@ type Settings = {
   receiptHeader: string | null;
   receiptFooter: string | null;
   serviceChargeBp: number;
+  allowNegativeStock: boolean;
 };
 
 export function useSettings() {
@@ -84,6 +85,7 @@ export function SettingsPage() {
               receiptFooter: nullable(form.receiptFooter),
               serviceChargeBp: form.serviceChargeBp,
               requireMfaForAdmins: form.requireMfaForAdmins,
+              allowNegativeStock: form.allowNegativeStock,
             });
             toast(t.common.saved);
             await client.invalidateQueries({ queryKey: ['settings'] });
@@ -160,6 +162,14 @@ export function SettingsPage() {
             checked={form.requireMfaForAdmins}
             onChange={(requireMfaForAdmins) =>
               setForm({ ...form, requireMfaForAdmins })
+            }
+          />
+          <Checkbox
+            label={t.inventory.allowNegative}
+            description={t.inventory.allowNegativeHint}
+            checked={form.allowNegativeStock}
+            onChange={(allowNegativeStock) =>
+              setForm({ ...form, allowNegativeStock })
             }
           />
         </fieldset>

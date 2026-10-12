@@ -17,6 +17,7 @@ import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
 import { floorRouter } from './modules/floor/floor.routes.js';
+import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
 import { menuRouter } from './modules/menu/menu.routes.js';
@@ -155,6 +156,7 @@ export function createApp({
       reportsRouter,
       kitchenRouter,
       printersRouter,
+      inventoryRouter,
     ])
       app.use('/api', router(services));
   }

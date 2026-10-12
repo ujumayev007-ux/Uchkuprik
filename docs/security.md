@@ -42,3 +42,7 @@ Server-side pricing only; idempotent order and payment creation; order row locks
 ## Real-time and printing (Phase 5)
 
 WebSocket handshakes use the same session/device-cookie validation as HTTP, reject foreign origins, join only the session's tenant and active-branch rooms, and are revalidated every minute (revoked sessions are disconnected). Events carry identifiers and statuses only. Kitchen roles no longer hold `orders.view`; kitchen tickets and the queue screen contain no prices. Printer addresses are limited to private LAN IPv4 and raw-print ports to prevent server-side request forgery against loopback, cloud metadata or public hosts.
+
+## Inventory controls (Phase 6)
+
+Every stock change goes through one ledger function that locks the balance row, enforces the negative-stock policy and records an immutable movement (concurrency tested: five simultaneous withdrawals against three available units yield exactly three successes). Purchase receipt is single-shot under a row lock. Supplier payments are append-only. Costs and valuations are hidden from roles without inventory.manage/finance.view. Recipes and purchases cannot reference another tenant's stock items.

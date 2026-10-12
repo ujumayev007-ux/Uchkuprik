@@ -88,3 +88,22 @@ Real-time: Socket.io at `/api/realtime` (same origin, session cookie). Server �
 | `GET`/`POST`/`PATCH /printers`, `POST /printers/:id/test`, `GET /print-jobs`, `POST /print-jobs/:id/retry` | settings.manage; hosts restricted to private LAN IPv4, ports 9100–9109 |
 
 Menu categories accept `stationId`. Order status is derived from item kitchen statuses (any started → PREPARING, all ready → READY, new items on READY/SERVED → PREPARING).
+
+## Phase 6: warehouse, purchasing, recipes
+
+Quantities are decimal strings in the item's base unit (g, ml, dona) with up to 3 decimals. Cost fields (`avgCost`, `value`, `unitCost`, `recipeCost`) require inventory.manage or finance.view (recipe cost also menu.cost.view).
+
+| Endpoint                                                                                                                         | Access                                       |
+| -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `GET /inventory/items?branchId` (balances of the branch default warehouse)                                                       | inventory.view                               |
+| `POST /inventory/items`, `PATCH /inventory/items/:id` (with packaging units)                                                     | inventory.manage                             |
+| `GET /inventory/movements?stockItemId&limit` (ledger)                                                                            | inventory.view                               |
+| `POST /inventory/adjustments` {type WASTE or ADJUSTMENT, reason, lines}                                                          | inventory.manage                             |
+| `POST /inventory/stocktakes` {counts[{stockItemId, counted}]}                                                                    | inventory.manage                             |
+| `POST /inventory/transfers` {toBranchId, lines}                                                                                  | inventory.manage + access to both branches   |
+| `GET /inventory/alerts` (low stock with reorder suggestion)                                                                      | inventory.view                               |
+| `GET /suppliers` (debt for purchasing.manage/finance.view), `POST`/`PATCH /suppliers`, `POST /suppliers/:id/payments`            | purchasing.manage (list also inventory.view) |
+| `GET /purchases`, `POST /purchases`, `PATCH /purchases/:id` (DRAFT), `POST /purchases/:id/receive`, `POST /purchases/:id/cancel` | purchasing.manage                            |
+| `GET`/`PUT /recipes/:variantId`                                                                                                  | menu.manage or inventory.manage              |
+
+Completing an order deducts recipe ingredients (SALE movements) in the same transaction; with `allowNegativeStock = false` (settings) the completion is rejected with `INSUFFICIENT_STOCK` and nothing changes.

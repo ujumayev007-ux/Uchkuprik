@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-008 — Inventory model (2026-10-12)
+
+- **Decision:** Base-unit decimal quantities (g/ml/pcs) with packaging-unit conversion at entry; weighted average costing per warehouse; recipes per variant deducted when an order is COMPLETED (not when placed), so cancellations need no reversal; one default warehouse per branch; inter-branch transfers are immediate (no in-transit state); negative stock allowed by default and configurable per tenant.
+- **Reason:** Matches common fast-food practice (deduction at sale close) with exact arithmetic and a single audited write path.
+- **Reversal:** Add lots/expiry (FEFO), in-transit transfers, prepared-ingredient production and modifier recipes in a follow-up increment.
+
 ## D-007 — Real-time and printing architecture (2026-10-12)
 
 - **Decision:** Socket.io events are notifications only; REST remains the single read/write path, and every reconnect triggers a refetch ("replay by refetch"). An in-process event bus serves one API instance. Kitchen printing is server-side raw TCP (ESC/POS) through a durable `print_jobs` queue; receipts print from the browser (80 mm layout).
