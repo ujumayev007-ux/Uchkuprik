@@ -48,6 +48,8 @@ import { PlatformBillingPage } from './pages/PlatformBillingPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
 import { BrandsPage } from './pages/BrandsPage';
 import { OperationsPage } from './pages/OperationsPage';
+import { AssetsPage } from './pages/AssetsPage';
+import { ApprovalsPage, TrainingPage } from './pages/TrainingPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ShiftPage } from './pages/ShiftPage';
@@ -493,6 +495,43 @@ const router = createBrowserRouter([
             }
           >
             <OperationsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/uskunalar',
+        element: (
+          <Guard
+            feature="operations"
+            allow={(me) =>
+              can(me, 'assets.manage') ||
+              can(me, 'operations.manage') ||
+              can(me, 'operations.perform')
+            }
+          >
+            <AssetsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/oqitish',
+        element: (
+          <Guard
+            feature="operations"
+            allow={(me) => me.tenantKind === 'BUSINESS'}
+          >
+            <TrainingPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/tasdiqlar',
+        element: (
+          <Guard
+            feature="operations"
+            allow={(me) => can(me, 'approvals.decide')}
+          >
+            <ApprovalsPage />
           </Guard>
         ),
       },

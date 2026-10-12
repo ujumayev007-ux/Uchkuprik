@@ -96,6 +96,7 @@ model Branch {
   handovers       ShiftHandover[]
   opsTasks        OpsTask[]
   stockBatches    StockBatch[]
+  assets          Asset[]
   users           UserBranch[]
   devices         Device[]
   sessions        Session[]
@@ -273,25 +274,27 @@ model AuditLog {
 // currency's smallest unit in use (so‘m for UZS); never floating point.
 
 model TenantProfile {
-  tenantId             String   @id @db.Uuid
-  legalName            String?
-  taxId                String?
-  phone                String?
-  address              String?
-  receiptHeader        String?
-  receiptFooter        String?
+  tenantId                String   @id @db.Uuid
+  legalName               String?
+  taxId                   String?
+  phone                   String?
+  address                 String?
+  receiptHeader           String?
+  receiptFooter           String?
   // Percentage in basis points (1000 = 10%).
-  serviceChargeBp      Int      @default(0)
+  serviceChargeBp         Int      @default(0)
   // When false, completing an order that would drive stock below zero is rejected.
-  allowNegativeStock   Boolean  @default(true)
+  allowNegativeStock      Boolean  @default(true)
   // Public website and table-QR ordering (off until the owner enables it).
-  publicOrdering       Boolean  @default(false)
+  publicOrdering          Boolean  @default(false)
   // Loyalty earn rate in basis points of the paid amount (0 = loyalty off).
-  loyaltyEarnBp        Int      @default(0)
+  loyaltyEarnBp           Int      @default(0)
   // Configurable labour rules (review for the applicable jurisdiction).
-  overtimeAfterMinutes Int      @default(480)
-  overtimeMultiplierBp Int      @default(15000)
-  updatedAt            DateTime @updatedAt
+  overtimeAfterMinutes    Int      @default(480)
+  overtimeMultiplierBp    Int      @default(15000)
+  // Repairs at or above this cost (so‘m) need an approval before closing.
+  repairApprovalThreshold Int      @default(1000000)
+  updatedAt               DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -1924,24 +1927,27 @@ enum OpsTaskStatus {
 }
 
 model OpsTask {
-  id            String         @id @default(uuid(7)) @db.Uuid
-  tenantId      String         @db.Uuid
-  branchId      String         @db.Uuid
-  title         String
-  description   String?
-  assigneeId    String?        @db.Uuid
-  dueAt         DateTime
-  recurrence    TaskRecurrence @default(NONE)
-  requiresPhoto Boolean        @default(false)
-  status        OpsTaskStatus  @default(OPEN)
-  createdById   String         @db.Uuid
-  completedById String?        @db.Uuid
-  completedAt   DateTime?
-  evidenceId    String?        @db.Uuid
-  note          String?
-  createdAt     DateTime       @default(now())
+  id                String         @id @default(uuid(7)) @db.Uuid
+  tenantId          String         @db.Uuid
+  branchId          String         @db.Uuid
+  title             String
+  description       String?
+  assigneeId        String?        @db.Uuid
+  dueAt             DateTime
+  recurrence        TaskRecurrence @default(NONE)
+  requiresPhoto     Boolean        @default(false)
+  status            OpsTaskStatus  @default(OPEN)
+  // Null when created by an automation (e.g. a due maintenance plan).
+  createdById       String?        @db.Uuid
+  completedById     String?        @db.Uuid
+  completedAt       DateTime?
+  evidenceId        String?        @db.Uuid
+  note              String?
+  maintenancePlanId String?        @db.Uuid
+  createdAt         DateTime       @default(now())
 
-  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  branch          Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  maintenancePlan MaintenancePlan? @relation(fields: [tenantId, maintenancePlanId], references: [tenantId, id], onDelete: Restrict)
 
   @@index([tenantId, branchId, status, dueAt])
   @@map("ops_tasks")
@@ -1978,4 +1984,210 @@ model StockBatch {
   @@index([tenantId, status, expiresAt])
   @@index([tenantId, stockItemId, lotNumber])
   @@map("stock_batches")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 13b: assets and maintenance, training, approvals.
+
+enum AssetStatus {
+  ACTIVE
+  IN_REPAIR
+  RETIRED
+}
+
+model Asset {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  tenantId      String      @db.Uuid
+  branchId      String      @db.Uuid
+  // Printed as a QR/barcode label; unique within the tenant.
+  tag           String
+  name          String
+  category      String
+  serialNumber  String?
+  manufacturer  String?
+  model         String?
+  location      String?
+  purchaseDate  DateTime?   @db.Date
+  purchaseCost  Int?
+  warrantyUntil DateTime?   @db.Date
+  status        AssetStatus @default(ACTIVE)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  branch  Branch            @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  plans   MaintenancePlan[]
+  tickets RepairTicket[]
+  events  AssetEvent[]
+
+  @@unique([tenantId, tag])
+  @@unique([tenantId, id])
+  @@index([tenantId, branchId])
+  @@map("assets")
+}
+
+model MaintenancePlan {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  tenantId     String    @db.Uuid
+  assetId      String    @db.Uuid
+  title        String
+  intervalDays Int
+  nextDueAt    DateTime  @db.Date
+  lastDoneAt   DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  asset Asset     @relation(fields: [tenantId, assetId], references: [tenantId, id], onDelete: Restrict)
+  tasks OpsTask[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, isActive, nextDueAt])
+  @@map("maintenance_plans")
+}
+
+enum RepairStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum RepairPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model RepairTicket {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  tenantId          String         @db.Uuid
+  assetId           String         @db.Uuid
+  title             String
+  description       String
+  priority          RepairPriority @default(NORMAL)
+  status            RepairStatus   @default(OPEN)
+  reportedById      String         @db.Uuid
+  technician        String?
+  serviceContractId String?        @db.Uuid
+  // [{ name, quantity, cost }] spare parts used.
+  parts             Json           @default("[]")
+  laborCost         Int            @default(0)
+  partsCost         Int            @default(0)
+  resolution        String?
+  downtimeStart     DateTime       @default(now())
+  downtimeEnd       DateTime?
+  approvalId        String?        @db.Uuid
+  closedById        String?        @db.Uuid
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  asset Asset @relation(fields: [tenantId, assetId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, status])
+  @@map("repair_tickets")
+}
+
+// Lifecycle history of an asset (append-only).
+model AssetEvent {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  assetId   String   @db.Uuid
+  type      String
+  note      String?
+  cost      Int?
+  passed    Boolean?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  asset Asset @relation(fields: [tenantId, assetId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, assetId, createdAt])
+  @@map("asset_events")
+}
+
+model ServiceContract {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  tenantId  String    @db.Uuid
+  vendor    String
+  phone     String?
+  scope     String
+  startDate DateTime  @db.Date
+  endDate   DateTime? @db.Date
+  cost      Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, isActive])
+  @@map("service_contracts")
+}
+
+model Course {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  tenantId     String   @db.Uuid
+  title        String
+  description  String?
+  // Learning material: text or an HTTPS link.
+  content      String?
+  // Certification validity; null = never expires.
+  validityDays Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  records TrainingRecord[]
+
+  @@unique([tenantId, title])
+  @@unique([tenantId, id])
+  @@map("courses")
+}
+
+// Completed training (certificate) evidence; append-only.
+model TrainingRecord {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  tenantId     String    @db.Uuid
+  courseId     String    @db.Uuid
+  userId       String    @db.Uuid
+  completedAt  DateTime
+  expiresAt    DateTime?
+  score        Int?
+  evidenceId   String?   @db.Uuid
+  note         String?
+  recordedById String    @db.Uuid
+  createdAt    DateTime  @default(now())
+
+  course Course @relation(fields: [tenantId, courseId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, userId])
+  @@index([tenantId, expiresAt])
+  @@map("training_records")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Generic approval requests (e.g. repair costs above the configured threshold).
+model ApprovalRequest {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  tenantId      String         @db.Uuid
+  branchId      String?        @db.Uuid
+  type          String
+  entityType    String
+  entityId      String
+  amount        Int?
+  reason        String
+  status        ApprovalStatus @default(PENDING)
+  requestedById String         @db.Uuid
+  decidedById   String?        @db.Uuid
+  decidedAt     DateTime?
+  comment       String?
+  createdAt     DateTime       @default(now())
+
+  @@index([tenantId, status])
+  @@index([entityType, entityId])
+  @@map("approval_requests")
 }

@@ -15,6 +15,7 @@ import {
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
 import { businessDate } from '../orders/engine.js';
+import { completeMaintenance } from '../assets/assets.routes.js';
 
 const DAY = 86_400_000;
 const MAX_EVIDENCE = 2 * 1024 * 1024;
@@ -982,6 +983,7 @@ export function operationsRouter(services: Services) {
           },
         });
         if (result.count === 0) throw errors.conflict();
+        await completeMaintenance(tx, task, auth.userId, now());
         if (task.recurrence === 'NONE') return null;
         const step = task.recurrence === 'DAILY' ? DAY : 7 * DAY;
         let dueAt = task.dueAt.getTime() + step;

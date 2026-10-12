@@ -10,6 +10,7 @@ import { createEventBus } from './realtime/bus.js';
 import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
+import { startMaintenanceWorker } from './modules/assets/assets.routes.js';
 import { createLogger } from './logger.js';
 
 async function main(): Promise<void> {
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
     enqueueKitchenTickets(services, orderId);
   const stopPrinting = startPrintWorker(services);
   const stopBilling = startBillingWorker(services);
+  const stopMaintenance = startMaintenanceWorker(services);
   let shuttingDown = false;
   const app = createApp({
     config,
@@ -81,6 +83,7 @@ async function main(): Promise<void> {
     void realtime.close();
     stopPrinting();
     stopBilling();
+    stopMaintenance();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

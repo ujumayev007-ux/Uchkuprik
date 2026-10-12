@@ -79,3 +79,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 13a schema (migration `operations`)
 
 `sop_documents` + append-only `sop_revisions`, `checklist_templates`, `checklist_runs` (unique per template, branch and business date), `evidence_files` (bytea, ≤ 2 MB, image types only, append-only), `temperature_logs` (append-only, range CHECK), `incidents` (CAPA fields), `shift_handovers`, `ops_tasks` (recurrence), `stock_batches` (lot register with status workflow). The migration grants `operations.perform` to the admin, cashier, waiter, kitchen and warehouse system roles and the `operations` feature to the Pro and Enterprise plans.
+
+## Phase 13b schema (migration `assets_training`)
+
+`assets` (tag unique per tenant), `maintenance_plans`, `repair_tickets` (parts JSON, labour/parts costs, downtime window, approval link), `asset_events` (append-only lifecycle history), `service_contracts`, `courses`, `training_records` (append-only certificates with expiry), `approval_requests`; `ops_tasks.maintenancePlanId` and nullable `createdById` (automation-created tasks); `tenant_profiles.repairApprovalThreshold`.

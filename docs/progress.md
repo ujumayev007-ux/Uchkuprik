@@ -4,22 +4,22 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                           | Status                                                     |
-| ------------------------------- | ---------------------------------------------------------- |
-| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                   |
-| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                   |
-| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                   |
-| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                   |
-| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                   |
-| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                   |
-| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix) |
-| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                   |
-| 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364) |
-| 10 Finance, HR, reporting       | Accepted 2026-10-12 (CI 38247414281)                       |
-| 11 SaaS commercial platform     | Accepted 2026-10-12 (CI 38274348733)                       |
-| 12 Multi-brand and franchise    | Accepted 2026-10-12 (CI 38279114456)                       |
-| 13a Operations and food safety  | Implemented and validated locally; CI pending on push      |
-| 13–16                           | Not started                                                |
+| Phase                           | Status                                                           |
+| ------------------------------- | ---------------------------------------------------------------- |
+| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                         |
+| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                         |
+| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                         |
+| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                         |
+| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                         |
+| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                         |
+| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix)       |
+| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                         |
+| 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364)       |
+| 10 Finance, HR, reporting       | Accepted 2026-10-12 (CI 38247414281)                             |
+| 11 SaaS commercial platform     | Accepted 2026-10-12 (CI 38274348733)                             |
+| 12 Multi-brand and franchise    | Accepted 2026-10-12 (CI 38279114456)                             |
+| 13 Enterprise operations        | 13a accepted (CI 38281367731); 13b validated locally, CI pending |
+| 13–16                           | Not started                                                      |
 
 ## Phase 2 — delivered
 
@@ -145,6 +145,14 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 4 new integration tests, Playwright operations flow on desktop and mobile.
 - Deferred to 13b: assets and maintenance, training and certifications, generic approval workflows and configurable automations.
 
+## Phase 13b — delivered
+
+- Equipment page (`/uskunalar`): asset registry with QR tag lookup, warranty, safety checks, repair tickets with parts/labour costs and downtime, maintenance plans that create tasks automatically, lifecycle history, service contracts.
+- Training page (`/oqitish`): courses with material, certificates with expiry, certification matrix with recertification reminders, own certificates for every employee.
+- Approvals page (`/tasdiqlar`): repair costs above the configurable threshold need a four-eyes approval with step-up.
+- Evidence: 4 new integration tests, Playwright equipment/training flow on desktop and mobile.
+- Deferred: IoT sensor ingestion (documented integration point: temperature/asset events API), spare-parts stock linkage to the warehouse, email/Telegram reminders (Phase 14).
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -159,4 +167,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 13b — Assets and maintenance (registry with QR tags, warranties, schedules, repair tickets, downtime and costs, service contracts), training and certifications with recertification reminders, approval workflows.
+Phase 14 — Enterprise infrastructure and intelligence: notification service (Telegram/in-app with durable jobs), observability (metrics, structured audit export), analytics (sales forecasting, anomaly/fraud signals), public developer API with scoped API keys and webhooks.

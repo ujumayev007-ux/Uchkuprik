@@ -112,6 +112,29 @@ export const navItems: NavItem[] = [
       (can(me, 'operations.perform') || can(me, 'operations.manage')),
   },
   {
+    to: '/uskunalar',
+    label: t.nav.assets,
+    icon: '⚙',
+    visible: (me) =>
+      hasFeature(me, 'operations') &&
+      (can(me, 'assets.manage') ||
+        can(me, 'operations.manage') ||
+        can(me, 'operations.perform')),
+  },
+  {
+    to: '/oqitish',
+    label: t.nav.training,
+    icon: '✎',
+    visible: (me) => hasFeature(me, 'operations'),
+  },
+  {
+    to: '/tasdiqlar',
+    label: t.nav.approvals,
+    icon: '✔',
+    visible: (me) =>
+      hasFeature(me, 'operations') && can(me, 'approvals.decide'),
+  },
+  {
     to: '/ish-vaqti',
     label: t.hr.attendanceTitle,
     icon: '◷',

@@ -38,6 +38,12 @@ const settingsInput = z.object({
   loyaltyEarnBp: z.number().int().min(0).max(5000).default(0),
   overtimeAfterMinutes: z.number().int().min(60).max(1440).default(480),
   overtimeMultiplierBp: z.number().int().min(10000).max(30000).default(15000),
+  repairApprovalThreshold: z
+    .number()
+    .int()
+    .min(0)
+    .max(1_000_000_000)
+    .default(1_000_000),
 });
 
 export function settingsRouter(services: Services) {
@@ -67,6 +73,8 @@ export function settingsRouter(services: Services) {
       loyaltyEarnBp: tenant.profile?.loyaltyEarnBp ?? 0,
       overtimeAfterMinutes: tenant.profile?.overtimeAfterMinutes ?? 480,
       overtimeMultiplierBp: tenant.profile?.overtimeMultiplierBp ?? 15000,
+      repairApprovalThreshold:
+        tenant.profile?.repairApprovalThreshold ?? 1_000_000,
     });
   });
 
@@ -91,6 +99,7 @@ export function settingsRouter(services: Services) {
         loyaltyEarnBp: input.loyaltyEarnBp,
         overtimeAfterMinutes: input.overtimeAfterMinutes,
         overtimeMultiplierBp: input.overtimeMultiplierBp,
+        repairApprovalThreshold: input.repairApprovalThreshold,
       };
       await db.$transaction(async (tx) => {
         await tx.tenant.update({

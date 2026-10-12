@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-016 — Approvals and automations (2026-10-12)
+
+- **Decision:** Approvals are generic records (type, entity, amount, reason) decided by holders of `approvals.decide` with step-up and four-eyes rule; the first consumer is repair cost above a tenant threshold. Workflow automation is built-in and rule-based (out-of-range temperature → incident, failed safety check → incident, due maintenance → task) rather than a user-programmable engine.
+- **Reason:** Covers the required controls with predictable, testable behaviour; a free-form automation builder adds risk without a validated need.
+- **Reversal:** Extend approval types (purchases, refunds, write-offs) and add configurable rules when concrete scenarios are approved.
+
 ## D-015 — Food-safety records and batch traceability scope (2026-10-12)
 
 - **Decision:** Compliance evidence (temperature logs, SOP revisions, photos, inspections) is immutable; corrections are new records. Batch traceability is a lot register at receipt with quarantine/recall/disposal workflow and lot-wide recall across branches; stock consumption is not yet allocated to individual lots (FIFO lot depletion is deferred). Out-of-range temperatures automatically open an incident (built-in automation).

@@ -10,6 +10,7 @@ import {
   PageHeader,
   TextField,
   useToast,
+  MoneyField,
 } from '../components/ui';
 import { t } from '../i18n';
 import { api, patch } from '../lib/api';
@@ -30,6 +31,7 @@ type Settings = {
   loyaltyEarnBp: number;
   overtimeAfterMinutes: number;
   overtimeMultiplierBp: number;
+  repairApprovalThreshold: number;
 };
 
 export function useSettings() {
@@ -94,6 +96,7 @@ export function SettingsPage() {
               loyaltyEarnBp: form.loyaltyEarnBp,
               overtimeAfterMinutes: form.overtimeAfterMinutes,
               overtimeMultiplierBp: form.overtimeMultiplierBp,
+              repairApprovalThreshold: form.repairApprovalThreshold,
             });
             toast(t.common.saved);
             await client.invalidateQueries({ queryKey: ['settings'] });
@@ -220,6 +223,13 @@ export function SettingsPage() {
                   Number(event.target.value || 1.5) * 10000,
                 ),
               })
+            }
+          />
+          <MoneyField
+            label={t.settings.repairApprovalThreshold}
+            value={form.repairApprovalThreshold}
+            onChange={(value) =>
+              setForm({ ...form, repairApprovalThreshold: value ?? 0 })
             }
           />
           <Checkbox

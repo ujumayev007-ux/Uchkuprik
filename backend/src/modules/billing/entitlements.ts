@@ -93,6 +93,10 @@ const gatedPaths: [RegExp, PlanFeature][] = [
   [/^\/reports\/brands$/, 'multi_brand'],
   [/^\/(franchise|supplier-agreements)(\/|$)/, 'franchise'],
   [/^\/operations(\/|$)/, 'operations'],
+  [
+    /^\/(assets|repair-tickets|maintenance-plans|service-contracts|training|approvals)(\/|$)/,
+    'operations',
+  ],
 ];
 
 export function featureForPath(path: string): PlanFeature | null {

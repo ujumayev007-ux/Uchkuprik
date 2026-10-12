@@ -82,3 +82,7 @@ Franchise partner data, contracts and royalty statements require `franchise.mana
 ## Operations evidence (Phase 13a)
 
 Photos are accepted only as raw JPEG/PNG/WebP bodies up to 2 MB; the type is determined from magic bytes (declared types are ignored) and served back with that type, `nosniff` and `Content-Disposition: inline`, only to staff of the same tenant with access to the branch. Evidence, temperature logs, SOP revisions and inspections are append-only at the database level. Approvals (checklist sign-off, handover acknowledgement) cannot be given by the same person who did the work. Database storage of photos keeps them inside tenant isolation and backups; move to object storage with signed URLs if volumes grow.
+
+## Approvals (Phase 13b)
+
+Approval decisions require `approvals.decide`, a recent password re-authentication and a different person from the requester; the approved amount must cover the final repair cost, otherwise a new request is created. Asset lifecycle events and training certificates are append-only. Asset lookups by QR tag are tenant- and branch-scoped, so a printed tag reveals nothing to other tenants.
