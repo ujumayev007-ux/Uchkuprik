@@ -37,6 +37,7 @@ export const permissionCatalog = {
   'finance.manage': 'Xarajatlar va moliyaviy davrlarni boshqarish',
   'notifications.manage': 'Bildirishnomalarni sozlash',
   'operations.manage': 'Operatsion nazoratni boshqarish',
+  'operations.perform': 'Cheklist, harorat va vazifalarni bajarish',
   'brands.manage': 'Brendlarni boshqarish',
   'franchise.manage': 'Franshiza va shartnomalarni boshqarish',
   'franchise.portal': 'Franchayzi portaliga kirish',
@@ -93,6 +94,7 @@ export const systemRoles: Record<string, SystemRole> = {
       'payments.accept',
       'shifts.manage',
       'customers.view',
+      'operations.perform',
     ],
   },
   waiter: {
@@ -104,13 +106,14 @@ export const systemRoles: Record<string, SystemRole> = {
       'orders.create',
       'orders.edit',
       'orders.approve',
+      'operations.perform',
     ],
   },
   kitchen: {
     name: 'Oshxona xodimi',
     description: 'Taomlarni tayyorlash',
     // No orders.view: kitchen screens never receive prices or totals.
-    permissions: ['kitchen.access'],
+    permissions: ['kitchen.access', 'operations.perform'],
   },
   courier: {
     name: 'Kuryer',
@@ -125,6 +128,7 @@ export const systemRoles: Record<string, SystemRole> = {
       'inventory.manage',
       'purchasing.manage',
       'menu.view',
+      'operations.perform',
     ],
   },
   franchisee: {

@@ -82,3 +82,30 @@ export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   return t.common.errorTitle;
 }
+
+/** Uploads a photo as evidence; the server checks the real image type and size. */
+export async function uploadEvidence(file: File): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch('/api/operations/evidence', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK', t.common.errorOffline);
+  }
+  const payload = (await response.json().catch(() => null)) as {
+    id?: string;
+    code?: string;
+    message?: string;
+  } | null;
+  if (!response.ok || !payload?.id)
+    throw new ApiError(
+      response.status,
+      payload?.code ?? 'UNKNOWN',
+      payload?.message ?? t.common.errorTitle,
+    );
+  return payload.id;
+}

@@ -75,6 +75,17 @@ export const messages = {
   branchFranchised: 'Filial allaqachon boshqa franchayziga biriktirilgan.',
   contractLocked: 'Faol yoki bekor qilingan shartnomani o‘zgartirib bo‘lmaydi.',
   territoryConflict: 'Bu hudud boshqa faol eksklyuziv shartnoma bilan band.',
+  evidenceInvalid:
+    'Rasm JPEG, PNG yoki WebP formatida va 2 MB dan oshmasligi kerak.',
+  checklistClosed: 'Bu cheklist allaqachon yakunlangan.',
+  checklistIncomplete:
+    'Barcha bandlarni bajaring va kerakli rasmlarni yuklang.',
+  selfApproval: 'O‘zingiz bajargan ishni o‘zingiz tasdiqlay olmaysiz.',
+  capaRequired: 'Sabab va tuzatuvchi chorani kiriting.',
+  incidentNotResolved:
+    'Hodisani yopishdan oldin uni hal qilingan deb belgilang.',
+  photoRequired: 'Bu vazifa uchun rasm talab qilinadi.',
+  batchStatusInvalid: 'Partiya holatini bunday o‘zgartirib bo‘lmaydi.',
   monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
 } as const;
 

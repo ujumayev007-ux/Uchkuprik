@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-015 — Food-safety records and batch traceability scope (2026-10-12)
+
+- **Decision:** Compliance evidence (temperature logs, SOP revisions, photos, inspections) is immutable; corrections are new records. Batch traceability is a lot register at receipt with quarantine/recall/disposal workflow and lot-wide recall across branches; stock consumption is not yet allocated to individual lots (FIFO lot depletion is deferred). Out-of-range temperatures automatically open an incident (built-in automation).
+- **Reason:** Gives auditable HACCP-style records and fast recall lookup without rewriting the stock ledger.
+- **Reversal:** Add lot-level stock balances and FIFO consumption when per-dish lot tracing is required.
+
 ## D-014 — Royalty basis and territories (2026-10-12)
 
 - **Decision:** Royalties and marketing fees are basis points of net sales (completed order totals minus refunds of those orders) of the franchisee's branches for the licensed brand, per calendar month clipped to contract dates; a minimum monthly fee tops up the royalty. Statements are drafts until issued after month end, then locked. Territories are free-text names compared case- and whitespace-insensitively; exclusivity blocks overlapping active contracts of the same brand.

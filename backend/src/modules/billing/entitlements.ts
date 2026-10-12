@@ -15,6 +15,7 @@ export const planFeatures = [
   'finance',
   'multi_brand',
   'franchise',
+  'operations',
 ] as const;
 export type PlanFeature = (typeof planFeatures)[number];
 
@@ -91,6 +92,7 @@ const gatedPaths: [RegExp, PlanFeature][] = [
   [/^\/brands(\/|$)/, 'multi_brand'],
   [/^\/reports\/brands$/, 'multi_brand'],
   [/^\/(franchise|supplier-agreements)(\/|$)/, 'franchise'],
+  [/^\/operations(\/|$)/, 'operations'],
 ];
 
 export function featureForPath(path: string): PlanFeature | null {

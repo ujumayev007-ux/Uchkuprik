@@ -47,6 +47,7 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { PlatformBillingPage } from './pages/PlatformBillingPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
 import { BrandsPage } from './pages/BrandsPage';
+import { OperationsPage } from './pages/OperationsPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ShiftPage } from './pages/ShiftPage';
@@ -479,6 +480,19 @@ const router = createBrowserRouter([
             allow={(me) => can(me, 'franchise.portal')}
           >
             <FranchisePortalPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/operatsiyalar',
+        element: (
+          <Guard
+            feature="operations"
+            allow={(me) =>
+              can(me, 'operations.perform') || can(me, 'operations.manage')
+            }
+          >
+            <OperationsPage />
           </Guard>
         ),
       },

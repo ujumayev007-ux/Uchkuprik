@@ -75,3 +75,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 12b schema (migration `franchise`)
 
 `franchisees`, nullable `branches.franchiseeId` (composite tenant FK), `franchise_contracts` (unique number per tenant; fee CHECKs 0–50%; DRAFT/ACTIVE/TERMINATED), `royalty_statements` (unique per contract and month; DRAFT/ISSUED/PAID), `inspections` (append-only trigger, score CHECK 0–100), `supplier_agreements`. The migration adds the `franchise` feature to the Enterprise plan and seeds the `franchisee` system role (franchise.portal, reports.view, branches.view) for existing tenants.
+
+## Phase 13a schema (migration `operations`)
+
+`sop_documents` + append-only `sop_revisions`, `checklist_templates`, `checklist_runs` (unique per template, branch and business date), `evidence_files` (bytea, ≤ 2 MB, image types only, append-only), `temperature_logs` (append-only, range CHECK), `incidents` (CAPA fields), `shift_handovers`, `ops_tasks` (recurrence), `stock_batches` (lot register with status workflow). The migration grants `operations.perform` to the admin, cashier, waiter, kitchen and warehouse system roles and the `operations` feature to the Pro and Enterprise plans.

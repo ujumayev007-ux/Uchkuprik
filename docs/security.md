@@ -78,3 +78,7 @@ Brand references are validated against the tenant and additionally protected by 
 ## Franchise (Phase 12b)
 
 Franchise partner data, contracts and royalty statements require `franchise.manage`; activation, termination, issuing and payment require step-up and are audited. Issued statements are immutable through the API, inspections are append-only at the database level. Franchisee portal users see only partners operating the branches they are assigned to (branch scope is the delegation mechanism), never other partners' figures, scorecards or management endpoints. Exclusive territory checks run under a tenant row lock.
+
+## Operations evidence (Phase 13a)
+
+Photos are accepted only as raw JPEG/PNG/WebP bodies up to 2 MB; the type is determined from magic bytes (declared types are ignored) and served back with that type, `nosniff` and `Content-Disposition: inline`, only to staff of the same tenant with access to the branch. Evidence, temperature logs, SOP revisions and inspections are append-only at the database level. Approvals (checklist sign-off, handover acknowledgement) cannot be given by the same person who did the work. Database storage of photos keeps them inside tenant isolation and backups; move to object storage with signed URLs if volumes grow.

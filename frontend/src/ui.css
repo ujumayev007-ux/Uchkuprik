@@ -1321,3 +1321,51 @@ legend {
   color: #fff;
   font-weight: 700;
 }
+
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  width: 100%;
+  resize: vertical;
+}
+
+/* Operations (Phase 13). */
+.ops-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ops-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.ops-item > .grow {
+  flex: 1;
+  min-width: 180px;
+}
+.ops-item.alarm {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.sop-body {
+  white-space: pre-wrap;
+  margin: 0;
+}

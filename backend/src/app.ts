@@ -16,6 +16,7 @@ import { authRouter } from './modules/auth/auth.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
 import { brandsRouter } from './modules/brands/brands.routes.js';
 import { franchiseRouter } from './modules/franchise/franchise.routes.js';
+import { operationsRouter } from './modules/operations/operations.routes.js';
 import { enforcePlanFeatures } from './modules/billing/entitlements.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
@@ -148,6 +149,14 @@ export function createApp({
     }
   });
   if (services) {
+    // Photo evidence is uploaded as a raw image body (size and type checked again).
+    app.use(
+      '/api/operations/evidence',
+      express.raw({
+        type: ['image/jpeg', 'image/png', 'image/webp'],
+        limit: '2mb',
+      }),
+    );
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
     app.use('/api', enforcePlanFeatures());
@@ -176,6 +185,7 @@ export function createApp({
       billingRouter,
       brandsRouter,
       franchiseRouter,
+      operationsRouter,
     ])
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));

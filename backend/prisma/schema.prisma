@@ -86,19 +86,25 @@ model Branch {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  brand       Brand?               @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
-  franchisee  Franchisee?          @relation(fields: [tenantId, franchiseeId], references: [tenantId, id], onDelete: Restrict)
-  inspections Inspection[]
-  users       UserBranch[]
-  devices     Device[]
-  sessions    Session[]
-  rooms       Room[]
-  tables      DiningTable[]
-  prices      BranchVariantPrice[]
-  shifts      CashShift[]
-  orders      Order[]
-  warehouses  Warehouse[]
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  brand           Brand?               @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  franchisee      Franchisee?          @relation(fields: [tenantId, franchiseeId], references: [tenantId, id], onDelete: Restrict)
+  inspections     Inspection[]
+  checklistRuns   ChecklistRun[]
+  temperatureLogs TemperatureLog[]
+  incidents       Incident[]
+  handovers       ShiftHandover[]
+  opsTasks        OpsTask[]
+  stockBatches    StockBatch[]
+  users           UserBranch[]
+  devices         Device[]
+  sessions        Session[]
+  rooms           Room[]
+  tables          DiningTable[]
+  prices          BranchVariantPrice[]
+  shifts          CashShift[]
+  orders          Order[]
+  warehouses      Warehouse[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -877,6 +883,7 @@ model StockItem {
   balances  StockBalance[]
   movements StockMovement[]
   recipes   RecipeLine[]
+  batches   StockBatch[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
@@ -1700,4 +1707,275 @@ model SupplierAgreement {
 
   @@index([tenantId, supplierId])
   @@map("supplier_agreements")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 13a: restaurant operations and food safety.
+
+model SopDocument {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  title       String
+  category    String
+  body        String
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  updatedById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  revisions SopRevision[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, category])
+  @@map("sop_documents")
+}
+
+// Every published SOP version is kept (append-only) for compliance history.
+model SopRevision {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  sopId       String   @db.Uuid
+  version     Int
+  title       String
+  body        String
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  sop SopDocument @relation(fields: [tenantId, sopId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([sopId, version])
+  @@map("sop_revisions")
+}
+
+enum ChecklistKind {
+  OPENING
+  CLOSING
+  CLEANING
+  HACCP
+  OTHER
+}
+
+model ChecklistTemplate {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  tenantId  String        @db.Uuid
+  // Null = every branch.
+  branchId  String?       @db.Uuid
+  name      String
+  kind      ChecklistKind
+  // [{ label, requiresPhoto }]
+  items     Json
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  runs ChecklistRun[]
+
+  @@unique([tenantId, id])
+  @@map("checklist_templates")
+}
+
+enum ChecklistRunStatus {
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+}
+
+model ChecklistRun {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  tenantId      String             @db.Uuid
+  branchId      String             @db.Uuid
+  templateId    String             @db.Uuid
+  businessDate  DateTime           @db.Date
+  status        ChecklistRunStatus @default(IN_PROGRESS)
+  // [{ label, requiresPhoto, done, note, evidenceId }]
+  results       Json
+  startedById   String             @db.Uuid
+  completedById String?            @db.Uuid
+  completedAt   DateTime?
+  approvedById  String?            @db.Uuid
+  approvedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  template ChecklistTemplate @relation(fields: [tenantId, templateId], references: [tenantId, id], onDelete: Restrict)
+  branch   Branch            @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([templateId, branchId, businessDate])
+  @@index([tenantId, branchId, businessDate])
+  @@map("checklist_runs")
+}
+
+// Photo evidence (JPEG/PNG/WebP up to 2 MB), stored in the database so it is
+// covered by the same backups and tenant isolation as the records it proves.
+model EvidenceFile {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  tenantId     String   @db.Uuid
+  branchId     String?  @db.Uuid
+  uploadedById String   @db.Uuid
+  contentType  String
+  size         Int
+  sha256       String
+  data         Bytes
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("evidence_files")
+}
+
+model TemperatureLog {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  tenantId     String   @db.Uuid
+  branchId     String   @db.Uuid
+  // Measuring point, e.g. a fridge or a cooked product core temperature.
+  point        String
+  value        Decimal  @db.Decimal(5, 1)
+  minValue     Decimal  @db.Decimal(5, 1)
+  maxValue     Decimal  @db.Decimal(5, 1)
+  outOfRange   Boolean
+  note         String?
+  recordedById String   @db.Uuid
+  recordedAt   DateTime @default(now())
+  incidentId   String?  @db.Uuid
+
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, recordedAt])
+  @@map("temperature_logs")
+}
+
+enum IncidentType {
+  FOOD_SAFETY
+  EQUIPMENT
+  INJURY
+  CUSTOMER
+  SECURITY
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+model Incident {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  tenantId         String           @db.Uuid
+  branchId         String           @db.Uuid
+  type             IncidentType
+  severity         IncidentSeverity
+  title            String
+  description      String
+  status           IncidentStatus   @default(OPEN)
+  reportedById     String?          @db.Uuid
+  rootCause        String?
+  correctiveAction String?
+  preventiveAction String?
+  evidenceIds      String[]
+  resolvedById     String?          @db.Uuid
+  resolvedAt       DateTime?
+  closedById       String?          @db.Uuid
+  closedAt         DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, status])
+  @@map("incidents")
+}
+
+model ShiftHandover {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  tenantId         String    @db.Uuid
+  branchId         String    @db.Uuid
+  fromUserId       String    @db.Uuid
+  notes            String
+  openIssues       String?
+  acknowledgedById String?   @db.Uuid
+  acknowledgedAt   DateTime?
+  createdAt        DateTime  @default(now())
+
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, createdAt])
+  @@map("shift_handovers")
+}
+
+enum TaskRecurrence {
+  NONE
+  DAILY
+  WEEKLY
+}
+
+enum OpsTaskStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+model OpsTask {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  tenantId      String         @db.Uuid
+  branchId      String         @db.Uuid
+  title         String
+  description   String?
+  assigneeId    String?        @db.Uuid
+  dueAt         DateTime
+  recurrence    TaskRecurrence @default(NONE)
+  requiresPhoto Boolean        @default(false)
+  status        OpsTaskStatus  @default(OPEN)
+  createdById   String         @db.Uuid
+  completedById String?        @db.Uuid
+  completedAt   DateTime?
+  evidenceId    String?        @db.Uuid
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, status, dueAt])
+  @@map("ops_tasks")
+}
+
+enum BatchStatus {
+  ACTIVE
+  QUARANTINED
+  RECALLED
+  DISPOSED
+}
+
+// Lot traceability register: which supplier lot arrived where and when.
+model StockBatch {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  tenantId          String      @db.Uuid
+  stockItemId       String      @db.Uuid
+  branchId          String      @db.Uuid
+  supplierId        String?     @db.Uuid
+  lotNumber         String
+  receivedAt        DateTime
+  expiresAt         DateTime?   @db.Date
+  quantity          Decimal     @db.Decimal(14, 3)
+  status            BatchStatus @default(ACTIVE)
+  statusReason      String?
+  statusChangedById String?     @db.Uuid
+  statusChangedAt   DateTime?
+  createdById       String      @db.Uuid
+  createdAt         DateTime    @default(now())
+
+  stockItem StockItem @relation(fields: [tenantId, stockItemId], references: [tenantId, id], onDelete: Restrict)
+  branch    Branch    @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, status, expiresAt])
+  @@index([tenantId, stockItemId, lotNumber])
+  @@map("stock_batches")
 }

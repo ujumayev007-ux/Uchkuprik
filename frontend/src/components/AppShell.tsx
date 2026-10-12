@@ -104,6 +104,14 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'customers.view'),
   },
   {
+    to: '/operatsiyalar',
+    label: t.nav.operations,
+    icon: '✓',
+    visible: (me) =>
+      hasFeature(me, 'operations') &&
+      (can(me, 'operations.perform') || can(me, 'operations.manage')),
+  },
+  {
     to: '/ish-vaqti',
     label: t.hr.attendanceTitle,
     icon: '◷',

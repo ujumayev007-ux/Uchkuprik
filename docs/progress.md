@@ -17,7 +17,8 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364) |
 | 10 Finance, HR, reporting       | Accepted 2026-10-12 (CI 38247414281)                       |
 | 11 SaaS commercial platform     | Accepted 2026-10-12 (CI 38274348733)                       |
-| 12 Multi-brand and franchise    | Implemented and validated locally; CI pending on push      |
+| 12 Multi-brand and franchise    | Accepted 2026-10-12 (CI 38279114456)                       |
+| 13a Operations and food safety  | Implemented and validated locally; CI pending on push      |
 | 13–16                           | Not started                                                |
 
 ## Phase 2 — delivered
@@ -137,6 +138,13 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 83 integration (4 new franchise, 2 brand), 36 Playwright tests.
 - Deferred: tiered royalties, geographic territory maps, franchise onboarding document workflow (Phase 13 approvals), accounting exports.
 
+## Phase 13a — delivered
+
+- Operations page (`/operatsiyalar`): today's summary, opening/closing/cleaning/HACCP checklists with photo evidence and manager sign-off, temperature log with automatic incidents, incidents with CAPA, scheduled/recurring tasks with photo proof, shift handovers with acknowledgement, lot register with quarantine/recall/disposal, versioned SOP library, allergen matrix, checklist templates.
+- Front-line roles gain `operations.perform`; feature `operations` in Pro and Enterprise.
+- Evidence: 4 new integration tests, Playwright operations flow on desktop and mobile.
+- Deferred to 13b: assets and maintenance, training and certifications, generic approval workflows and configurable automations.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -151,4 +159,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 13 — Enterprise operations: SOP library, opening/closing checklists, food safety (temperature logs, HACCP checks, expiry/recall), equipment and maintenance, training and certifications, approval workflows.
+Phase 13b — Assets and maintenance (registry with QR tags, warranties, schedules, repair tickets, downtime and costs, service contracts), training and certifications with recertification reminders, approval workflows.

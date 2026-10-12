@@ -125,8 +125,8 @@ export function Checkbox({
   label: string;
   checked: boolean;
   onChange: (value: boolean) => void;
-  disabled?: boolean;
-  description?: string;
+  disabled?: boolean | undefined;
+  description?: string | undefined;
 }) {
   return (
     <label className={`checkbox ${disabled ? 'is-disabled' : ''}`}>
