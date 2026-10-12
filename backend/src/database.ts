@@ -19,6 +19,13 @@ export function createDatabase(connectionString: string) {
     async check(): Promise<void> {
       await pool.query('SELECT 1');
     },
+    /** Server encoding; text such as Uzbek letters and emoji requires UTF8. */
+    async encoding(): Promise<string> {
+      const result = await pool.query<{ server_encoding: string }>(
+        'SHOW server_encoding',
+      );
+      return result.rows[0]?.server_encoding ?? '';
+    },
     async close(): Promise<void> {
       await pool.end();
     },

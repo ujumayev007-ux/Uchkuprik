@@ -232,7 +232,7 @@ function AssetForm({
       </div>
       <FormError error={error} />
       <div className="form-actions">
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" disabled={!branchId}>
           {t.common.save}
         </Button>
       </div>

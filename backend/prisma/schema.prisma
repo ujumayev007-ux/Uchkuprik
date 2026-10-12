@@ -2191,3 +2191,77 @@ model ApprovalRequest {
   @@index([entityType, entityId])
   @@map("approval_requests")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 14a: notifications (Telegram) with a durable outbox.
+
+model TelegramConfig {
+  tenantId          String    @id @db.Uuid
+  // Bot token, AES-GCM encrypted; never returned by the API.
+  botTokenEnc       String
+  botUsername       String?
+  // Secret expected in X-Telegram-Bot-Api-Secret-Token on webhook calls.
+  webhookSecretHash String
+  isActive          Boolean   @default(true)
+  // Local hour (Asia/Tashkent) for the daily summary; null disables it.
+  dailySummaryHour  Int?      @default(22)
+  lastDailySummary  DateTime? @db.Date
+  updatedAt         DateTime  @updatedAt
+
+  @@map("telegram_configs")
+}
+
+model NotificationSubscriber {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  tenantId  String    @db.Uuid
+  name      String
+  // Telegram chat id; null until the subscriber links the bot with the code.
+  chatId    String?
+  linkCode  String?   @unique
+  // Event keys this subscriber receives.
+  events    String[]
+  // Null = every branch.
+  branchIds String[]
+  isActive  Boolean   @default(true)
+  linkedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, chatId])
+  @@map("notification_subscribers")
+}
+
+model NotificationTemplate {
+  tenantId  String   @db.Uuid
+  event     String
+  body      String
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, event])
+  @@map("notification_templates")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model NotificationJob {
+  id           String             @id @default(uuid(7)) @db.Uuid
+  tenantId     String             @db.Uuid
+  subscriberId String             @db.Uuid
+  event        String
+  text         String
+  status       NotificationStatus @default(PENDING)
+  attempts     Int                @default(0)
+  lastError    String?
+  nextTryAt    DateTime           @default(now())
+  sentAt       DateTime?
+  createdAt    DateTime           @default(now())
+
+  @@index([status, nextTryAt])
+  @@index([tenantId, createdAt])
+  @@map("notification_jobs")
+}

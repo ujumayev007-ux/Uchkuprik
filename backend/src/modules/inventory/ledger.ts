@@ -4,6 +4,7 @@ import {
   type StockMovementType,
 } from '../../generated/prisma/client.js';
 import { AppError } from '../../http/errors.js';
+import { notify } from '../notifications/notify.js';
 
 const { Decimal } = Prisma;
 type Decimal = Prisma.Decimal;
@@ -89,6 +90,36 @@ export async function postMovement(tx: Tx, input: MovementInput) {
     },
     data: { quantity: next, avgCost: nextAvg.toDecimalPlaces(4) },
   });
+  if (input.quantity.isNegative()) {
+    const item = await tx.stockItem.findUnique({
+      where: { id: input.stockItemId },
+      select: { name: true, minStock: true, baseUnit: true },
+    });
+    const minimum = new Decimal(item?.minStock ?? 0);
+    if (
+      item &&
+      minimum.isPositive() &&
+      current.gt(minimum) &&
+      next.lte(minimum)
+    ) {
+      const warehouse = await tx.warehouse.findUnique({
+        where: { id: input.warehouseId },
+        select: { name: true, branchId: true },
+      });
+      await notify(
+        tx,
+        input.tenantId,
+        'stock.low',
+        {
+          item: item.name,
+          warehouse: warehouse?.name ?? '',
+          quantity: `${next.toString()} ${item.baseUnit}`,
+          minimum: `${minimum.toString()} ${item.baseUnit}`,
+        },
+        warehouse?.branchId ?? null,
+      );
+    }
+  }
   return tx.stockMovement.create({
     data: {
       tenantId: input.tenantId,

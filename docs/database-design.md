@@ -83,3 +83,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 13b schema (migration `assets_training`)
 
 `assets` (tag unique per tenant), `maintenance_plans`, `repair_tickets` (parts JSON, labour/parts costs, downtime window, approval link), `asset_events` (append-only lifecycle history), `service_contracts`, `courses`, `training_records` (append-only certificates with expiry), `approval_requests`; `ops_tasks.maintenancePlanId` and nullable `createdById` (automation-created tasks); `tenant_profiles.repairApprovalThreshold`.
+
+## Phase 14a schema (migration `notifications`)
+
+`telegram_configs` (encrypted bot token, hashed webhook secret, daily summary hour and last sent date), `notification_subscribers` (chat id unique per tenant, link code, events, branch filter), `notification_templates` (per-tenant overrides), `notification_jobs` (outbox: status, attempts, sanitized last error, next try). The database must use UTF8 encoding (emoji and Uzbek text); the API refuses to start in production on a non-UTF8 database.

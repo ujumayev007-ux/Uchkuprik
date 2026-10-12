@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { entitlementsOf } from '../billing/entitlements.js';
+import { notifyOnlineOrder } from '../notifications/hooks.js';
 import type { Services } from '../../context.js';
 import type { Db, Tx } from '../../db.js';
 import {
@@ -401,6 +402,16 @@ export function onlineRouter(services: Services) {
           status: 'PENDING',
           channel,
           items: priced.length,
+        });
+        const final = await tx.order.findUniqueOrThrow({
+          where: { id: created.id },
+          select: { total: true },
+        });
+        await notifyOnlineOrder(tx, {
+          tenantId,
+          branchId,
+          number: created.number,
+          total: final.total,
         });
         return created;
       });

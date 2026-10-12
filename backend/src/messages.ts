@@ -86,6 +86,7 @@ export const messages = {
     'Hodisani yopishdan oldin uni hal qilingan deb belgilang.',
   photoRequired: 'Bu vazifa uchun rasm talab qilinadi.',
   batchStatusInvalid: 'Partiya holatini bunday o‘zgartirib bo‘lmaydi.',
+  telegramTokenInvalid: 'Telegram bot tokeni noto‘g‘ri yoki bot topilmadi.',
   approvalRequired: 'Bu xarajat uchun tasdiq kerak. So‘rov yuborildi.',
   monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
 } as const;

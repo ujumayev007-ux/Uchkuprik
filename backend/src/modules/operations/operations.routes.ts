@@ -16,6 +16,7 @@ import {
 import { resolveBranch } from '../branches/access.js';
 import { businessDate } from '../orders/engine.js';
 import { completeMaintenance } from '../assets/assets.routes.js';
+import { notifyIncident } from '../notifications/hooks.js';
 
 const DAY = 86_400_000;
 const MAX_EVIDENCE = 2 * 1024 * 1024;
@@ -633,6 +634,7 @@ export function operationsRouter(services: Services) {
               reportedById: auth.userId,
             },
           });
+          await notifyIncident(tx, incident);
           incidentId = incident.id;
         }
         const log = await tx.temperatureLog.create({
@@ -717,6 +719,7 @@ export function operationsRouter(services: Services) {
           reportedById: auth.userId,
         },
       });
+      await notifyIncident(tx, created);
       await audit(tx, req, {
         tenantId: auth.tenantId,
         branchId: branch.id,

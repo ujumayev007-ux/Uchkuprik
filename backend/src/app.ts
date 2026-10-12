@@ -19,6 +19,7 @@ import { franchiseRouter } from './modules/franchise/franchise.routes.js';
 import { operationsRouter } from './modules/operations/operations.routes.js';
 import { assetsRouter } from './modules/assets/assets.routes.js';
 import { peopleRouter } from './modules/assets/people.routes.js';
+import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { enforcePlanFeatures } from './modules/billing/entitlements.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
@@ -193,6 +194,7 @@ export function createApp({
     ])
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));
+    app.use('/api', notificationsRouter(services, config.APP_ORIGIN));
   }
   // Never return the SPA document for an unknown API endpoint.
   app.use('/api', (_req, res) => {

@@ -239,6 +239,12 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'settings.manage'),
   },
   {
+    to: '/bildirishnomalar',
+    label: t.nav.notifications,
+    icon: '✉',
+    visible: (me) => can(me, 'notifications.manage'),
+  },
+  {
     to: '/audit',
     label: t.nav.audit,
     icon: '☰',

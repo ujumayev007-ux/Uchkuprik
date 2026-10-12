@@ -49,6 +49,7 @@ import { SubscriptionPage } from './pages/SubscriptionPage';
 import { BrandsPage } from './pages/BrandsPage';
 import { OperationsPage } from './pages/OperationsPage';
 import { AssetsPage } from './pages/AssetsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { ApprovalsPage, TrainingPage } from './pages/TrainingPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -532,6 +533,14 @@ const router = createBrowserRouter([
             allow={(me) => can(me, 'approvals.decide')}
           >
             <ApprovalsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/bildirishnomalar',
+        element: (
+          <Guard allow={(me) => can(me, 'notifications.manage')}>
+            <NotificationsPage />
           </Guard>
         ),
       },

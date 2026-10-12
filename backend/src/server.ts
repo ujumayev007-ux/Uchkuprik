@@ -11,6 +11,7 @@ import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { startMaintenanceWorker } from './modules/assets/assets.routes.js';
+import { startNotificationWorker } from './modules/notifications/notify.js';
 import { createLogger } from './logger.js';
 
 async function main(): Promise<void> {
@@ -30,6 +31,16 @@ async function main(): Promise<void> {
   database.pool.on('error', () =>
     logger.error('Idle database connection failed'),
   );
+  // A non-UTF8 database silently rejects emoji and some Unicode text at write time.
+  const encoding = await database.encoding().catch(() => null);
+  if (encoding && encoding !== 'UTF8') {
+    logger.fatal({ encoding }, 'Database must use UTF8 encoding');
+    if (config.NODE_ENV === 'production') {
+      await database.close();
+      process.exitCode = 1;
+      return;
+    }
+  }
   const prisma = createPrisma(config.DATABASE_URL);
   const events = createEventBus();
   const services = {
@@ -48,6 +59,7 @@ async function main(): Promise<void> {
   const stopPrinting = startPrintWorker(services);
   const stopBilling = startBillingWorker(services);
   const stopMaintenance = startMaintenanceWorker(services);
+  const stopNotifications = startNotificationWorker(services);
   let shuttingDown = false;
   const app = createApp({
     config,
@@ -84,6 +96,7 @@ async function main(): Promise<void> {
     stopPrinting();
     stopBilling();
     stopMaintenance();
+    stopNotifications();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

@@ -86,3 +86,7 @@ Photos are accepted only as raw JPEG/PNG/WebP bodies up to 2 MB; the type is det
 ## Approvals (Phase 13b)
 
 Approval decisions require `approvals.decide`, a recent password re-authentication and a different person from the requester; the approved amount must cover the final repair cost, otherwise a new request is created. Asset lifecycle events and training certificates are append-only. Asset lookups by QR tag are tenant- and branch-scoped, so a printed tag reveals nothing to other tenants.
+
+## Telegram (Phase 14a)
+
+The bot token stays on the server: AES-GCM encrypted at rest, write-only in the API, changed only with step-up, never logged or included in audit data, and Telegram errors are reduced to status codes so URLs containing the token never reach logs or the delivery screen. Webhook calls must present the per-tenant secret (stored as a SHA-256 hash, compared in constant time). Linking uses one-time codes; a chat can belong to one subscriber per tenant. Message text is sent without parse mode, so user-entered names cannot inject markup.

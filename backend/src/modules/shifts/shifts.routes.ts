@@ -9,6 +9,7 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { notifyShiftClosed } from '../notifications/hooks.js';
 import {
   getAuth,
   requireAuth,
@@ -272,6 +273,14 @@ export function shiftsRouter(services: Services) {
           countedCash: input.countedCash,
           variance,
         },
+      });
+      await notifyShiftClosed(tx, {
+        tenantId: auth.tenantId,
+        branchId: shift.branchId,
+        cashier: auth.displayName,
+        expected: summary.expectedCash,
+        counted: input.countedCash,
+        variance,
       });
       return { expectedCash: summary.expectedCash, variance };
     });

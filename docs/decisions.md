@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-017 — Transactional notification outbox (2026-10-12)
+
+- **Decision:** Notifications are rows in `notification_jobs` written in the same transaction as the triggering change and delivered asynchronously by a polling worker; Telegram is the first channel behind a transport interface (tests use a fake transport, production the real Bot API). The local development database was recreated as UTF8 after the Windows default (WIN1251) rejected emoji; production must be UTF8.
+- **Reason:** No lost or phantom notifications, retries survive restarts, and further channels (SMS, e-mail) plug into the same outbox.
+- **Reversal:** Move to a message broker if notification volume outgrows database polling.
+
 ## D-016 — Approvals and automations (2026-10-12)
 
 - **Decision:** Approvals are generic records (type, entity, amount, reason) decided by holders of `approvals.decide` with step-up and four-eyes rule; the first consumer is repair cost above a tenant threshold. Workflow automation is built-in and rule-based (out-of-range temperature → incident, failed safety check → incident, due maintenance → task) rather than a user-programmable engine.

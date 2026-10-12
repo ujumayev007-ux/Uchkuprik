@@ -271,3 +271,16 @@ All endpoints require the plan feature `operations`. "Staff" = operations.perfor
 | `GET /approvals?status`; `POST /approvals/:id/decide` {decision APPROVED/REJECTED, comment} (not the requester)                                                                                                                                                                       | approvals.decide + step-up      |
 
 Automation: an hourly worker turns due maintenance plans into operations tasks (one open task per plan); completing such a task advances the plan and records a MAINTENANCE event. `repairApprovalThreshold` (default 1 000 000 so‘m) is editable in Settings.
+
+## Phase 14a: notifications (Telegram)
+
+| Endpoint                                                                                                                                                            | Access                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `GET /notifications/settings` (configured, bot username, active, daily summary hour, webhook URL, event keys)                                                       | notifications.manage                                         |
+| `PUT /notifications/telegram` {botToken (write-only, validated with getMe), isActive, dailySummaryHour 0–23 or null}; 400 `TELEGRAM_TOKEN_INVALID`                  | notifications.manage + step-up, audited (token never logged) |
+| `GET/POST /notifications/subscribers`, `PUT /notifications/subscribers/:id` {name, chatId, events[], branchIds[], isActive}; without chatId a link code is returned | notifications.manage                                         |
+| `GET /notifications/templates`; `PUT /notifications/templates/:event` {body} (empty = default)                                                                      | notifications.manage                                         |
+| `GET /notifications/jobs?status` (delivery monitoring with counts); `POST /notifications/jobs/:id/retry`; `POST /notifications/test`                                | notifications.manage                                         |
+| `POST /webhooks/telegram/:tenantId` — Telegram updates; requires `X-Telegram-Bot-Api-Secret-Token`; `/start CODE` links the chat                                    | public, secret-verified                                      |
+
+Events: `order.online` (new pending online order), `incident` (HIGH/CRITICAL incidents incl. temperature alarms and failed safety checks), `shift.closed` (cash report), `stock.low` (a decrease crosses the item minimum), `summary.daily` (orders, revenue, cancellations per branch at the configured Tashkent hour, once per day). Messages are queued in the same transaction as the business change and delivered by a worker (SKIP LOCKED, exponential backoff, FAILED after 6 attempts, manual retry).

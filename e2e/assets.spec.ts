@@ -14,6 +14,7 @@ test('assets and training: register equipment, repair it and certify staff', asy
   await dialog.getByLabel('Nomi', { exact: true }).fill(`Gril ${suffix}`);
   await dialog.getByLabel('Inventar raqami').fill(tag);
   await dialog.getByLabel('Turi').fill('Oshxona uskunasi');
+  await expect(dialog.getByLabel('Filial')).not.toHaveValue('');
   await dialog.getByRole('button', { name: 'Saqlash' }).click();
   await expect(page.getByText(`Gril ${suffix}`)).toBeVisible();
   await noHorizontalScroll(page);

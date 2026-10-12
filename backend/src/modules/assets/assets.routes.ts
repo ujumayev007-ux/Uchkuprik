@@ -17,6 +17,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { notifyIncident } from '../notifications/hooks.js';
 
 const DAY = 86_400_000;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -382,6 +383,7 @@ export function assetsRouter(services: Services) {
           reportedById: auth.userId,
         },
       });
+      await notifyIncident(tx, incident);
       return incident.id;
     });
     res.status(201).json({ incidentId });
