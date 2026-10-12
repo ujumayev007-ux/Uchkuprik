@@ -35,3 +35,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 4 schema (migrations `orders_payments_shifts`, `order_discount_rule`)
 
 `cash_shifts` (one OPEN per register via partial unique index), `cash_movements`, `order_counters` (daily number per branch, atomic upsert), `orders` (totals, discount rule, idempotency key unique per tenant), `order_items` (name/price/cost/modifier snapshots), `order_events`, `payments`, `refunds`. Payments, refunds, cash movements and order events are append-only (triggers reject UPDATE/DELETE). CHECK constraints: positive payment/refund amounts, tendered ≥ amount, discount ≤ subtotal, refunded ≤ paid, net paid ≤ total. Concurrent payments are serialized with `SELECT … FOR UPDATE` on the order row.
+
+## Phase 5 schema (migrations `kitchen_realtime_printing`, `kitchen_print_tracking`)
+
+`kitchen_stations`; `menu_categories.stationId`; order item kitchen fields (`stationId` and `prepTimeMinutes` snapshots, `kitchenStatus`, `prepStartedAt`, `readyAt`, `kitchenPrintedAt`); `orders.priority` (0/1) and `readyAt`; `printers`; `print_jobs` (payload bytes, status, attempts, backoff `nextTryAt`; claimed with `FOR UPDATE SKIP LOCKED`).

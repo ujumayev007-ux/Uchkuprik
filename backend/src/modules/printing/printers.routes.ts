@@ -1,0 +1,217 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import type { Services } from '../../context.js';
+import { errors, parse } from '../../http/errors.js';
+import { EscPos } from '../../printing/escpos.js';
+import { audit } from '../audit/audit.js';
+import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
+import { resolveBranch } from '../branches/access.js';
+
+/**
+ * The API opens TCP connections to printer addresses, so addresses are limited to
+ * private LAN IPv4 ranges and raw printing ports. This prevents using printer
+ * settings to reach loopback, link-local (cloud metadata) or public hosts.
+ */
+export function isAllowedPrinterHost(host: string): boolean {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return false;
+  const [a, b, c, d] = match.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  if ([a, b, c, d].some((part) => part > 255)) return false;
+  return (
+    a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+  );
+}
+
+const printerInput = z.object({
+  branchId: z.uuid(),
+  name: z.string().trim().min(1).max(60),
+  kind: z.enum(['RECEIPT', 'KITCHEN']),
+  stationId: z.uuid().nullable().optional(),
+  host: z.string().trim().refine(isAllowedPrinterHost),
+  port: z.number().int().min(9100).max(9109).default(9100),
+  isActive: z.boolean().default(true),
+});
+
+export function printersRouter(services: Services) {
+  const { db } = services;
+  const router = Router();
+  const manage = [requireAuth(), requirePermission('settings.manage')];
+
+  router.get('/printers', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const { branchId } = parse(
+      z.object({ branchId: z.uuid().optional() }),
+      req.query,
+    );
+    const branch = await resolveBranch(db, auth, branchId);
+    const printers = await db.printer.findMany({
+      where: { tenantId: auth.tenantId, branchId: branch.id },
+      orderBy: { name: 'asc' },
+    });
+    res.json({
+      printers: printers.map(
+        ({ id, name, kind, stationId, host, port, isActive }) => ({
+          id,
+          name,
+          kind,
+          stationId,
+          host,
+          port,
+          isActive,
+        }),
+      ),
+    });
+  });
+
+  const write = async (
+    tenantId: string,
+    input: z.infer<typeof printerInput>,
+  ) => {
+    if (input.stationId) {
+      const station = await db.kitchenStation.findFirst({
+        where: { id: input.stationId, tenantId },
+      });
+      if (!station) throw errors.validation([{ path: 'stationId' }]);
+    }
+    return {
+      branchId: input.branchId,
+      name: input.name,
+      kind: input.kind,
+      stationId: input.kind === 'KITCHEN' ? (input.stationId ?? null) : null,
+      host: input.host,
+      port: input.port,
+      isActive: input.isActive,
+    };
+  };
+
+  router.post('/printers', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(printerInput, req.body);
+    await resolveBranch(db, auth, input.branchId);
+    const data = await write(auth.tenantId, input);
+    const printer = await db.printer.create({
+      data: { tenantId: auth.tenantId, ...data },
+    });
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      branchId: input.branchId,
+      actorUserId: auth.userId,
+      action: 'printer.create',
+      entityType: 'printer',
+      entityId: printer.id,
+      data: { host: input.host, port: input.port, kind: input.kind },
+    });
+    res.status(201).json({ id: printer.id });
+  });
+
+  router.patch('/printers/:id', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const input = parse(printerInput, req.body);
+    const existing = await db.printer.findFirst({
+      where: { id, tenantId: auth.tenantId },
+    });
+    if (!existing) throw errors.notFound();
+    await resolveBranch(db, auth, existing.branchId);
+    await resolveBranch(db, auth, input.branchId);
+    await db.printer.update({
+      where: { id },
+      data: await write(auth.tenantId, input),
+    });
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      branchId: input.branchId,
+      actorUserId: auth.userId,
+      action: 'printer.update',
+      entityType: 'printer',
+      entityId: id,
+      data: { host: input.host, port: input.port },
+    });
+    res.json({ ok: true });
+  });
+
+  router.post('/printers/:id/test', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const printer = await db.printer.findFirst({
+      where: { id, tenantId: auth.tenantId },
+    });
+    if (!printer) throw errors.notFound();
+    await resolveBranch(db, auth, printer.branchId);
+    const payload = new EscPos()
+      .align('center')
+      .bold(true)
+      .line('FAST FOOD')
+      .bold(false)
+      .line(`Sinov sahifasi: ${printer.name}`)
+      .line(new Date().toISOString().slice(0, 16).replace('T', ' '))
+      .feed(4)
+      .cut()
+      .build();
+    const job = await db.printJob.create({
+      data: {
+        tenantId: auth.tenantId,
+        printerId: id,
+        kind: printer.kind,
+        payload,
+      },
+    });
+    res.status(201).json({ jobId: job.id });
+  });
+
+  // Recovery view: recent jobs and their delivery state (payloads are not exposed).
+  router.get('/print-jobs', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const { branchId } = parse(
+      z.object({ branchId: z.uuid().optional() }),
+      req.query,
+    );
+    const branch = await resolveBranch(db, auth, branchId);
+    const jobs = await db.printJob.findMany({
+      where: { tenantId: auth.tenantId, printer: { branchId: branch.id } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: { printer: { select: { name: true } } },
+    });
+    res.json({
+      jobs: jobs.map((job) => ({
+        id: job.id,
+        printer: job.printer.name,
+        kind: job.kind,
+        orderId: job.orderId,
+        status: job.status,
+        attempts: job.attempts,
+        lastError: job.lastError,
+        createdAt: job.createdAt,
+        sentAt: job.sentAt,
+      })),
+    });
+  });
+
+  router.post('/print-jobs/:id/retry', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const result = await db.printJob.updateMany({
+      where: {
+        id,
+        tenantId: auth.tenantId,
+        status: { in: ['FAILED', 'PENDING'] },
+      },
+      data: {
+        status: 'PENDING',
+        attempts: 0,
+        nextTryAt: new Date(),
+        lastError: null,
+      },
+    });
+    if (result.count === 0) throw errors.notFound();
+    res.json({ ok: true });
+  });
+
+  return router;
+}

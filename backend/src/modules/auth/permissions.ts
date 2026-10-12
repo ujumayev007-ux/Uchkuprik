@@ -105,7 +105,8 @@ export const systemRoles: Record<string, SystemRole> = {
   kitchen: {
     name: 'Oshxona xodimi',
     description: 'Taomlarni tayyorlash',
-    permissions: ['kitchen.access', 'orders.view'],
+    // No orders.view: kitchen screens never receive prices or totals.
+    permissions: ['kitchen.access'],
   },
   courier: {
     name: 'Kuryer',

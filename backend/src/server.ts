@@ -3,8 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDatabase } from './database.js';
+import type { Services } from './context.js';
 import { createPrisma } from './db.js';
 import { createSecretBox } from './lib/crypto.js';
+import { createEventBus } from './realtime/bus.js';
+import { attachRealtime } from './realtime/socket.js';
+import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { createLogger } from './logger.js';
 
 async function main(): Promise<void> {
@@ -25,23 +29,30 @@ async function main(): Promise<void> {
     logger.error('Idle database connection failed'),
   );
   const prisma = createPrisma(config.DATABASE_URL);
+  const events = createEventBus();
+  const services = {
+    db: prisma,
+    secrets: createSecretBox(config.APP_SECRET_KEY),
+    logger,
+    secureCookies: config.NODE_ENV === 'production',
+    events,
+  } as Services;
+  services.afterOrderChange = (orderId) =>
+    enqueueKitchenTickets(services, orderId);
+  const stopPrinting = startPrintWorker(services);
   let shuttingDown = false;
   const app = createApp({
     config,
     database,
     logger,
-    services: {
-      db: prisma,
-      secrets: createSecretBox(config.APP_SECRET_KEY),
-      logger,
-      secureCookies: config.NODE_ENV === 'production',
-    },
+    services,
     isShuttingDown: () => shuttingDown,
     ...(config.SERVE_FRONTEND ? { frontendDirectory } : {}),
   });
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info({ port: config.PORT }, 'API listening');
   });
+  const realtime = attachRealtime(server, services, events, config.APP_ORIGIN);
   server.requestTimeout = 10000;
   server.headersTimeout = 10000;
   server.on('error', () => {
@@ -61,6 +72,8 @@ async function main(): Promise<void> {
       process.exit(1);
     }, 10000);
     deadline.unref();
+    void realtime.close();
+    stopPrinting();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-007 — Real-time and printing architecture (2026-10-12)
+
+- **Decision:** Socket.io events are notifications only; REST remains the single read/write path, and every reconnect triggers a refetch ("replay by refetch"). An in-process event bus serves one API instance. Kitchen printing is server-side raw TCP (ESC/POS) through a durable `print_jobs` queue; receipts print from the browser (80 mm layout).
+- **Reason:** No authorization logic or financial data duplicated in socket payloads; at-least-once printing with retries and a recovery screen.
+- **Reversal:** Add the Socket.io Redis adapter and a Redis/Postgres bus for multiple instances; add a local print agent for cloud deployments whose server cannot reach restaurant LANs (Phase 15).
+
 ## D-006 — Counter payments and refund approval (2026-10-12)
 
 - **Decision:** The POS records CASH and CARD (external bank terminal, optional slip reference) only. Click, Payme and Uzum are rejected as manual entries and will only be accepted from verified provider callbacks (Phase 8). Refund approval = `payments.refund` permission plus password re-authentication by the approver; cashiers do not hold it by default. Paying a DRAFT order places it.

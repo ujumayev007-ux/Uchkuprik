@@ -12,7 +12,15 @@ export default defineConfig(({ mode }) => {
   const target = `http://127.0.0.1:${env.PORT || '4000'}`;
   return {
     plugins: [react()],
-    server: { port: 5173, strictPort: true, proxy: { '/api': { target } } },
-    preview: { port: 4173, strictPort: true, proxy: { '/api': { target } } },
+    server: {
+      port: 5173,
+      strictPort: true,
+      proxy: { '/api': { target, ws: true } },
+    },
+    preview: {
+      port: 4173,
+      strictPort: true,
+      proxy: { '/api': { target, ws: true } },
+    },
   };
 });

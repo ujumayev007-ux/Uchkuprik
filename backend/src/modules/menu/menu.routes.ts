@@ -24,6 +24,7 @@ const optionalText = (max: number) =>
 const categoryInput = z.object({
   name: z.string().trim().min(1).max(80),
   parentId: z.uuid().nullable().optional(),
+  stationId: z.uuid().nullable().optional(),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   isActive: z.boolean().default(true),
 });
@@ -106,6 +107,18 @@ async function assertCategoryParent(
     if (!parent) throw errors.validation([{ path: 'parentId' }]);
     current = parent.parentId;
   }
+}
+
+async function assertStation(
+  tx: Tx,
+  tenantId: string,
+  stationId: string | null | undefined,
+) {
+  if (!stationId) return;
+  const station = await tx.kitchenStation.findFirst({
+    where: { id: stationId, tenantId },
+  });
+  if (!station) throw errors.validation([{ path: 'stationId' }]);
 }
 
 /** Upserts variants by id; variants missing from the input are deactivated, not deleted,
@@ -194,6 +207,20 @@ export function menuRouter(services: Services) {
   const { db } = services;
   const router = Router();
   const manage = [requireAuth(), requirePermission('menu.manage')];
+
+  // Open POS screens refresh prices and stop-lists after any successful menu change.
+  router.use('/menu', (req, res, next) => {
+    if (req.method !== 'GET')
+      res.on('finish', () => {
+        const auth = res.locals.auth as AuthContext | undefined;
+        if (auth && res.statusCode < 300)
+          services.events?.publish({
+            type: 'menu.changed',
+            tenantId: auth.tenantId,
+          });
+      });
+    next();
+  });
   const now = () => services.now?.() ?? new Date();
 
   router.get(
@@ -246,6 +273,7 @@ export function menuRouter(services: Services) {
           id: category.id,
           name: category.name,
           parentId: category.parentId,
+          stationId: category.stationId,
           sortOrder: category.sortOrder,
           isActive: category.isActive,
         })),
@@ -300,11 +328,13 @@ export function menuRouter(services: Services) {
     const input = parse(categoryInput, req.body);
     const category = await db.$transaction(async (tx) => {
       await assertCategoryParent(tx, auth.tenantId, null, input.parentId);
+      await assertStation(tx, auth.tenantId, input.stationId);
       const created = await tx.menuCategory.create({
         data: {
           tenantId: auth.tenantId,
           name: input.name,
           parentId: input.parentId ?? null,
+          stationId: input.stationId ?? null,
           sortOrder: input.sortOrder,
           isActive: input.isActive,
         },
@@ -331,11 +361,13 @@ export function menuRouter(services: Services) {
       });
       if (!category) throw errors.notFound();
       await assertCategoryParent(tx, auth.tenantId, id, input.parentId);
+      await assertStation(tx, auth.tenantId, input.stationId);
       await tx.menuCategory.update({
         where: { id },
         data: {
           name: input.name,
           parentId: input.parentId ?? null,
+          stationId: input.stationId ?? null,
           sortOrder: input.sortOrder,
           isActive: input.isActive,
         },

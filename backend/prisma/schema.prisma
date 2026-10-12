@@ -318,15 +318,18 @@ model MenuCategory {
   id        String   @id @default(uuid(7)) @db.Uuid
   tenantId  String   @db.Uuid
   parentId  String?  @db.Uuid
+  // Kitchen station that prepares this category's items (null = every station).
+  stationId String?  @db.Uuid
   name      String
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  parent   MenuCategory?  @relation("CategoryTree", fields: [tenantId, parentId], references: [tenantId, id], onDelete: Restrict)
-  children MenuCategory[] @relation("CategoryTree")
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  parent   MenuCategory?   @relation("CategoryTree", fields: [tenantId, parentId], references: [tenantId, id], onDelete: Restrict)
+  station  KitchenStation? @relation(fields: [tenantId, stationId], references: [tenantId, id], onDelete: Restrict)
+  children MenuCategory[]  @relation("CategoryTree")
   products Product[]
 
   @@unique([tenantId, id])
@@ -563,6 +566,9 @@ model Order {
   type            OrderType
   channel         OrderChannel @default(POS)
   status          OrderStatus  @default(DRAFT)
+  // 0 = normal, 1 = rush. Kitchen screens sort by priority, then age.
+  priority        Int          @default(0)
+  readyAt         DateTime?
   tableId         String?      @db.Uuid
   customerName    String?
   customerPhone   String?
@@ -605,24 +611,32 @@ model Order {
 }
 
 model OrderItem {
-  id             String          @id @default(uuid(7)) @db.Uuid
-  tenantId       String          @db.Uuid
-  orderId        String          @db.Uuid
-  variantId      String          @db.Uuid
+  id               String          @id @default(uuid(7)) @db.Uuid
+  tenantId         String          @db.Uuid
+  orderId          String          @db.Uuid
+  variantId        String          @db.Uuid
   // Snapshots: later menu changes never alter historical orders.
-  productName    String
-  variantName    String
-  unitPrice      Int
-  unitCost       Int?
-  modifiers      Json            @default("[]")
-  modifiersTotal Int             @default(0)
-  quantity       Int
-  lineTotal      Int
-  note           String?
-  status         OrderItemStatus @default(ACTIVE)
-  cancelReason   String?
-  createdById    String?         @db.Uuid
-  createdAt      DateTime        @default(now())
+  productName      String
+  variantName      String
+  unitPrice        Int
+  unitCost         Int?
+  modifiers        Json            @default("[]")
+  modifiersTotal   Int             @default(0)
+  quantity         Int
+  lineTotal        Int
+  note             String?
+  status           OrderItemStatus @default(ACTIVE)
+  // Kitchen routing snapshot and preparation progress.
+  stationId        String?         @db.Uuid
+  prepTimeMinutes  Int?
+  kitchenStatus    KitchenStatus   @default(QUEUED)
+  prepStartedAt    DateTime?
+  readyAt          DateTime?
+  // Set when a kitchen ticket was queued for this item, so items print exactly once.
+  kitchenPrintedAt DateTime?
+  cancelReason     String?
+  createdById      String?         @db.Uuid
+  createdAt        DateTime        @default(now())
 
   order   Order          @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Restrict)
   variant ProductVariant @relation(fields: [tenantId, variantId], references: [tenantId, id], onDelete: Restrict)
@@ -695,4 +709,82 @@ model Refund {
   @@index([orderId])
   @@index([shiftId])
   @@map("refunds")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: kitchen routing, kitchen statuses and printing.
+
+enum KitchenStatus {
+  QUEUED
+  PREPARING
+  READY
+  SERVED
+}
+
+enum PrinterKind {
+  RECEIPT
+  KITCHEN
+}
+
+enum PrintJobStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model KitchenStation {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  categories MenuCategory[]
+  printers   Printer[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("kitchen_stations")
+}
+
+// Network (raw TCP, ESC/POS) printers reachable from the API host or a local agent.
+model Printer {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  tenantId  String      @db.Uuid
+  branchId  String      @db.Uuid
+  name      String
+  kind      PrinterKind
+  stationId String?     @db.Uuid
+  host      String
+  port      Int         @default(9100)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  station KitchenStation? @relation(fields: [tenantId, stationId], references: [tenantId, id], onDelete: Restrict)
+  jobs    PrintJob[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, branchId])
+  @@map("printers")
+}
+
+model PrintJob {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  tenantId  String         @db.Uuid
+  printerId String         @db.Uuid
+  orderId   String?        @db.Uuid
+  kind      PrinterKind
+  payload   Bytes
+  status    PrintJobStatus @default(PENDING)
+  attempts  Int            @default(0)
+  lastError String?
+  nextTryAt DateTime       @default(now())
+  createdAt DateTime       @default(now())
+  sentAt    DateTime?
+
+  printer Printer @relation(fields: [tenantId, printerId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([status, nextTryAt])
+  @@map("print_jobs")
 }

@@ -12,8 +12,9 @@ export const transitions: Record<OrderStatus, OrderStatus[]> = {
   DRAFT: ['PLACED', 'CANCELLED'],
   PLACED: ['PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'],
   PREPARING: ['READY', 'SERVED', 'COMPLETED'],
-  READY: ['SERVED', 'COMPLETED'],
-  SERVED: ['COMPLETED'],
+  // New items added to a ready/served order send it back to the kitchen.
+  READY: ['PREPARING', 'SERVED', 'COMPLETED'],
+  SERVED: ['PREPARING', 'READY', 'COMPLETED'],
   COMPLETED: [],
   CANCELLED: [],
 };
@@ -48,6 +49,8 @@ export type PricedItem = {
   variantName: string;
   unitPrice: number;
   unitCost: number | null;
+  stationId: string | null;
+  prepTimeMinutes: number | null;
   modifiers: {
     optionId: string;
     groupId: string;
@@ -125,6 +128,8 @@ export async function priceItems(
       variantName: price.variantName,
       unitPrice: price.price,
       unitCost: price.cost,
+      stationId: price.stationId,
+      prepTimeMinutes: price.prepTimeMinutes,
       modifiers,
       modifiersTotal,
       quantity: item.quantity,
@@ -148,6 +153,8 @@ export function itemCreateData(
     variantName: item.variantName,
     unitPrice: item.unitPrice,
     unitCost: item.unitCost,
+    stationId: item.stationId,
+    prepTimeMinutes: item.prepTimeMinutes,
     modifiers: item.modifiers as unknown as Prisma.InputJsonValue,
     modifiersTotal: item.modifiersTotal,
     quantity: item.quantity,
@@ -249,3 +256,51 @@ export async function nextOrderNumber(
 
 export const netPaid = (order: { paidTotal: number; refundedTotal: number }) =>
   order.paidTotal - order.refundedTotal;
+
+const kitchenStatuses: OrderStatus[] = [
+  'PLACED',
+  'PREPARING',
+  'READY',
+  'SERVED',
+];
+
+/**
+ * Derives the order status from its items' kitchen progress:
+ * any item started -> PREPARING; all items ready -> READY; new unfinished items on a
+ * READY/SERVED order -> PREPARING. Call inside the transaction that changed items.
+ */
+export async function syncKitchenStatus(tx: Tx, orderId: string, now: Date) {
+  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
+  if (!kitchenStatuses.includes(order.status)) return order.status;
+  const items = await tx.orderItem.findMany({
+    where: { orderId, status: 'ACTIVE' },
+    select: { kitchenStatus: true },
+  });
+  if (items.length === 0) return order.status;
+  const done = items.every(
+    (item) => item.kitchenStatus === 'READY' || item.kitchenStatus === 'SERVED',
+  );
+  const allServed = items.every((item) => item.kitchenStatus === 'SERVED');
+  const started = items.some((item) => item.kitchenStatus !== 'QUEUED');
+  let next: OrderStatus = order.status;
+  if (order.status === 'SERVED')
+    next = allServed ? 'SERVED' : done ? 'READY' : 'PREPARING';
+  else if (done) next = 'READY';
+  else if (started || order.status === 'READY') next = 'PREPARING';
+  if (next === order.status) return next;
+  assertTransition(order.status, next);
+  await tx.order.update({
+    where: { id: orderId },
+    data: {
+      status: next,
+      version: { increment: 1 },
+      ...(next === 'READY' ? { readyAt: now } : {}),
+    },
+  });
+  await addEvent(tx, order.tenantId, orderId, null, 'status', {
+    from: order.status,
+    to: next,
+    source: 'kitchen',
+  });
+  return next;
+}

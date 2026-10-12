@@ -4,6 +4,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { can, meKey, useMe, type Me } from '../auth/session';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
+import { useRealtime } from '../lib/realtime';
 import { ReauthDialog } from './ReauthDialog';
 import { useTheme, useToast } from './ui';
 
@@ -45,6 +46,18 @@ export const navItems: NavItem[] = [
     label: t.nav.orders,
     icon: '☰',
     visible: (me) => can(me, 'orders.view'),
+  },
+  {
+    to: '/oshxona',
+    label: t.nav.kitchen,
+    icon: '♨',
+    visible: (me) => can(me, 'kitchen.access'),
+  },
+  {
+    to: '/navbat',
+    label: t.nav.queue,
+    icon: '▣',
+    visible: (me) => can(me, 'orders.view') || can(me, 'kitchen.access'),
   },
   {
     to: '/smena',
@@ -98,6 +111,12 @@ export const navItems: NavItem[] = [
     to: '/sozlamalar',
     label: t.nav.settings,
     icon: '⚙',
+    visible: (me) => can(me, 'settings.manage'),
+  },
+  {
+    to: '/printerlar',
+    label: t.nav.printers,
+    icon: '⎙',
     visible: (me) => can(me, 'settings.manage'),
   },
   {
@@ -176,6 +195,9 @@ export function AppShell() {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const online = useRealtime(
+    me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
+  );
   if (!me) return null;
   const items = navItems.filter((item) => item.visible(me));
 
@@ -233,6 +255,14 @@ export function AppShell() {
           </button>
           <BranchSwitcher me={me} />
           <div className="topbar-spacer" />
+          {me.tenantKind === 'BUSINESS' && (
+            <span
+              className={`live-dot ${online ? 'on' : 'off'}`}
+              role="status"
+              title={online ? t.live.online : t.live.offline}
+              aria-label={online ? t.live.online : t.live.offline}
+            />
+          )}
           <button
             className="icon-button"
             onClick={theme.toggle}

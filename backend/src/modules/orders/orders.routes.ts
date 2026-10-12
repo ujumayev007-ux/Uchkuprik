@@ -31,6 +31,7 @@ import {
   nextOrderNumber,
   priceItems,
   recalculate,
+  syncKitchenStatus,
 } from './engine.js';
 
 const amount = z.number().int().min(1).max(1_000_000_000);
@@ -152,6 +153,21 @@ export function ordersRouter(services: Services) {
 
   const respond = async (auth: AuthContext, id: string) =>
     serialize(await load(auth, id), auth);
+
+  /** After a committed change: notify kitchen/POS screens, then return the order. */
+  const respondChanged = async (auth: AuthContext, id: string) => {
+    const order = await load(auth, id);
+    await services.afterOrderChange?.(order.id);
+    services.events?.publish({
+      type: 'order.changed',
+      tenantId: order.tenantId,
+      branchId: order.branchId,
+      orderId: order.id,
+      number: order.number,
+      status: order.status,
+    });
+    return serialize(order, auth);
+  };
 
   const assertTable = async (
     tx: Tx,
@@ -331,7 +347,7 @@ export function ordersRouter(services: Services) {
           });
           return order.id;
         });
-        res.status(201).json(await respond(auth, id));
+        res.status(201).json(await respondChanged(auth, id));
       } catch (error) {
         if (isUniqueViolation(error)) {
           const raced = await db.order.findUnique({
@@ -378,6 +394,7 @@ export function ordersRouter(services: Services) {
           ),
         });
         await recalculate(tx, order.id);
+        await syncKitchenStatus(tx, order.id, now());
         await addEvent(
           tx,
           auth.tenantId,
@@ -392,7 +409,7 @@ export function ordersRouter(services: Services) {
           },
         );
       });
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -430,7 +447,7 @@ export function ordersRouter(services: Services) {
           to: quantity,
         });
       });
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -463,6 +480,7 @@ export function ordersRouter(services: Services) {
           data: { status: 'CANCELLED', cancelReason: reason || null },
         });
         await recalculate(tx, id);
+        await syncKitchenStatus(tx, id, now());
         await addEvent(tx, auth.tenantId, id, auth.userId, 'item_cancelled', {
           itemId,
           reason,
@@ -478,7 +496,7 @@ export function ordersRouter(services: Services) {
             data: { itemId, reason, lineTotal: item.lineTotal },
           });
       });
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -532,7 +550,7 @@ export function ordersRouter(services: Services) {
           JSON.parse(JSON.stringify(input)),
         );
       });
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -579,7 +597,7 @@ export function ordersRouter(services: Services) {
           data: { ...input, discountTotal: updated.discountTotal },
         });
       });
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -621,7 +639,7 @@ export function ordersRouter(services: Services) {
       const auth = getAuth(res);
       const id = parse(z.uuid(), req.params.id);
       await transition(auth, id, 'PLACED');
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -633,7 +651,7 @@ export function ordersRouter(services: Services) {
       const auth = getAuth(res);
       const id = parse(z.uuid(), req.params.id);
       await transition(auth, id, 'COMPLETED');
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -676,7 +694,7 @@ export function ordersRouter(services: Services) {
           data: { reason, total: order.total, status: order.status },
         });
       });
-      res.json(await respond(auth, id));
+      res.json(await respondChanged(auth, id));
     },
   );
 
@@ -726,7 +744,7 @@ export function ordersRouter(services: Services) {
         res.status(200).json({
           paymentId: existing.id,
           change: existing.change,
-          order: await respond(auth, id),
+          order: await respondChanged(auth, id),
         });
         return;
       }
@@ -792,7 +810,7 @@ export function ordersRouter(services: Services) {
         res.status(201).json({
           paymentId: payment.id,
           change: payment.change,
-          order: await respond(auth, id),
+          order: await respondChanged(auth, id),
         });
       } catch (error) {
         if (isUniqueViolation(error)) throw errors.conflict();
@@ -878,7 +896,7 @@ export function ordersRouter(services: Services) {
           },
         });
       });
-      res.status(201).json(await respond(auth, id));
+      res.status(201).json(await respondChanged(auth, id));
     },
   );
 

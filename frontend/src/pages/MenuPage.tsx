@@ -20,6 +20,7 @@ import {
 import { t } from '../i18n';
 import { api, del, patch, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
+import { useStations } from './KitchenPage';
 
 export type Variant = {
   id: string;
@@ -51,6 +52,7 @@ export type Category = {
   id: string;
   name: string;
   parentId: string | null;
+  stationId: string | null;
   sortOrder: number;
   isActive: boolean;
 };
@@ -110,6 +112,8 @@ function CategoryForm({
 }) {
   const [name, setName] = useState(category?.name ?? '');
   const [parentId, setParentId] = useState(category?.parentId ?? '');
+  const [stationId, setStationId] = useState(category?.stationId ?? '');
+  const stations = useStations();
   const [sortOrder, setSortOrder] = useState(category?.sortOrder ?? 0);
   const [isActive, setActive] = useState(category?.isActive ?? true);
   const [error, setError] = useState<unknown>(null);
@@ -121,7 +125,13 @@ function CategoryForm({
         event.preventDefault();
         setBusy(true);
         setError(null);
-        const body = { name, parentId: parentId || null, sortOrder, isActive };
+        const body = {
+          name,
+          parentId: parentId || null,
+          stationId: stationId || null,
+          sortOrder,
+          isActive,
+        };
         try {
           if (category) await patch(`/menu/categories/${category.id}`, body);
           else await post('/menu/categories', body);
@@ -154,6 +164,18 @@ function CategoryForm({
               {item.name}
             </option>
           ))}
+      </SelectField>
+      <SelectField
+        label={t.kitchen.station}
+        value={stationId}
+        onChange={(e) => setStationId(e.target.value)}
+      >
+        <option value="">{t.kitchen.noStation}</option>
+        {(stations.data ?? []).map((station) => (
+          <option key={station.id} value={station.id}>
+            {station.name}
+          </option>
+        ))}
       </SelectField>
       <TextField
         label={t.floor.sortOrder}
@@ -722,7 +744,74 @@ function BranchPrices({ menu, branchId }: { menu: Menu; branchId: string }) {
   );
 }
 
-type Tab = 'products' | 'modifiers' | 'prices';
+type Tab = 'products' | 'modifiers' | 'prices' | 'stations';
+
+function StationsTab() {
+  const stations = useStations();
+  const client = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const save = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+      toast(t.common.saved);
+      await client.invalidateQueries({ queryKey: ['kitchen', 'stations'] });
+    } catch (caught) {
+      toast(
+        caught instanceof Error ? caught.message : t.common.errorTitle,
+        'error',
+      );
+    }
+  };
+  return (
+    <div className="stack">
+      <form
+        className="inline-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save(() => post('/kitchen/stations', { name })).then(() =>
+            setName(''),
+          );
+        }}
+      >
+        <TextField
+          label={t.kitchen.stationName}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <Button type="submit" variant="primary">
+          + {t.kitchen.addStation}
+        </Button>
+      </form>
+      {(stations.data ?? []).length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="badges">
+          {(stations.data ?? []).map((station) => (
+            <span key={station.id} className="station-chip">
+              {station.name}
+              <button
+                className="text-link"
+                onClick={() =>
+                  void save(() =>
+                    patch(`/kitchen/stations/${station.id}`, {
+                      name: station.name,
+                      sortOrder: station.sortOrder,
+                      isActive: !station.isActive,
+                    }),
+                  )
+                }
+              >
+                {station.isActive ? t.common.active : t.common.inactive}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function MenuPage() {
   const { data: me } = useMe();
@@ -818,6 +907,7 @@ export function MenuPage() {
               ['products', t.menu.products],
               ['modifiers', t.menu.modifierGroups],
               ['prices', t.menu.branchPrices],
+              ['stations', t.kitchen.stations],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -838,6 +928,8 @@ export function MenuPage() {
         <LoadingState />
       ) : menu.error ? (
         <ErrorState error={menu.error} onRetry={() => void menu.refetch()} />
+      ) : tab === 'stations' ? (
+        <StationsTab />
       ) : tab === 'prices' ? (
         <BranchPrices menu={menu.data} branchId={me.activeBranchId} />
       ) : tab === 'modifiers' ? (

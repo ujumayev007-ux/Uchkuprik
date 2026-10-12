@@ -72,3 +72,19 @@ Order statuses: DRAFT → PLACED → PREPARING → READY → SERVED → COMPLETE
 | `GET /shifts/current`, `POST /shifts/open`, `POST /shifts/current/movements`, `POST /shifts/:id/close`              | shifts.manage (close: own register or finance.view)   |
 | `GET /shifts`, `GET /shifts/:id/report` (Z-report)                                                                  | shifts.manage (own) or reports.view                   |
 | `GET /reports/sales?branchId&from&to`                                                                               | reports.view; `profit` only with finance.view         |
+
+## Phase 5: kitchen, real-time, printing
+
+Real-time: Socket.io at `/api/realtime` (same origin, session cookie). Server → client events only: `order.changed` {orderId, number, status}, `kitchen.changed` {orderId}, `menu.changed` {}. Clients refetch over REST; clients cannot send commands.
+
+| Endpoint                                                                                                   | Access                                                                 |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `GET /kitchen/stations`; `POST`/`PATCH /kitchen/stations[/:id]`                                            | kitchen.access/menu.view; menu.manage                                  |
+| `GET /kitchen/tickets?stationId` (no prices)                                                               | kitchen.access                                                         |
+| `POST /kitchen/items/:id/status` {QUEUED                                                                   | PREPARING                                                              | READY}; `POST /kitchen/orders/:id/bump` {status, stationId?} | kitchen.access |
+| `POST /orders/:id/serve`                                                                                   | orders.edit or kitchen.access                                          |
+| `POST /orders/:id/priority` {0                                                                             | 1}                                                                     | orders.edit                                                  |
+| `GET /queue` (numbers only)                                                                                | orders.view or kitchen.access                                          |
+| `GET`/`POST`/`PATCH /printers`, `POST /printers/:id/test`, `GET /print-jobs`, `POST /print-jobs/:id/retry` | settings.manage; hosts restricted to private LAN IPv4, ports 9100–9109 |
+
+Menu categories accept `stationId`. Order status is derived from item kitchen statuses (any started → PREPARING, all ready → READY, new items on READY/SERVED → PREPARING).

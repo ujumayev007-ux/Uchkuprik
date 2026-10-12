@@ -6,6 +6,8 @@ export type PricedVariant = {
   productName: string;
   variantName: string;
   categoryId: string;
+  stationId: string | null;
+  prepTimeMinutes: number | null;
   price: number;
   cost: number | null;
   available: boolean;
@@ -37,6 +39,8 @@ export async function priceVariants(
       productName: variant.product.name,
       variantName: variant.name,
       categoryId: variant.product.categoryId,
+      stationId: variant.product.category.stationId,
+      prepTimeMinutes: variant.product.prepTimeMinutes,
       price: override?.price ?? variant.price,
       cost: variant.cost,
       available:

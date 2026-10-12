@@ -23,7 +23,10 @@ import { BranchesPage } from './pages/BranchesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FloorPage } from './pages/FloorPage';
+import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
+import { PrintersPage } from './pages/PrintersPage';
+import { QueuePage } from './pages/QueuePage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PosPage } from './pages/PosPage';
 import { ReceiptPage, ZReportPage } from './pages/PrintPages';
@@ -37,6 +40,7 @@ import { UsersPage } from './pages/UsersPage';
 import './styles.css';
 import './ui.css';
 import './pos.css';
+import './kitchen.css';
 
 /** The next step a partially authenticated session must complete, if any. */
 function pendingStep(me: Me): string | null {
@@ -90,6 +94,8 @@ function Home() {
   // Terminal staff start on the POS screen.
   if (me?.authMethod === 'PIN' && can(me, 'pos.access'))
     return <Navigate to="/kassa" replace />;
+  if (me?.authMethod === 'PIN' && can(me, 'kitchen.access'))
+    return <Navigate to="/oshxona" replace />;
   return <DashboardPage />;
 }
 
@@ -156,6 +162,14 @@ const router = createBrowserRouter([
   },
   { path: '/pin', element: <PinPage /> },
   {
+    path: '/navbat',
+    element: (
+      <SessionOnly>
+        <QueuePage />
+      </SessionOnly>
+    ),
+  },
+  {
     path: '/chek/:id',
     element: (
       <SessionOnly>
@@ -188,6 +202,22 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => can(me, 'orders.view')}>
             <OrdersPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/oshxona',
+        element: (
+          <Guard allow={(me) => can(me, 'kitchen.access')}>
+            <KitchenPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/printerlar',
+        element: (
+          <Guard allow={(me) => can(me, 'settings.manage')}>
+            <PrintersPage />
           </Guard>
         ),
       },

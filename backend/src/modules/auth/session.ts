@@ -47,7 +47,13 @@ export function cookieNames(secure: boolean) {
 }
 
 export function readCookie(req: Request, name: string): string | undefined {
-  const header = req.headers.cookie;
+  return parseCookie(req.headers.cookie, name);
+}
+
+export function parseCookie(
+  header: string | undefined,
+  name: string,
+): string | undefined {
   if (!header) return undefined;
   for (const part of header.split(';')) {
     const index = part.indexOf('=');
@@ -123,96 +129,110 @@ export async function createSession(
   return { token, session, maxAgeMs: policy.absoluteMs };
 }
 
-/** Resolves the session cookie into an AuthContext. Never trusts client claims. */
+export type Authentication =
+  | { status: 'none' | 'invalid' | 'suspended' }
+  | { status: 'ok'; auth: AuthContext };
+
+/**
+ * Resolves session and device cookies into an AuthContext. Shared by HTTP requests
+ * and WebSocket handshakes so both apply identical checks. Never trusts client claims.
+ */
+export async function authenticate(
+  services: Services,
+  cookieHeader: string | undefined,
+  options: { touch: boolean } = { touch: true },
+): Promise<Authentication> {
+  const names = cookieNames(services.secureCookies);
+  const token = parseCookie(cookieHeader, names.session);
+  if (!token) return { status: 'none' };
+  const deviceToken = parseCookie(cookieHeader, names.device);
+  const now = services.now?.() ?? new Date();
+  const session = await services.db.session.findUnique({
+    where: { tokenHash: sha256(token) },
+    include: {
+      tenant: true,
+      user: {
+        include: {
+          roles: { include: { role: true } },
+          branches: { select: { branchId: true } },
+        },
+      },
+      device: true,
+    },
+  });
+  const user = session?.user;
+  const valid =
+    session &&
+    user &&
+    !session.revokedAt &&
+    session.expiresAt > now &&
+    session.idleExpiresAt > now &&
+    user.status === 'ACTIVE' &&
+    !user.deletedAt &&
+    (session.authMethod !== 'PIN' ||
+      (session.device?.status === 'ACTIVE' &&
+        deviceToken !== undefined &&
+        sha256(deviceToken) === session.device.tokenHash));
+  if (!valid) return { status: 'invalid' };
+  if (session.tenant.status !== 'ACTIVE') return { status: 'suspended' };
+  const permissions = new Set<Permission>();
+  for (const { role } of user.roles)
+    for (const key of role.permissions)
+      if (isPermission(key)) permissions.add(key);
+  const isPrivileged = privilegedPermissions.some((key) =>
+    permissions.has(key),
+  );
+  const auth: AuthContext = {
+    sessionId: session.id,
+    tenantId: session.tenantId,
+    tenantKind: session.tenant.kind,
+    userId: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    isPlatformAdmin: user.isPlatformAdmin && session.tenant.kind === 'PLATFORM',
+    authMethod: session.authMethod,
+    permissions,
+    roleKeys: user.roles.map(({ role }) => role.systemKey ?? role.id),
+    allBranches: user.allBranches,
+    branchIds: user.branches.map(({ branchId }) => branchId),
+    activeBranchId: session.branchId,
+    deviceId: session.deviceId,
+    mfaEnabled: user.mfaEnabledAt !== null,
+    mfaVerified: session.mfaVerified,
+    mfaPolicyRequired:
+      session.authMethod === 'PASSWORD' &&
+      (user.isPlatformAdmin ||
+        (session.tenant.requireMfaForAdmins && isPrivileged)),
+    mustChangePassword:
+      session.authMethod === 'PASSWORD' && user.mustChangePassword,
+    reauthAt: session.reauthAt,
+  };
+  // Sliding idle expiry; written at most once a minute to limit database load.
+  if (
+    options.touch &&
+    session.mfaVerified &&
+    now.getTime() - session.lastSeenAt.getTime() > MINUTE
+  ) {
+    await services.db.session.update({
+      where: { id: session.id },
+      data: {
+        lastSeenAt: now,
+        idleExpiresAt: new Date(
+          now.getTime() + sessionPolicy[session.authMethod].idleMs,
+        ),
+      },
+    });
+  }
+  return { status: 'ok', auth };
+}
+
 export function loadSession(services: Services) {
   const names = cookieNames(services.secureCookies);
   return async (req: Request, res: Response, next: NextFunction) => {
-    const token = readCookie(req, names.session);
-    if (!token) return next();
-    const now = services.now?.() ?? new Date();
-    const session = await services.db.session.findUnique({
-      where: { tokenHash: sha256(token) },
-      include: {
-        tenant: true,
-        user: {
-          include: {
-            roles: { include: { role: true } },
-            branches: { select: { branchId: true } },
-          },
-        },
-        device: true,
-      },
-    });
-    const user = session?.user;
-    const valid =
-      session &&
-      user &&
-      !session.revokedAt &&
-      session.expiresAt > now &&
-      session.idleExpiresAt > now &&
-      user.status === 'ACTIVE' &&
-      !user.deletedAt &&
-      (session.authMethod !== 'PIN' ||
-        (session.device?.status === 'ACTIVE' &&
-          readCookie(req, names.device) !== undefined &&
-          sha256(readCookie(req, names.device)!) === session.device.tokenHash));
-    if (!valid) {
-      clearCookie(res, services, names.session);
-      return next();
-    }
-    if (session.tenant.status !== 'ACTIVE') {
-      res.locals.tenantSuspended = true;
-      return next();
-    }
-    const permissions = new Set<Permission>();
-    for (const { role } of user.roles)
-      for (const key of role.permissions)
-        if (isPermission(key)) permissions.add(key);
-    const isPrivileged = privilegedPermissions.some((key) =>
-      permissions.has(key),
-    );
-    const auth: AuthContext = {
-      sessionId: session.id,
-      tenantId: session.tenantId,
-      tenantKind: session.tenant.kind,
-      userId: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      isPlatformAdmin:
-        user.isPlatformAdmin && session.tenant.kind === 'PLATFORM',
-      authMethod: session.authMethod,
-      permissions,
-      roleKeys: user.roles.map(({ role }) => role.systemKey ?? role.id),
-      allBranches: user.allBranches,
-      branchIds: user.branches.map(({ branchId }) => branchId),
-      activeBranchId: session.branchId,
-      deviceId: session.deviceId,
-      mfaEnabled: user.mfaEnabledAt !== null,
-      mfaVerified: session.mfaVerified,
-      mfaPolicyRequired:
-        session.authMethod === 'PASSWORD' &&
-        (user.isPlatformAdmin ||
-          (session.tenant.requireMfaForAdmins && isPrivileged)),
-      mustChangePassword:
-        session.authMethod === 'PASSWORD' && user.mustChangePassword,
-      reauthAt: session.reauthAt,
-    };
-    res.locals.auth = auth;
-    // Sliding idle expiry; written at most once a minute to limit database load.
-    if (
-      session.mfaVerified &&
-      now.getTime() - session.lastSeenAt.getTime() > MINUTE
-    ) {
-      await services.db.session.update({
-        where: { id: session.id },
-        data: {
-          lastSeenAt: now,
-          idleExpiresAt: new Date(
-            now.getTime() + sessionPolicy[session.authMethod].idleMs,
-          ),
-        },
-      });
-    }
+    const result = await authenticate(services, req.headers.cookie);
+    if (result.status === 'invalid') clearCookie(res, services, names.session);
+    if (result.status === 'suspended') res.locals.tenantSuspended = true;
+    if (result.status === 'ok') res.locals.auth = result.auth;
     next();
   };
 }

@@ -1,0 +1,235 @@
+/* Kitchen display, queue TV and live connection indicator. */
+
+.live-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--muted);
+}
+.live-dot.on {
+  background: var(--green);
+  box-shadow: 0 0 0 4px var(--green-soft);
+}
+.live-dot.off {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px var(--danger-soft);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+.station-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+/* Kitchen display system */
+.kds {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.kds-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+.kds-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.kds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.ticket {
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-top-width: 8px;
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ticket-ok {
+  border-top-color: var(--green);
+}
+.ticket-warn {
+  border-top-color: var(--warning);
+}
+.ticket-late {
+  border-top-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 45%, var(--surface));
+}
+.ticket-ready {
+  border-top-color: var(--accent);
+  opacity: 0.85;
+}
+.ticket-rush {
+  box-shadow: 0 0 0 3px var(--danger);
+}
+.ticket header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+}
+.ticket-number {
+  font-size: 28px;
+  font-weight: 800;
+}
+.ticket-meta {
+  color: var(--muted);
+  font-weight: 600;
+}
+.ticket-timer {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ticket-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ticket-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  text-align: left;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+  touch-action: manipulation;
+}
+.ticket-item .qty {
+  font-size: 20px;
+  font-weight: 800;
+}
+.ticket-item .note {
+  color: var(--danger);
+  font-weight: 700;
+}
+.item-state {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+.item-preparing {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.item-ready {
+  border-color: var(--green);
+  background: var(--green-soft);
+  text-decoration: line-through;
+}
+.ticket-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 700;
+}
+.ticket footer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+.ticket footer .btn {
+  min-height: 52px;
+  font-size: 16px;
+}
+
+/* Customer queue TV */
+.queue-screen {
+  min-height: 100svh;
+  background: #101414;
+  color: #f4f5f0;
+  display: flex;
+  flex-direction: column;
+  padding: 3vh 3vw;
+  gap: 3vh;
+}
+.queue-screen header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.queue-screen h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 44px);
+  flex: 1;
+}
+.queue-columns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3vw;
+}
+.queue-columns section {
+  background: #1b2121;
+  border-radius: 24px;
+  padding: 3vh 2vw;
+}
+.queue-columns section.ready {
+  background: #13321f;
+}
+.queue-columns h2 {
+  margin: 0 0 3vh;
+  font-size: clamp(22px, 2.6vw, 40px);
+  color: #c6ccc5;
+}
+.queue-columns .ready h2 {
+  color: #7ee2a8;
+}
+.queue-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2vw;
+}
+.queue-numbers span {
+  font-size: clamp(40px, 6vw, 110px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.queue-columns .ready .queue-numbers span {
+  color: #8ff0b6;
+  animation: pop 0.6s ease-out;
+}
+@keyframes pop {
+  from {
+    transform: scale(1.4);
+  }
+}
+@media (max-width: 700px) {
+  .queue-columns {
+    grid-template-columns: 1fr;
+  }
+}

@@ -9,8 +9,9 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)              |
 | 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)              |
 | 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)              |
-| 4 Admin and cashier POS         | Implemented and validated locally; CI pending on push |
-| 5–16                            | Not started                                           |
+| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)              |
+| 5 Kitchen and real-time         | Implemented and validated locally; CI pending on push |
+| 6–16                            | Not started                                           |
 
 ## Phase 2 — delivered
 
@@ -39,6 +40,15 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 36 unit, 36 integration (10 new financial tests incl. concurrent double-payment), 16 Playwright tests (POS flow: 130 000 total, 200 000 received, 70 000 change).
 - Deferred: favourites, combos, customer debt (Phase 9), printer adapters and real-time sync (Phase 5), online payment providers and fiscal receipts (Phase 8), attendance clock-in (Phase 10).
 
+## Phase 5 — delivered
+
+- Socket.io real-time layer (cookie auth, tenant/branch rooms, origin check, revalidation, refetch on reconnect) and live indicator in the shell.
+- Kitchen display (`/oshxona`): station filter, tickets sorted by rush/age, timers with prep-time colours, tap-to-advance items, bump preparing/ready, serve.
+- Queue TV (`/navbat`): preparing/ready numbers, Uzbek voice announcement with chime fallback.
+- Kitchen stations (menu tab) and category routing; printers page with test page, job list and retry; ESC/POS kitchen tickets printed once per item.
+- Evidence: 40 unit, 41 integration (5 new: socket isolation/auth, routing, status derivation, priority, TCP printing with retry), 18 Playwright (live POS → kitchen → queue).
+- Deferred: Redis adapter (multi-instance), local print agent for cloud deployments, kitchen performance metrics (Phase 10).
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -53,4 +63,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 5 — Kitchen and real-time operations: Socket.io with tenant/branch-isolated rooms, kitchen display (KDS) with station routing, statuses Tayyorlanmoqda/Tayyor, timers and priorities, queue/pickup TV screen, printer adapter interface, reconnect and replay.
+Phase 6 — Warehouse and recipes: stock items and units, warehouses per branch, suppliers and purchases (receipts), recipe-based automatic deductions on order completion, waste/spoilage, stock movement ledger, negative-stock policy, low-stock alerts, stocktaking.
