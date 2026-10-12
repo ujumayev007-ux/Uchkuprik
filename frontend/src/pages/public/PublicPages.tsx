@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Button, FormError, TextField } from '../../components/ui';
 import { useParams } from 'react-router';
 import { LoadingState } from '../../components/ui';
 import { t } from '../../i18n';
-import { api } from '../../lib/api';
+import { api, post } from '../../lib/api';
 import { formatDateTime, formatMoney } from '../../lib/format';
 import { Storefront, StoreUnavailable, type PublicMenu } from './Storefront';
 
@@ -135,6 +136,59 @@ type Tracking = {
 
 const steps = ['PENDING', 'PLACED', 'PREPARING', 'READY', 'SERVED'];
 
+function FeedbackForm({ token }: { token: string }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  if (sent) return <p className="notice">{t.crm.thanks}</p>;
+  return (
+    <form
+      className="card stack"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setError(null);
+        try {
+          await post(`/public/orders/${token}/feedback`, {
+            rating,
+            comment: comment.trim() || null,
+          });
+          setSent(true);
+        } catch (caught) {
+          setError(caught);
+        }
+      }}
+    >
+      <h2>{t.crm.rateTitle}</h2>
+      <p className="muted small">{t.crm.rateHint}</p>
+      <div className="stars" role="radiogroup" aria-label={t.crm.rating}>
+        {[1, 2, 3, 4, 5].map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={rating === value}
+            aria-label={String(value)}
+            className={value <= rating ? 'on' : ''}
+            onClick={() => setRating(value)}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+      <TextField
+        label={`${t.crm.comment} (${t.common.optional})`}
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+      />
+      <FormError error={error} />
+      <Button type="submit" variant="primary" disabled={rating === 0}>
+        {t.common.save}
+      </Button>
+    </form>
+  );
+}
+
 /** Customer order tracking: /buyurtma/:token (polls every 10 seconds). */
 export function TrackingPage() {
   const { token } = useParams();
@@ -224,6 +278,9 @@ export function TrackingPage() {
             </a>
           ))}
         </section>
+      )}
+      {['READY', 'SERVED', 'COMPLETED'].includes(o.status) && (
+        <FeedbackForm token={token!} />
       )}
       <section className="card">
         <ul className="plain-list">

@@ -181,3 +181,37 @@
   display: flex;
   gap: 8px;
 }
+
+/* Ratings and CRM */
+.stars {
+  display: flex;
+  gap: 6px;
+}
+.stars button {
+  font-size: 34px;
+  background: none;
+  border: 0;
+  color: var(--line);
+  padding: 0 2px;
+  line-height: 1;
+}
+.stars button.on {
+  color: #f5a623;
+}
+.feedback-card p {
+  margin: 6px 0;
+}
+.feedback-card.complaint {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 40%, var(--surface));
+}
+.cart-extras summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.cart-extras[open] summary {
+  margin-bottom: 8px;
+}

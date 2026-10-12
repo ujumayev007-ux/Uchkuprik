@@ -268,6 +268,8 @@ model TenantProfile {
   allowNegativeStock Boolean  @default(true)
   // Public website and table-QR ordering (off until the owner enables it).
   publicOrdering     Boolean  @default(false)
+  // Loyalty earn rate in basis points of the paid amount (0 = loyalty off).
+  loyaltyEarnBp      Int      @default(0)
   updatedAt          DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -499,6 +501,8 @@ enum OrderItemStatus {
 
 enum PaymentMethod {
   CASH
+  // Loyalty points redeemed as payment (not money; excluded from cash totals).
+  LOYALTY
   CARD
   CLICK
   PAYME
@@ -596,6 +600,8 @@ model Order {
   idempotencyKey  String
   // Customer-facing tracking link for online orders (random, unguessable).
   trackingToken   String?      @unique
+  customerId      String?      @db.Uuid
+  couponId        String?      @db.Uuid
   createdById     String?      @db.Uuid
   version         Int          @default(1)
   placedAt        DateTime?
@@ -617,6 +623,7 @@ model Order {
   @@unique([branchId, businessDate, number])
   @@index([tenantId, branchId, status])
   @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, customerId])
   @@map("orders")
 }
 
@@ -1100,4 +1107,107 @@ model FiscalReceipt {
   @@unique([orderId])
   @@index([tenantId, status])
   @@map("fiscal_receipts")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9a: customers, loyalty, coupons and feedback.
+
+enum LoyaltyEntryType {
+  EARN
+  REDEEM
+  REVERSAL
+  ADJUST
+}
+
+enum CouponKind {
+  PERCENT
+  FIXED
+}
+
+enum FeedbackStatus {
+  NEW
+  RESOLVED
+}
+
+// Customer profile keyed by normalized phone number within a tenant.
+model Customer {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  tenantId         String    @db.Uuid
+  phone            String
+  name             String?
+  birthday         DateTime? @db.Date
+  marketingConsent Boolean   @default(false)
+  consentAt        DateTime?
+  notes            String?
+  // Loyalty points; 1 point = 1 so‘m when redeemed.
+  points           Int       @default(0)
+  totalSpent       Int       @default(0)
+  orderCount       Int       @default(0)
+  lastOrderAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  loyalty LoyaltyEntry[]
+
+  @@unique([tenantId, phone])
+  @@unique([tenantId, id])
+  @@map("customers")
+}
+
+// Append-only loyalty ledger; customers.points mirrors its running balance.
+model LoyaltyEntry {
+  id           BigInt           @id @default(autoincrement())
+  tenantId     String           @db.Uuid
+  customerId   String           @db.Uuid
+  orderId      String?          @db.Uuid
+  paymentId    String?          @db.Uuid
+  type         LoyaltyEntryType
+  points       Int
+  balanceAfter Int
+  reason       String?
+  createdById  String?          @db.Uuid
+  createdAt    DateTime         @default(now())
+
+  customer Customer @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([customerId, id])
+  @@map("loyalty_entries")
+}
+
+model Coupon {
+  id        String     @id @default(uuid(7)) @db.Uuid
+  tenantId  String     @db.Uuid
+  code      String
+  kind      CouponKind
+  // Percent in basis points or fixed amount in so‘m.
+  value     Int
+  minOrder  Int        @default(0)
+  maxUses   Int?
+  usedCount Int        @default(0)
+  validFrom DateTime?
+  validTo   DateTime?
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("coupons")
+}
+
+// Customer feedback per order (CSAT); low ratings are complaints to resolve.
+model Feedback {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  tenantId     String         @db.Uuid
+  branchId     String         @db.Uuid
+  orderId      String         @unique @db.Uuid
+  rating       Int
+  comment      String?
+  status       FeedbackStatus @default(NEW)
+  resolution   String?
+  resolvedById String?        @db.Uuid
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("feedback")
 }

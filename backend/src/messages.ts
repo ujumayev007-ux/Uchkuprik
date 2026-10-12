@@ -52,6 +52,12 @@ export const messages = {
   unknownUnit: 'O‘lchov birligi noto‘g‘ri.',
   purchaseClosed: 'Bu xarid allaqachon qabul qilingan yoki bekor qilingan.',
   sameWarehouse: 'Bir xil omborga ko‘chirib bo‘lmaydi.',
+  insufficientPoints: 'Mijozda yetarli ball yo‘q.',
+  customerRequired: 'Avval buyurtmaga mijozni biriktiring.',
+  couponInvalid: 'Promokod yaroqsiz yoki muddati tugagan.',
+  couponExhausted: 'Promokoddan foydalanish limiti tugagan.',
+  couponMinOrder: 'Promokod uchun buyurtma summasi yetarli emas.',
+  feedbackExists: 'Bu buyurtma uchun fikr allaqachon qoldirilgan.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

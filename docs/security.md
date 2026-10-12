@@ -54,3 +54,7 @@ Public endpoints are opt-in per tenant, scoped by an unguessable table token or 
 ## Online payments (Phase 8)
 
 Payments are recorded only from provider callbacks verified by Payme Basic authentication (constant-time compare) or Click MD5 signatures; client redirects never mark anything paid. Merchant secrets are AES-GCM encrypted, write-only in the API and audited on change. Captures lock the order, require the exact due amount, and are idempotent per provider transaction. Callback URLs contain the config id, never secrets. The per-IP credential/public-order rate limit is configurable (`CREDENTIAL_RATE_LIMIT`, default 20/min). Fiscal registration is not claimed: without a certified OFD provider every receipt is labelled non-fiscal.
+
+## CRM and loyalty (Phase 9a)
+
+Points move only through a ledger function that locks the customer row and rejects negative balances; manual adjustments need customers.manage plus re-authentication and are audited. Coupon usage limits are enforced atomically in SQL (concurrency tested) and released when orders are cancelled. Marketing exports contain only customers with recorded consent and are audited. Public feedback requires the unguessable tracking token and is accepted once per order.

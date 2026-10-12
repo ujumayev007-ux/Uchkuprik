@@ -16,6 +16,7 @@ import { authRouter } from './modules/auth/auth.routes.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
+import { crmRouter } from './modules/crm/crm.routes.js';
 import { floorRouter } from './modules/floor/floor.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
@@ -160,6 +161,7 @@ export function createApp({
       printersRouter,
       inventoryRouter,
       onlineRouter,
+      crmRouter,
     ])
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));

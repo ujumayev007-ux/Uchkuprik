@@ -20,6 +20,7 @@ import { MfaSetupPage } from './pages/auth/MfaSetupPage';
 import { MfaVerifyPage } from './pages/auth/MfaVerifyPage';
 import { PinPage } from './pages/auth/PinPage';
 import { BranchesPage } from './pages/BranchesPage';
+import { CustomersPage } from './pages/CustomersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FloorPage } from './pages/FloorPage';
@@ -266,6 +267,14 @@ const router = createBrowserRouter([
             }
           >
             <InventoryPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/mijozlar',
+        element: (
+          <Guard allow={(me) => can(me, 'customers.view')}>
+            <CustomersPage />
           </Guard>
         ),
       },

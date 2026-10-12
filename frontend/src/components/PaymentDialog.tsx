@@ -1,7 +1,7 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
-import { post } from '../lib/api';
+import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import { newKey, type Order, type PaymentMethod } from '../lib/orders';
 import { Button, Dialog, FormError, MoneyField, TextField } from './ui';
@@ -38,6 +38,20 @@ export function PaymentDialog({
     setTendered(current.due);
   }, [current.due]);
 
+  // Loyalty points of the attached customer (1 point = 1 so‘m).
+  const customer = useQuery({
+    queryKey: ['customers', current.customerId],
+    queryFn: () =>
+      api<{ customer: { points: number } }>(`/customers/${current.customerId}`),
+    enabled: !!current.customerId,
+  });
+  const points = customer.data?.customer.points ?? 0;
+  // Each method starts from what it can cover: points up to the balance, else the full due.
+  useEffect(() => {
+    setAmount(
+      method === 'LOYALTY' ? Math.min(points, current.due) : current.due,
+    );
+  }, [method, points, current.due]);
   const change =
     method === 'CASH' && tendered !== null && amount !== null
       ? tendered - amount
@@ -62,6 +76,7 @@ export function PaymentDialog({
       );
       key.current = newKey();
       await client.invalidateQueries({ queryKey: ['shift'] });
+      await client.invalidateQueries({ queryKey: ['customers'] });
       await client.invalidateQueries({ queryKey: ['orders'] });
       if (result.order.due === 0) onPaid(result.order, result.change);
       else {
@@ -107,7 +122,10 @@ export function PaymentDialog({
           role="radiogroup"
           aria-label={t.payment.title}
         >
-          {(['CASH', 'CARD'] as const).map((value) => (
+          {(current.customerId
+            ? (['CASH', 'CARD', 'LOYALTY'] as const)
+            : (['CASH', 'CARD'] as const)
+          ).map((value) => (
             <button
               key={value}
               role="radio"
@@ -133,6 +151,10 @@ export function PaymentDialog({
               onChange={setTendered}
               required
             />
+          ) : method === 'LOYALTY' ? (
+            <p className="notice">
+              {t.crm.points}: <strong>{points}</strong>
+            </p>
           ) : (
             <TextField
               label={`${t.payment.reference} (${t.common.optional})`}
@@ -172,7 +194,10 @@ export function PaymentDialog({
           className="block-button"
           busy={busy}
           disabled={
-            !amount || amount > current.due || (method === 'CASH' && change < 0)
+            !amount ||
+            amount > current.due ||
+            (method === 'CASH' && change < 0) ||
+            (method === 'LOYALTY' && amount > points)
           }
           onClick={() => void submit()}
         >

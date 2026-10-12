@@ -18,6 +18,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { onOrderCompleted, postLoyalty } from '../crm/loyalty.js';
 import { consumeOrderIngredients } from '../inventory/ledger.js';
 import { recordFiscalReceipt } from '../payments/fiscal.js';
 import { findOpenShift } from '../shifts/shifts.routes.js';
@@ -51,7 +52,7 @@ const idempotencyKey = z.string().trim().min(8).max(80);
 
 // Methods accepted at the counter. Online providers (Click, Payme, Uzum) are only
 // accepted through verified provider callbacks (Phase 8), never as manual entries.
-const counterMethods = ['CASH', 'CARD'] as const;
+const counterMethods = ['CASH', 'CARD', 'LOYALTY'] as const;
 
 type OrderWithRelations = Prisma.OrderGetPayload<{
   include: { items: true; payments: true; refunds: true; table: true };
@@ -68,6 +69,8 @@ function serialize(order: OrderWithRelations, auth: AuthContext) {
     channel: order.channel,
     status: order.status,
     table: order.table ? { id: order.table.id, name: order.table.name } : null,
+    customerId: order.customerId,
+    couponId: order.couponId,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     deliveryAddress: order.deliveryAddress,
@@ -629,6 +632,7 @@ export function ordersRouter(services: Services) {
       if (to === 'COMPLETED') {
         await consumeOrderIngredients(tx, id, auth.userId);
         await recordFiscalReceipt(tx, auth.tenantId, id);
+        await onOrderCompleted(tx, id, auth.userId);
       }
       await tx.order.update({
         where: { id },
@@ -698,6 +702,12 @@ export function ordersRouter(services: Services) {
           to: 'CANCELLED',
           reason,
         });
+        // A cancelled order gives its coupon use back.
+        if (order.couponId)
+          await tx.coupon.updateMany({
+            where: { id: order.couponId, usedCount: { gt: 0 } },
+            data: { usedCount: { decrement: 1 } },
+          });
         await audit(tx, req, {
           tenantId: auth.tenantId,
           branchId: order.branchId,
@@ -723,7 +733,15 @@ export function ordersRouter(services: Services) {
         z
           .object({
             idempotencyKey,
-            method: z.enum(['CASH', 'CARD', 'CLICK', 'PAYME', 'UZUM', 'OTHER']),
+            method: z.enum([
+              'CASH',
+              'CARD',
+              'LOYALTY',
+              'CLICK',
+              'PAYME',
+              'UZUM',
+              'OTHER',
+            ]),
             amount,
             tendered: z.number().int().min(1).max(1_000_000_000).optional(),
             reference: z.string().trim().max(60).nullable().optional(),
@@ -779,6 +797,8 @@ export function ordersRouter(services: Services) {
             });
           if (input.method === 'CASH' && input.tendered! < input.amount)
             throw new AppError(400, 'INSUFFICIENT_CASH', 'insufficientCash');
+          if (input.method === 'LOYALTY' && !order.customerId)
+            throw new AppError(409, 'CUSTOMER_REQUIRED', 'customerRequired');
           const change =
             input.method === 'CASH' ? input.tendered! - input.amount : null;
           const created = await tx.payment.create({
@@ -812,6 +832,18 @@ export function ordersRouter(services: Services) {
               ...(placing ? { status: 'PLACED', placedAt: now() } : {}),
             },
           });
+          // Points are redeemed 1:1 against the bill, under a lock on the customer.
+          if (input.method === 'LOYALTY')
+            await postLoyalty(tx, {
+              tenantId: auth.tenantId,
+              customerId: order.customerId!,
+              type: 'REDEEM',
+              points: -input.amount,
+              orderId: id,
+              paymentId: created.id,
+              reason: `Buyurtma №${order.number}`,
+              actorId: auth.userId,
+            });
           await addEvent(tx, auth.tenantId, id, auth.userId, 'payment', {
             paymentId: created.id,
             method: input.method,
@@ -891,6 +923,18 @@ export function ordersRouter(services: Services) {
             version: { increment: 1 },
           },
         });
+        // Refunded loyalty payments return the points to the customer.
+        if (payment.method === 'LOYALTY' && order.customerId)
+          await postLoyalty(tx, {
+            tenantId: auth.tenantId,
+            customerId: order.customerId,
+            type: 'REVERSAL',
+            points: input.amount,
+            orderId: id,
+            paymentId: payment.id,
+            reason: input.reason,
+            actorId: auth.userId,
+          });
         await addEvent(tx, auth.tenantId, id, auth.userId, 'refund', {
           refundId: refund.id,
           paymentId: payment.id,

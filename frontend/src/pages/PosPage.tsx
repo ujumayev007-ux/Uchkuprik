@@ -14,7 +14,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
-import { post } from '../lib/api';
+import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import {
   newKey,
@@ -264,6 +264,8 @@ export function PosPage() {
     address: '',
   });
   const [paying, setPaying] = useState<Order | null>(null);
+  // Optional loyalty customer and promo code applied right after the order is created.
+  const [extras, setExtras] = useState({ phone: '', promo: '' });
   const [result, setResult] = useState<{
     order: Order;
     change: number | null;
@@ -350,9 +352,34 @@ export function PosPage() {
       });
       setCart([]);
       setCustomer({ name: '', phone: '', address: '' });
+      let current = order;
+      const loyaltyPhone =
+        extras.phone.trim() ||
+        (type === 'DELIVERY' ? customer.phone.trim() : '');
+      try {
+        if (loyaltyPhone)
+          await post(`/orders/${order.id}/customer`, {
+            phone: loyaltyPhone,
+            name: customer.name.trim() || null,
+          });
+        if (extras.promo.trim())
+          await post(`/orders/${order.id}/coupon`, {
+            code: extras.promo.trim(),
+          });
+      } catch (caught) {
+        // The order exists; the cashier can still take payment without the extra.
+        toast(
+          caught instanceof Error ? caught.message : t.common.errorTitle,
+          'error',
+        );
+      }
+      if (loyaltyPhone || extras.promo.trim())
+        current = await api<Order>(`/orders/${order.id}`);
+      setExtras({ phone: '', promo: '' });
       await client.invalidateQueries({ queryKey: ['orders'] });
-      if (place) toast(`${t.pos.orderSent} ${t.orders.number}${order.number}`);
-      else setPaying(order);
+      if (place)
+        toast(`${t.pos.orderSent} ${t.orders.number}${current.number}`);
+      else setPaying(current);
     } catch (caught) {
       setError(caught);
     } finally {
@@ -497,6 +524,26 @@ export function PosPage() {
             />
           </div>
         )}
+        <details className="cart-extras">
+          <summary>
+            {t.crm.customerPhone} · {t.crm.promoCode}
+          </summary>
+          <div className="stack compact">
+            <TextField
+              label={`${t.crm.customerPhone} (${t.common.optional})`}
+              type="tel"
+              value={extras.phone}
+              onChange={(e) => setExtras({ ...extras, phone: e.target.value })}
+            />
+            <TextField
+              label={`${t.crm.promoCode} (${t.common.optional})`}
+              value={extras.promo}
+              onChange={(e) =>
+                setExtras({ ...extras, promo: e.target.value.toUpperCase() })
+              }
+            />
+          </div>
+        </details>
         <h2 className="cart-title">{t.pos.cart}</h2>
         {cart.length === 0 ? (
           <p className="muted center cart-empty">{t.pos.emptyCart}</p>

@@ -138,3 +138,19 @@ Provider callbacks are authenticated by the provider protocol (no session) and a
 Payme rules implemented: one open transaction per order (-31052), 12-hour expiry of unperformed transactions (cancel reason 4, -31008), performed transactions cannot be cancelled by the provider (-31007; refunds go through staff approval), idempotent create/perform. Click: prepare/complete with signature checks, failed payments (negative `error`) cancel the transaction, repeated completes return -4.
 
 Receipts include `fiscal` status (`NOT_CONFIGURED` until a certified fiscal provider adapter is configured).
+
+## Phase 9a: customers, loyalty, coupons, feedback
+
+| Endpoint                                                                                       | Access                            |
+| ---------------------------------------------------------------------------------------------- | --------------------------------- |
+| `GET /customers?q`, `GET /customers/:id` (orders, loyalty ledger)                              | customers.view                    |
+| `PATCH /customers/:id` {name, birthday, marketingConsent, notes}                               | customers.manage                  |
+| `POST /customers/:id/points` {points (+/-), reason}                                            | customers.manage + step-up        |
+| `GET /customers-export/marketing` (CSV, consenting customers only, audited)                    | customers.manage                  |
+| `POST /orders/:id/customer` {phone, name?} (upsert by normalized phone)                        | orders.create                     |
+| `POST /orders/:id/coupon` {code}; `DELETE /orders/:id/coupon`                                  | orders.create                     |
+| `GET`/`POST /coupons`, `PATCH /coupons/:id` {isActive}                                         | customers.manage                  |
+| `POST /public/orders/:trackingToken/feedback` {rating 1-5, comment} (once, after READY)        | Public                            |
+| `GET /feedback` (stats: count, average, CSAT %, open complaints), `POST /feedback/:id/resolve` | customers.view / customers.manage |
+
+Payments accept method `LOYALTY` (requires an attached customer; 1 point = 1 so‘m). Points are earned on completion at `loyaltyEarnBp` (settings) of money paid, excluding points; refunds of loyalty payments return points. Tiers by lifetime spend: Standart, Kumush (1 mln), Oltin (5 mln), Platina (20 mln). Web orders attach the customer by phone automatically.

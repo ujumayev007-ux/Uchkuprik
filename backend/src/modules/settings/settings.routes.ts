@@ -35,6 +35,7 @@ const settingsInput = z.object({
   requireMfaForAdmins: z.boolean(),
   allowNegativeStock: z.boolean().default(true),
   publicOrdering: z.boolean().default(false),
+  loyaltyEarnBp: z.number().int().min(0).max(5000).default(0),
 });
 
 export function settingsRouter(services: Services) {
@@ -61,6 +62,7 @@ export function settingsRouter(services: Services) {
       serviceChargeBp: tenant.profile?.serviceChargeBp ?? 0,
       allowNegativeStock: tenant.profile?.allowNegativeStock ?? true,
       publicOrdering: tenant.profile?.publicOrdering ?? false,
+      loyaltyEarnBp: tenant.profile?.loyaltyEarnBp ?? 0,
     });
   });
 
@@ -82,6 +84,7 @@ export function settingsRouter(services: Services) {
         serviceChargeBp: input.serviceChargeBp,
         allowNegativeStock: input.allowNegativeStock,
         publicOrdering: input.publicOrdering,
+        loyaltyEarnBp: input.loyaltyEarnBp,
       };
       await db.$transaction(async (tx) => {
         await tx.tenant.update({

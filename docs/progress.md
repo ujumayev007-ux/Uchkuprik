@@ -4,17 +4,18 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                           | Status                                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                                                               |
-| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                                                               |
-| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                                                               |
-| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                                                               |
-| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                                                               |
-| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                                                               |
-| 7 Customer ordering             | Implemented; first CI run failed on login rate limiting in E2E (fixed in the Phase 8 push, D-010 note) |
-| 8 Payments and fiscal           | Implemented and validated locally; CI pending on push                                                  |
-| 9–16                            | Not started                                                                                            |
+| Phase                           | Status                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                                       |
+| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                                       |
+| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                                       |
+| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                                       |
+| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                                       |
+| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                                       |
+| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix)                     |
+| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                                       |
+| 9 Delivery, CRM, loyalty        | 9a (CRM, loyalty, coupons, feedback) implemented; 9b (delivery, couriers) next |
+| 10–16                           | Not started                                                                    |
 
 ## Phase 2 — delivered
 
@@ -79,6 +80,16 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 58 integration (5 new provider-protocol tests), 25 Playwright (+1 desktop-only).
 - External dependencies (not simulated): Payme/Click merchant contracts and sandbox validation, Uzum Bank integration, certified fiscal OFD provider.
 
+## Phase 9a — delivered
+
+- Customer profiles by normalized phone with consent, notes, tiers and order history; marketing CSV export (consent only).
+- Loyalty ledger: earn on completion, redeem as payment, reverse on refund, manual adjustments with step-up.
+- Promo codes (percent/fixed, minimum order, usage limits, expiry) applied at the POS; released on cancel.
+- Customer feedback after READY via tracking link; CSAT, average rating and complaint resolution.
+- UI: Mijozlar page (customers, promo codes, feedback), POS customer phone and promo fields, points payment, loyalty rate in settings, rating form on the tracking page.
+- Evidence: 40 unit, 61 integration (3 new), 27 Playwright tests.
+- Deferred: referral programme, NPS/CES surveys, churn analytics (Phase 10/14).
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -93,4 +104,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 9 — Delivery, CRM and loyalty: delivery zones and fees, courier assignment and courier mobile screen, delivery statuses and proof, customer profiles (by phone), order history, loyalty points/cashback with an auditable ledger, promo codes/coupons with server validation.
+Phase 9b — Delivery and couriers: delivery zones and fees per branch, courier assignment, courier mobile screen (picked up / delivered with proof / failed), consent-based location sharing, delivery exceptions, courier earnings report.

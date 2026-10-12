@@ -14,6 +14,7 @@ import { messages } from '../../messages.js';
 import { audit } from '../audit/audit.js';
 import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { upsertCustomer } from '../crm/loyalty.js';
 import {
   addEvent,
   assertTransition,
@@ -298,10 +299,19 @@ export function onlineRouter(services: Services) {
         });
         const serviceChargeBp =
           type === 'DINE_IN' ? (profile?.serviceChargeBp ?? 0) : 0;
+        const customer = input.customerPhone
+          ? await upsertCustomer(
+              tx,
+              tenantId,
+              input.customerPhone,
+              input.customerName,
+            )
+          : null;
         const created = await tx.order.create({
           data: {
             tenantId,
             branchId,
+            customerId: customer?.id ?? null,
             number,
             businessDate: date,
             type,

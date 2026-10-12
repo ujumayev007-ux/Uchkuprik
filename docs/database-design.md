@@ -51,3 +51,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 8 schema (migration `payment_providers_fiscal`)
 
 `payment_provider_configs` (per tenant and provider, encrypted secret), `provider_transactions` (provider-side lifecycle CREATED/PERFORMED/CANCELLED, unique per provider external id, linked payment), `fiscal_receipts` (per order, NOT_CONFIGURED/PENDING/REGISTERED/FAILED). Online payments are ordinary `payments` rows (method PAYME/CLICK, no shift, idempotency key `<provider>:<external id>`).
+
+## Phase 9a schema (migration `crm_loyalty_coupons`)
+
+`customers` (unique normalized phone per tenant, consent with timestamp, points, lifetime stats), `loyalty_entries` (append-only ledger with balance), `coupons` (percent or fixed, min order, max uses enforced by conditional update), `feedback` (one per order, rating CHECK 1-5, resolution), `orders.customerId`/`couponId`, `PaymentMethod.LOYALTY`, `tenant_profiles.loyaltyEarnBp`.

@@ -27,6 +27,7 @@ type Settings = {
   serviceChargeBp: number;
   allowNegativeStock: boolean;
   publicOrdering: boolean;
+  loyaltyEarnBp: number;
 };
 
 export function useSettings() {
@@ -88,6 +89,7 @@ export function SettingsPage() {
               requireMfaForAdmins: form.requireMfaForAdmins,
               allowNegativeStock: form.allowNegativeStock,
               publicOrdering: form.publicOrdering,
+              loyaltyEarnBp: form.loyaltyEarnBp,
             });
             toast(t.common.saved);
             await client.invalidateQueries({ queryKey: ['settings'] });
@@ -164,6 +166,23 @@ export function SettingsPage() {
             checked={form.requireMfaForAdmins}
             onChange={(requireMfaForAdmins) =>
               setForm({ ...form, requireMfaForAdmins })
+            }
+          />
+          <TextField
+            label={t.crm.loyaltyRate}
+            hint={t.crm.loyaltyRateHint}
+            type="number"
+            min={0}
+            max={50}
+            step={0.5}
+            value={form.loyaltyEarnBp / 100}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                loyaltyEarnBp: Math.round(
+                  Number(event.target.value || 0) * 100,
+                ),
+              })
             }
           />
           <Checkbox
