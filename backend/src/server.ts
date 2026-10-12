@@ -36,6 +36,7 @@ async function main(): Promise<void> {
     logger,
     secureCookies: config.NODE_ENV === 'production',
     events,
+    limits: { credentialsPerMinute: config.CREDENTIAL_RATE_LIMIT },
   } as Services;
   services.afterOrderChange = (orderId) =>
     enqueueKitchenTickets(services, orderId);

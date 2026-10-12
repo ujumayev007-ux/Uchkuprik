@@ -26,6 +26,7 @@ import { FloorPage } from './pages/FloorPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
+import { PaymentsPage } from './pages/PaymentsPage';
 import { PrintersPage } from './pages/PrintersPage';
 import {
   TableMenuPage,
@@ -221,6 +222,14 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => can(me, 'kitchen.access')}>
             <KitchenPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/tolovlar',
+        element: (
+          <Guard allow={(me) => can(me, 'settings.manage')}>
+            <PaymentsPage />
           </Guard>
         ),
       },

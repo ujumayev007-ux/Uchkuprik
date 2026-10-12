@@ -47,3 +47,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 7 schema (migration `public_ordering`)
 
 `OrderStatus` gains `PENDING`; `orders.trackingToken` (unique, random); `tenant_profiles.publicOrdering`. Online orders use the same order engine (server pricing, modifiers, numbering, events) with channel QR or WEB.
+
+## Phase 8 schema (migration `payment_providers_fiscal`)
+
+`payment_provider_configs` (per tenant and provider, encrypted secret), `provider_transactions` (provider-side lifecycle CREATED/PERFORMED/CANCELLED, unique per provider external id, linked payment), `fiscal_receipts` (per order, NOT_CONFIGURED/PENDING/REGISTERED/FAILED). Online payments are ordinary `payments` rows (method PAYME/CLICK, no shift, idempotency key `<provider>:<external id>`).

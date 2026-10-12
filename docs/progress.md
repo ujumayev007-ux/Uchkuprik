@@ -4,16 +4,17 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                           | Status                                                |
-| ------------------------------- | ----------------------------------------------------- |
-| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)              |
-| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)              |
-| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)              |
-| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)              |
-| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)              |
-| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)              |
-| 7 Customer ordering             | Implemented and validated locally; CI pending on push |
-| 8–16                            | Not started                                           |
+| Phase                           | Status                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                                                               |
+| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                                                               |
+| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                                                               |
+| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                                                               |
+| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                                                               |
+| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                                                               |
+| 7 Customer ordering             | Implemented; first CI run failed on login rate limiting in E2E (fixed in the Phase 8 push, D-010 note) |
+| 8 Payments and fiscal           | Implemented and validated locally; CI pending on push                                                  |
+| 9–16                            | Not started                                                                                            |
 
 ## Phase 2 — delivered
 
@@ -69,6 +70,15 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 53 integration (5 new), 24 Playwright tests (guest QR order → live approval → tracking; website delivery).
 - Deferred: Telegram Mini App channel (Phase 9/14), customer accounts and loyalty (Phase 9), online payment (Phase 8).
 
+## Phase 8 — delivered
+
+- Payme Merchant API and Click SHOP API callbacks with full state handling, verified capture into the order/payment ledger, auto-accept of paid online orders.
+- Provider settings page (write-only secrets, callback URLs, test mode), hosted checkout buttons on the customer tracking page, reconciliation report (finance.view).
+- Fiscal adapter boundary: completed orders record fiscal status NOT_CONFIGURED; receipts state non-fiscal.
+- CI fix: per-IP credential limit made configurable (`CREDENTIAL_RATE_LIMIT`), raised for E2E servers; Playwright github reporter exposes failures as public annotations.
+- Evidence: 40 unit, 58 integration (5 new provider-protocol tests), 25 Playwright (+1 desktop-only).
+- External dependencies (not simulated): Payme/Click merchant contracts and sandbox validation, Uzum Bank integration, certified fiscal OFD provider.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -83,4 +93,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 8 — Payments and fiscal integrations: provider adapter interface (Click, Payme, Uzum), signed webhook verification with replay protection, idempotent payment capture into the existing ledger, reconciliation report, fiscal receipt adapter interface. Real provider credentials and fiscal certification are external dependencies and must be documented, not simulated.
+Phase 9 — Delivery, CRM and loyalty: delivery zones and fees, courier assignment and courier mobile screen, delivery statuses and proof, customer profiles (by phone), order history, loyalty points/cashback with an auditable ledger, promo codes/coupons with server validation.

@@ -19,6 +19,7 @@ import {
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
 import { consumeOrderIngredients } from '../inventory/ledger.js';
+import { recordFiscalReceipt } from '../payments/fiscal.js';
 import { findOpenShift } from '../shifts/shifts.routes.js';
 import {
   addEvent,
@@ -625,8 +626,10 @@ export function ordersRouter(services: Services) {
       if (to === 'COMPLETED' && netPaid(order) < order.total)
         throw new AppError(409, 'NOT_FULLY_PAID', 'notFullyPaid');
       // Sold items consume recipe ingredients in the same transaction.
-      if (to === 'COMPLETED')
+      if (to === 'COMPLETED') {
         await consumeOrderIngredients(tx, id, auth.userId);
+        await recordFiscalReceipt(tx, auth.tenantId, id);
+      }
       await tx.order.update({
         where: { id },
         data: {
@@ -993,8 +996,11 @@ export function ordersRouter(services: Services) {
           phone: branch.phone,
         },
         cashier: cashier?.displayName ?? null,
-        // Not a fiscal receipt: fiscal QR/numbers come from an authorized provider (Phase 8).
-        fiscal: null,
+        // Fiscal sign/QR exist only after a certified fiscal provider registers the receipt.
+        fiscal: (await db.fiscalReceipt.findUnique({
+          where: { orderId: order.id },
+          select: { status: true, fiscalSign: true, qrUrl: true },
+        })) ?? { status: 'NOT_CONFIGURED', fiscalSign: null, qrUrl: null },
         order: {
           ...data,
           items: data.items.filter((item) => item.status === 'ACTIVE'),

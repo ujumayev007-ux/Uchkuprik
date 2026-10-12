@@ -22,6 +22,8 @@ export default defineConfig({
   webServer: [
     {
       command: 'npm run dev -w backend',
+      // Many logins from one test IP: raise the per-IP credential limit for E2E only.
+      env: { CREDENTIAL_RATE_LIMIT: '1000' },
       url: 'http://127.0.0.1:4000/api/health/live',
       reuseExistingServer: !process.env.CI,
     },

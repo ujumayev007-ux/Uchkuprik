@@ -147,6 +147,18 @@ export function TrackingPage() {
         : 10_000,
     retry: false,
   });
+  // Hosted Payme/Click checkout; the order is marked paid only by verified callbacks.
+  const payLinks = useQuery({
+    queryKey: ['public', 'pay', token, order.data?.paid],
+    queryFn: () =>
+      api<{
+        due: number;
+        links: { provider: 'PAYME' | 'CLICK'; url: string }[];
+      }>(`/public/orders/${token}/pay`),
+    enabled:
+      !!order.data && !['CANCELLED', 'COMPLETED'].includes(order.data.status),
+    retry: false,
+  });
   if (order.isPending) return <LoadingState />;
   if (order.error) return <StoreUnavailable />;
   const o = order.data;
@@ -196,6 +208,23 @@ export function TrackingPage() {
           </>
         )}
       </section>
+      {payLinks.data && payLinks.data.links.length > 0 && (
+        <section className="card stack">
+          <h2>{t.payments.payOnline}</h2>
+          {payLinks.data.links.map((link) => (
+            <a
+              key={link.provider}
+              className="btn btn-primary btn-lg"
+              href={link.url}
+            >
+              {t.payments.payWith.replace(
+                '{p}',
+                t.payment.methods[link.provider],
+              )}
+            </a>
+          ))}
+        </section>
+      )}
       <section className="card">
         <ul className="plain-list">
           {o.items.map((item, index) => (

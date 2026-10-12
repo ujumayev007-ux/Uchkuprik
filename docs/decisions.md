@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-010 — Payment providers and fiscalization scope (2026-10-12)
+
+- **Decision:** Implement the public Payme Merchant API and Click SHOP API protocols directly (no SDK), per-tenant credentials, full-amount online payments only, provider-initiated cancel of performed payments rejected (refunds stay a staff-approved action recorded in the ledger and executed in the provider cabinet). Uzum Bank and fiscal (OFD) registration are adapter boundaries only.
+- **Reason:** Payme and Click protocols are public and testable; Uzum merchant integration and fiscal OFD integration require contracts, certification and credentials that are external dependencies — they must not be simulated.
+- **Reversal:** Add an Uzum adapter and a certified fiscal adapter (implementing `FiscalAdapter`) once contracts and credentials exist; validate in provider sandboxes before production.
+
 ## D-009 — Online ordering flow (2026-10-12)
 
 - **Decision:** QR and website orders enter a dedicated `PENDING` status and are approved by staff with `orders.approve` (waiters and cashiers by default) before the kitchen sees them; customers track via a token link with polling; payment happens at the counter until verified online payments exist (Phase 8). Online ordering is disabled per tenant by default.

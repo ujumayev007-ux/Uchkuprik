@@ -38,6 +38,8 @@ In **Environment**, configure:
 
 `npm start` applies pending database migrations (`prisma migrate deploy`, non-destructive) before starting. Create the first platform administrator once from the Render Shell: `PLATFORM_ADMIN_USERNAME=<login> PLATFORM_ADMIN_PASSWORD=<strong password> npm run admin:create`, then sign in with business code `platform` and enrol MFA. On Render, `TRUST_PROXY` defaults to 1.
 
+Optional: `CREDENTIAL_RATE_LIMIT` (logins, PIN and public orders per IP per minute, default 20). For online payments register the callback URLs shown on the "Onlayn to‘lovlar" page in the Payme/Click merchant cabinets; they must be reachable over public HTTPS.
+
 Render supplies `PORT` automatically; do not copy the local `.env` to Render. The code also understands Render's `RENDER_EXTERNAL_URL` if `APP_ORIGIN` is absent. A custom domain requires updating `APP_ORIGIN` accordingly. `DATABASE_URL` remains required; a missing or invalid database configuration must not appear as a healthy deployment.
 
 `render.yaml` records equivalent settings for a future Blueprint. Merely committing that file does not reconfigure an existing manually created service.

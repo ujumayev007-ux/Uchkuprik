@@ -122,3 +122,19 @@ Public endpoints need no session, return 404 unless the tenant is active and `pu
 | `POST /orders/:id/approve`; `POST /orders/:id/reject` {reason}                                                                                                                                    | orders.approve             |
 
 Settings: `publicOrdering` (default off). Tables expose a printable QR code for `/t/:qrToken`; rotating the token invalidates printed codes.
+
+## Phase 8: online payments and fiscal status
+
+Provider callbacks are authenticated by the provider protocol (no session) and are the only way an online payment is recorded. Online payments must cover the full outstanding amount; a paid PENDING order is accepted automatically.
+
+| Endpoint                                                                                                                                                                                                                 | Access                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `POST /webhooks/payme/:configId` — Payme Merchant API JSON-RPC: CheckPerformTransaction, CreateTransaction, PerformTransaction, CancelTransaction, CheckTransaction, GetStatement (amounts in tiyin, account `order_id`) | HTTP Basic `Paycom:<cashbox key>`         |
+| `POST /webhooks/click/:configId/prepare`, `/complete` — Click SHOP API (form-encoded, `merchant_trans_id` = order id)                                                                                                    | MD5 `sign_string` with the service secret |
+| `GET /payments/providers` (no secrets; callback URLs to register) ; `PUT /payments/providers/:PAYME or CLICK` (secret write-only)                                                                                        | settings.manage (+ step-up for PUT)       |
+| `GET /public/orders/:trackingToken/pay` → {due, links[{provider, url}]} (hosted checkout links)                                                                                                                          | Public                                    |
+| `GET /payments/reconciliation?from&to` (per-provider totals, mismatches)                                                                                                                                                 | finance.view                              |
+
+Payme rules implemented: one open transaction per order (-31052), 12-hour expiry of unperformed transactions (cancel reason 4, -31008), performed transactions cannot be cancelled by the provider (-31007; refunds go through staff approval), idempotent create/perform. Click: prepare/complete with signature checks, failed payments (negative `error`) cancel the transaction, repeated completes return -4.
+
+Receipts include `fiscal` status (`NOT_CONFIGURED` until a certified fiscal provider adapter is configured).

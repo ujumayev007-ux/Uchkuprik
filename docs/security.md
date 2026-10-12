@@ -50,3 +50,7 @@ Every stock change goes through one ledger function that locks the balance row, 
 ## Public ordering (Phase 7)
 
 Public endpoints are opt-in per tenant, scoped by an unguessable table token or the tenant slug, never accept prices (recomputed server-side), never expose costs or staff identifiers, and are rate limited. Customers can only read their own order through a 144-bit tracking token. Unpaid online orders require staff approval before reaching the kitchen, and payment is blocked while an order is pending. Printed table cards are built with DOM APIs so table names cannot inject markup.
+
+## Online payments (Phase 8)
+
+Payments are recorded only from provider callbacks verified by Payme Basic authentication (constant-time compare) or Click MD5 signatures; client redirects never mark anything paid. Merchant secrets are AES-GCM encrypted, write-only in the API and audited on change. Captures lock the order, require the exact due amount, and are idempotent per provider transaction. Callback URLs contain the config id, never secrets. The per-IP credential/public-order rate limit is configurable (`CREDENTIAL_RATE_LIMIT`, default 20/min). Fiscal registration is not claimed: without a certified OFD provider every receipt is labelled non-fiscal.

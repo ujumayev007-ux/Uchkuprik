@@ -127,6 +127,12 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'settings.manage'),
   },
   {
+    to: '/tolovlar',
+    label: t.nav.payments,
+    icon: '₪',
+    visible: (me) => can(me, 'settings.manage'),
+  },
+  {
     to: '/audit',
     label: t.nav.audit,
     icon: '☰',

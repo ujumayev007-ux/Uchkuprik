@@ -530,3 +530,23 @@ tr.clickable {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Payment provider settings */
+.card h2.provider-title {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+.callback-box {
+  display: grid;
+  gap: 6px;
+}
+.callback-box code {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  word-break: break-all;
+  font-size: 12px;
+}

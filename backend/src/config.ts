@@ -60,6 +60,13 @@ const schema = z
       ),
     // Number of trusted reverse-proxy hops (Render: 1). 0 trusts no forwarding headers.
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+    // Per-IP limit for login, PIN and public order requests (per minute).
+    CREDENTIAL_RATE_LIMIT: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10_000)
+      .default(20),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

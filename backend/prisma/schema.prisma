@@ -1013,3 +1013,91 @@ model RecipeLine {
   @@unique([variantId, stockItemId])
   @@map("recipe_lines")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8: online payment providers and fiscal receipts.
+
+enum PaymentProvider {
+  PAYME
+  CLICK
+}
+
+enum ProviderTxState {
+  CREATED
+  PERFORMED
+  CANCELLED
+}
+
+enum FiscalStatus {
+  NOT_CONFIGURED
+  PENDING
+  REGISTERED
+  FAILED
+}
+
+// Merchant credentials per tenant and provider. Secrets are encrypted at rest and
+// never returned by the API.
+model PaymentProviderConfig {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  tenantId       String          @db.Uuid
+  provider       PaymentProvider
+  merchantId     String
+  serviceId      String?
+  merchantUserId String?
+  secretEnc      String
+  isActive       Boolean         @default(true)
+  testMode       Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  transactions ProviderTransaction[]
+
+  @@unique([tenantId, provider])
+  @@unique([tenantId, id])
+  @@map("payment_provider_configs")
+}
+
+// Provider-side transaction lifecycle (Payme create/perform/cancel, Click prepare/complete).
+model ProviderTransaction {
+  id           String          @id @default(uuid(7)) @db.Uuid
+  tenantId     String          @db.Uuid
+  configId     String          @db.Uuid
+  provider     PaymentProvider
+  externalId   String
+  orderId      String          @db.Uuid
+  // Amount in so‘m.
+  amount       Int
+  state        ProviderTxState @default(CREATED)
+  providerTime BigInt?
+  createdAt    DateTime        @default(now())
+  performedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason Int?
+  paymentId    String?         @db.Uuid
+
+  config PaymentProviderConfig @relation(fields: [tenantId, configId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([provider, externalId])
+  @@index([tenantId, createdAt])
+  @@index([orderId])
+  @@map("provider_transactions")
+}
+
+// Fiscal registration attempts per order. Without a certified provider the status
+// stays NOT_CONFIGURED and receipts are printed as non-fiscal.
+model FiscalReceipt {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  tenantId   String       @db.Uuid
+  orderId    String       @db.Uuid
+  status     FiscalStatus
+  provider   String?
+  fiscalSign String?
+  qrUrl      String?
+  error      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([orderId])
+  @@index([tenantId, status])
+  @@map("fiscal_receipts")
+}
