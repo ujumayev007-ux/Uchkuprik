@@ -28,6 +28,11 @@ export const messages = {
   weakPassword:
     'Parol kamida 10 ta belgidan iborat bo‘lishi va harf hamda raqamni o‘z ichiga olishi kerak.',
   lastOwner: 'Kamida bitta faol biznes egasi qolishi kerak.',
+  branchRequired: 'Avval filialni tanlang.',
+  categoryCycle: 'Kategoriya o‘zining ichki kategoriyasiga joylashtirilmaydi.',
+  variantRequired:
+    'Mahsulotda kamida bitta faol o‘lcham yoki variant bo‘lishi kerak.',
+  inUse: 'Bu yozuv ishlatilmoqda va o‘chirib bo‘lmaydi.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

@@ -167,6 +167,22 @@ export function authRouter(services: Services) {
     if (user.tenant.status !== 'ACTIVE')
       throw new AppError(403, 'TENANT_SUSPENDED', 'tenantSuspended');
     const mfaPending = user.mfaEnabledAt !== null;
+    // Start in the first branch the user may work in; they can switch later.
+    const defaultBranch =
+      user.tenant.kind === 'BUSINESS'
+        ? await db.branch.findFirst({
+            where: {
+              tenantId: user.tenantId,
+              isActive: true,
+              deletedAt: null,
+              ...(user.allBranches
+                ? {}
+                : { users: { some: { userId: user.id } } }),
+            },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          })
+        : null;
     const { token, maxAgeMs } = await db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
@@ -177,7 +193,7 @@ export function authRouter(services: Services) {
         userId: user.id,
         authMethod: 'PASSWORD',
         mfaVerified: !mfaPending,
-        branchId: null,
+        branchId: defaultBranch?.id ?? null,
         deviceId: null,
         req,
       });

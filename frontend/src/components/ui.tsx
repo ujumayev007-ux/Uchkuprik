@@ -376,3 +376,42 @@ export function useTheme() {
   }, [dark]);
   return { dark, toggle: () => setDark((value) => !value) };
 }
+
+// --- Money input ------------------------------------------------------------
+
+const group = (value: number) =>
+  value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+/** Integer so‘m input; shows grouped digits and returns a number (or null when empty). */
+export function MoneyField({
+  label,
+  value,
+  onChange,
+  required = false,
+  hint,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  required?: boolean;
+  hint?: string;
+}) {
+  return (
+    <Field label={label} hint={hint}>
+      {(id, describedBy) => (
+        <input
+          id={id}
+          aria-describedby={describedBy}
+          inputMode="numeric"
+          className="money-input"
+          required={required}
+          value={value === null ? '' : group(value)}
+          onChange={(event) => {
+            const digits = event.target.value.replace(/\D/g, '').slice(0, 10);
+            onChange(digits === '' ? null : Number(digits));
+          }}
+        />
+      )}
+    </Field>
+  );
+}

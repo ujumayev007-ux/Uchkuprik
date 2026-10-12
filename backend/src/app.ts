@@ -16,6 +16,9 @@ import { authRouter } from './modules/auth/auth.routes.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
+import { floorRouter } from './modules/floor/floor.routes.js';
+import { menuRouter } from './modules/menu/menu.routes.js';
+import { settingsRouter } from './modules/settings/settings.routes.js';
 import { platformRouter } from './modules/tenants/platform.routes.js';
 import { rolesRouter } from './modules/users/roles.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
@@ -43,7 +46,16 @@ export function createApp({
   app.disable('x-powered-by');
   // Trust only the configured number of proxy hops so req.ip cannot be spoofed.
   app.set('trust proxy', config.TRUST_PROXY ?? 0);
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          // Menu images may be hosted on HTTPS object storage/CDNs; scripts stay same-origin.
+          'img-src': ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
   app.use((_req, res, next) => {
     const requestId = randomUUID();
     const started = performance.now();
@@ -130,6 +142,9 @@ export function createApp({
       devicesRouter,
       platformRouter,
       auditRouter,
+      settingsRouter,
+      floorRouter,
+      menuRouter,
     ])
       app.use('/api', router(services));
   }

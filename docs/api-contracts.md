@@ -36,3 +36,20 @@ Errors are `{ code, message, details? }` with an Uzbek `message`. Codes: `VALIDA
 | `GET /audit-logs?action&before&limit`                                                                           | audit.view                                 |
 | `GET`/`POST /platform/tenants`; `POST /platform/tenants/:id/status`                                             | Platform admin (+ step-up)                 |
 | `GET /platform/audit-logs`                                                                                      | Platform admin                             |
+
+## Phase 3: restaurant configuration
+
+Money fields are integers in so‘m. Cost fields (`cost`) are omitted unless the caller holds `menu.cost.view`; without it, submitted costs are ignored and stored values kept.
+
+| Endpoint                                                                                             | Access                                                                             |
+| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /settings`; `PATCH /settings`                                                                   | Business session; settings.manage + step-up                                        |
+| `GET /floor?branchId`                                                                                | tables.manage or orders.view (QR tokens only for tables.manage)                    |
+| `POST /rooms`, `PATCH /rooms/:id`, `POST /tables`, `PATCH /tables/:id`, `POST /tables/:id/rotate-qr` | tables.manage, branch scope                                                        |
+| `GET /menu?branchId&all`                                                                             | menu.view (`all=true` includes inactive items for menu.manage)                     |
+| `POST /menu/categories`, `PATCH /menu/categories/:id`                                                | menu.manage (cycle check)                                                          |
+| `POST /menu/products`, `PATCH /menu/products/:id`, `DELETE /menu/products/:id`                       | menu.manage; variants upserted by id, removed variants deactivated; delete is soft |
+| `POST /menu/modifier-groups`, `PATCH /menu/modifier-groups/:id`                                      | menu.manage                                                                        |
+| `PUT /menu/branch-prices` {branchId, items[{variantId, price                                         | null, isAvailable}]}                                                               | menu.manage, branch scope |
+
+The session's active branch defaults to the user's first accessible branch at login. `priceVariants()` (backend/src/modules/menu/pricing.ts) is the only source of sale prices for orders.

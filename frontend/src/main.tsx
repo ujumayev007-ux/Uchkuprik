@@ -22,7 +22,10 @@ import { PinPage } from './pages/auth/PinPage';
 import { BranchesPage } from './pages/BranchesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
+import { FloorPage } from './pages/FloorPage';
+import { MenuPage } from './pages/MenuPage';
 import { PlatformTenantsPage } from './pages/PlatformTenantsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { RolesPage } from './pages/RolesPage';
 import { StatusPage } from './pages/StatusPage';
 import { UsersPage } from './pages/UsersPage';
@@ -139,6 +142,32 @@ const router = createBrowserRouter([
     element: <RequireSession />,
     children: [
       { path: '/', element: <Home /> },
+      {
+        path: '/menyu',
+        element: (
+          <Guard allow={(me) => can(me, 'menu.view')}>
+            <MenuPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/zallar',
+        element: (
+          <Guard
+            allow={(me) => can(me, 'tables.manage') || can(me, 'orders.view')}
+          >
+            <FloorPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/sozlamalar',
+        element: (
+          <Guard allow={(me) => me.tenantKind === 'BUSINESS'}>
+            <SettingsPage />
+          </Guard>
+        ),
+      },
       {
         path: '/xodimlar',
         element: (

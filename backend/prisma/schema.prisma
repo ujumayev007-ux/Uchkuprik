@@ -51,11 +51,14 @@ model Tenant {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  branches Branch[]
-  users    User[]
-  roles    Role[]
-  sessions Session[]
-  devices  Device[]
+  branches       Branch[]
+  users          User[]
+  roles          Role[]
+  sessions       Session[]
+  devices        Device[]
+  profile        TenantProfile?
+  menuCategories MenuCategory[]
+  modifierGroups ModifierGroup[]
 
   @@map("tenants")
 }
@@ -74,10 +77,13 @@ model Branch {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   users    UserBranch[]
   devices  Device[]
   sessions Session[]
+  rooms    Room[]
+  tables   DiningTable[]
+  prices   BranchVariantPrice[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -239,4 +245,203 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, action, createdAt])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: restaurant configuration. Money is stored as integer amounts in the
+// currency's smallest unit in use (so‘m for UZS); never floating point.
+
+model TenantProfile {
+  tenantId        String   @id @db.Uuid
+  legalName       String?
+  taxId           String?
+  phone           String?
+  address         String?
+  receiptHeader   String?
+  receiptFooter   String?
+  // Percentage in basis points (1000 = 10%).
+  serviceChargeBp Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@map("tenant_profiles")
+}
+
+model Room {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String   @db.Uuid
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tables DiningTable[]
+  branch Branch        @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([branchId, name])
+  @@index([tenantId, branchId])
+  @@map("rooms")
+}
+
+model DiningTable {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String   @db.Uuid
+  roomId    String   @db.Uuid
+  name      String
+  seats     Int      @default(4)
+  // Opaque token for table QR menus (Phase 7); rotate to invalidate printed codes.
+  qrToken   String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  room   Room   @relation(fields: [tenantId, roomId], references: [tenantId, id], onDelete: Restrict)
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([branchId, name])
+  @@index([tenantId, branchId])
+  @@map("dining_tables")
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  parentId  String?  @db.Uuid
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  parent   MenuCategory?  @relation("CategoryTree", fields: [tenantId, parentId], references: [tenantId, id], onDelete: Restrict)
+  children MenuCategory[] @relation("CategoryTree")
+  products Product[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, parentId])
+  @@map("menu_categories")
+}
+
+model Product {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  tenantId        String    @db.Uuid
+  categoryId      String    @db.Uuid
+  name            String
+  description     String?
+  sku             String?
+  barcode         String?
+  imageUrl        String?
+  allergens       String[]
+  prepTimeMinutes Int?
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  category       MenuCategory           @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  variants       ProductVariant[]
+  modifierGroups ProductModifierGroup[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@index([tenantId, categoryId])
+  @@map("products")
+}
+
+// Every product has at least one variant; simple products have a single default size.
+model ProductVariant {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  productId String   @db.Uuid
+  name      String
+  price     Int
+  // Internal cost: only returned to holders of menu.cost.view.
+  cost      Int?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product      Product              @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+  branchPrices BranchVariantPrice[]
+
+  @@unique([tenantId, id])
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model BranchVariantPrice {
+  tenantId    String   @db.Uuid
+  branchId    String   @db.Uuid
+  variantId   String   @db.Uuid
+  // Null keeps the base price and only overrides availability.
+  price       Int?
+  isAvailable Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  variant ProductVariant @relation(fields: [tenantId, variantId], references: [tenantId, id], onDelete: Cascade)
+  branch  Branch         @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([branchId, variantId])
+  @@index([tenantId, variantId])
+  @@map("branch_variant_prices")
+}
+
+model ModifierGroup {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  minSelect Int      @default(0)
+  maxSelect Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  options  ModifierOption[]
+  products ProductModifierGroup[]
+
+  @@unique([tenantId, id])
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  tenantId  String  @db.Uuid
+  groupId   String  @db.Uuid
+  name      String
+  price     Int     @default(0)
+  cost      Int?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  group ModifierGroup @relation(fields: [tenantId, groupId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([groupId])
+  @@map("modifier_options")
+}
+
+model ProductModifierGroup {
+  tenantId  String @db.Uuid
+  productId String @db.Uuid
+  groupId   String @db.Uuid
+  sortOrder Int    @default(0)
+
+  product Product       @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+  group   ModifierGroup @relation(fields: [tenantId, groupId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([productId, groupId])
+  @@map("product_modifier_groups")
 }

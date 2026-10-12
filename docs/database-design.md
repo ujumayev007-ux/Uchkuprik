@@ -27,3 +27,7 @@ Conventions: UUIDv7 keys, snake_case table names, camelCase columns, integer min
 ## Operations
 
 Separate runtime and migration database credentials in deployment. Production runtime requires verified TLS. Restrict database access to application networks. Backups, point-in-time recovery, retention, encryption at rest, restoration drills, and migration rehearsals require deployment infrastructure; they are not implemented by a local Docker volume.
+
+## Phase 3 schema (migrations `restaurant_configuration`, `restaurant_constraints`)
+
+`tenant_profiles` (1:1 tenant), `rooms`, `dining_tables` (unique name per branch, rotatable `qrToken`), `menu_categories` (self-referencing tree, tenant-scoped parent FK), `products` (soft delete, `version`, unique SKU/barcode per tenant), `product_variants` (every product has ≥1; price and internal cost), `branch_variant_prices` (override price and availability per branch), `modifier_groups`, `modifier_options`, `product_modifier_groups`. All child relations use composite `(tenantId, id)` foreign keys; CHECK constraints reject negative amounts, invalid selection bounds, seats outside 1–100 and service charge above 30 %.
