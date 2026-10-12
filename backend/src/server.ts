@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDatabase } from './database.js';
@@ -6,6 +8,16 @@ import { createLogger } from './logger.js';
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.LOG_LEVEL);
+  const frontendDirectory = fileURLToPath(
+    new URL('../../frontend/dist/', import.meta.url),
+  );
+  if (config.SERVE_FRONTEND && !existsSync(`${frontendDirectory}/index.html`)) {
+    logger.fatal(
+      'Frontend build is missing. Run npm run build before npm start.',
+    );
+    process.exitCode = 1;
+    return;
+  }
   const database = createDatabase(config.DATABASE_URL);
   database.pool.on('error', () =>
     logger.error('Idle database connection failed'),
@@ -16,6 +28,7 @@ async function main(): Promise<void> {
     database,
     logger,
     isShuttingDown: () => shuttingDown,
+    ...(config.SERVE_FRONTEND ? { frontendDirectory } : {}),
   });
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info({ port: config.PORT }, 'API listening');

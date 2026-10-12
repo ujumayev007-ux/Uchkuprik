@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: FAST FOOD Foundation API
+  version: 0.1.0
+  description: Read-only health endpoints. No business or tenant APIs are exposed in Phase 1.
+servers:
+  - url: /api
+paths:
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Check process availability without accessing PostgreSQL
+      responses:
+        '200':
+          description: Process is serving requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Healthy'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Check a real PostgreSQL query and shutdown state
+      responses:
+        '200':
+          description: PostgreSQL query succeeded and shutdown has not started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Healthy'
+        '503':
+          description: Database unavailable or API shutting down
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    const: unavailable
+                  message:
+                    type: string
+                    description: Uzbek user-facing message without internal details
+        '429':
+          description: Source IP exceeded the request limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+components:
+  schemas:
+    Healthy:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          const: ok
+        message:
+          type: string
+          description: Uzbek user-facing message
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+          description: Uzbek user-facing message
+  responses:
+    ForbiddenOrigin:
+      description: Browser origin is not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

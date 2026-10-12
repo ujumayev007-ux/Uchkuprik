@@ -1,0 +1,338 @@
+:root {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #24272c;
+  background: #f8f7f4;
+  font-synthesis: none;
+  --surface: #ffffff;
+  --text: #24272c;
+  --muted: #747775;
+  --line: #e8e8e2;
+  --accent: #ce431b;
+  --accent-soft: #fff0e9;
+  --green: #237755;
+  --green-soft: #e8f5ee;
+  --shadow: 0 20px 65px -35px #2b251f40;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  background: #171b1b;
+  --surface: #212626;
+  --text: #f1f3ed;
+  --muted: #afb7b2;
+  --line: #39413d;
+  --accent: #ff9a6e;
+  --accent-soft: #40291f;
+  --green: #83d9ae;
+  --green-soft: #203c30;
+  --shadow: 0 20px 65px -35px #0009;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  color: var(--text);
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 5px;
+}
+.app-shell {
+  max-width: 1360px;
+  min-height: 100svh;
+  margin: auto;
+  padding: 0 5%;
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30px 0;
+  border-bottom: 1px solid var(--line);
+  gap: 20px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--text);
+}
+.brand-mark {
+  font-family: 'Manrope', sans-serif;
+  font-size: 27px;
+  font-weight: 800;
+  display: grid;
+  place-content: center;
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: #e95324;
+  color: white;
+}
+.brand-mark span {
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  font-size: 18px;
+}
+.brand strong {
+  display: block;
+  letter-spacing: 1.7px;
+  font-size: 17px;
+  font-weight: 800;
+}
+.brand small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.theme-button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 44px;
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.theme-button > span:first-child {
+  font-size: 20px;
+}
+main {
+  flex: 1;
+  padding: 65px 0 45px;
+}
+.intro {
+  text-align: center;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.eyebrow > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+h1 {
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: clamp(32px, 4.2vw, 54px);
+  line-height: 1.18;
+  letter-spacing: -2px;
+  margin: 20px 0 16px;
+  font-weight: 800;
+}
+h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+.intro > p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin-bottom: 30px;
+}
+.status-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 26px 30px;
+  width: min(100%, 530px);
+  margin: 0 auto;
+  box-shadow: var(--shadow);
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.phase-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.connection-state {
+  text-align: center;
+  padding: 27px 5px 20px;
+}
+.status-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  font-size: 27px;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 50%;
+  margin: 0 auto 18px;
+}
+.ready .status-icon {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.loading .status-icon {
+  animation: spin 2s linear infinite;
+}
+h3 {
+  font-size: 19px;
+  margin: 0 0 9px;
+  font-weight: 700;
+}
+.connection-state p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0 auto;
+  max-width: 330px;
+}
+.primary-button {
+  width: 100%;
+  min-height: 48px;
+  background: #ce431b;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background 0.2s;
+}
+.primary-button:hover:not(:disabled) {
+  background: #ad3716;
+}
+.primary-button span {
+  font-size: 20px;
+}
+.last-checked {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  margin: 16px 0 0;
+}
+.phase-note {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 22px 0 0;
+  text-align: center;
+}
+.phase-note span {
+  font-size: 18px;
+}
+footer {
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 22px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+footer > span:first-child {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+footer p {
+  margin: 0;
+}
+.locale {
+  margin-left: auto;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+@media (max-width: 540px) {
+  .topbar {
+    padding: 20px 0;
+  }
+  .theme-button > span:last-child {
+    display: none;
+  }
+  .theme-button {
+    width: 44px;
+    justify-content: center;
+    padding: 5px;
+  }
+  main {
+    padding: 40px 0 30px;
+  }
+  h1 {
+    letter-spacing: -1px;
+  }
+  .intro > p {
+    font-size: 13px;
+  }
+  .status-card {
+    padding: 22px 20px;
+  }
+  .card-header {
+    gap: 5px;
+  }
+  h2 {
+    font-size: 13px;
+  }
+  footer {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  footer p {
+    width: 100%;
+    order: 3;
+  }
+}

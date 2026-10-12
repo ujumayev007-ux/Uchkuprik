@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+playwright-report
+test-results
+package-lock.json
+backend/src/generated
+.env
+
+# Unreviewed parallel scaffold; excluded until ownership is decided (see docs/decisions.md).
+fastfood-saas

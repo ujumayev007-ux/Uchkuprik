@@ -1,0 +1,20 @@
+# Reference Blueprint. Existing manually created services must use the Settings
+# listed in docs/render-setup.md; committing this file does not change them.
+services:
+  - type: web
+    name: Uchkuprik
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: APP_ORIGIN
+        value: https://uchkuprikfastfood.onrender.com
+      - key: DATABASE_URL
+        sync: false

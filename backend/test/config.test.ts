@@ -13,6 +13,46 @@ describe('environment validation', () => {
     expect(config.HOST).toBe('127.0.0.1');
   });
 
+  it('uses Render-provided host, port, and origin defaults', () => {
+    const config = parseConfig({
+      RENDER: 'true',
+      RENDER_EXTERNAL_URL: 'https://uchkuprikfastfood.onrender.com',
+      NODE_ENV: 'production',
+      DATABASE_URL: `${env.DATABASE_URL}?sslmode=verify-full`,
+      SERVE_FRONTEND: 'true',
+    });
+    expect(config.HOST).toBe('0.0.0.0');
+    expect(config.PORT).toBe(10000);
+    expect(config.APP_ORIGIN).toBe('https://uchkuprikfastfood.onrender.com');
+    expect(config.SERVE_FRONTEND).toBe(true);
+  });
+
+  it('preserves explicitly configured Render values', () => {
+    const config = parseConfig({
+      ...env,
+      RENDER: 'true',
+      RENDER_EXTERNAL_URL: 'https://ignored.onrender.com',
+      APP_ORIGIN: 'https://restaurant.example',
+      HOST: '127.0.0.1',
+      PORT: '4100',
+    });
+    expect(config.APP_ORIGIN).toBe('https://restaurant.example');
+    expect(config.HOST).toBe('127.0.0.1');
+    expect(config.PORT).toBe(4100);
+  });
+
+  it('does not waive database requirements on Render', () => {
+    expect(() =>
+      parseConfig({
+        RENDER: 'true',
+        RENDER_EXTERNAL_URL: 'https://test.onrender.com',
+      }),
+    ).toThrow('DATABASE_URL');
+    expect(() => parseConfig({ ...env, SERVE_FRONTEND: 'yes' })).toThrow(
+      'SERVE_FRONTEND',
+    );
+  });
+
   it.each([
     { DATABASE_URL: undefined },
     { DATABASE_URL: 'https://localhost/database' },

@@ -45,6 +45,10 @@ const schema = z
         );
       }, 'Use an HTTP(S) origin without a path or trailing slash.'),
     DATABASE_URL: postgresUrl,
+    SERVE_FRONTEND: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -72,7 +76,14 @@ const schema = z
 export type AppConfig = z.infer<typeof schema>;
 
 export function parseConfig(env: NodeJS.ProcessEnv): AppConfig {
-  const result = schema.safeParse(env);
+  const onRender = env.RENDER === 'true';
+  const result = schema.safeParse({
+    ...env,
+    HOST: env.HOST ?? (onRender ? '0.0.0.0' : undefined),
+    PORT: env.PORT ?? (onRender ? '10000' : undefined),
+    APP_ORIGIN:
+      env.APP_ORIGIN ?? (onRender ? env.RENDER_EXTERNAL_URL : undefined),
+  });
   if (!result.success) {
     // Include field names only; validation errors must never echo credentials.
     const fields = [

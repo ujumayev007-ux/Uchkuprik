@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { extname, join } from 'node:path';
 import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
@@ -13,6 +14,7 @@ type Dependencies = {
   database: DatabaseProbe;
   logger: Logger;
   isShuttingDown?: () => boolean;
+  frontendDirectory?: string;
 };
 
 export function createApp({
@@ -20,6 +22,7 @@ export function createApp({
   database,
   logger,
   isShuttingDown = () => false,
+  frontendDirectory,
 }: Dependencies) {
   const app = express();
   app.disable('x-powered-by');
@@ -90,6 +93,30 @@ export function createApp({
         .json({ status: 'unavailable', message: messages.unavailable });
     }
   });
+  // Never return the SPA document for an unknown API endpoint.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ code: 'NOT_FOUND', message: messages.notFound });
+  });
+  if (frontendDirectory) {
+    // Serve the frontend build only, never the repository or server files.
+    app.use(
+      express.static(frontendDirectory, {
+        index: false,
+        dotfiles: 'ignore',
+        redirect: false,
+      }),
+    );
+    app.get('/{*path}', (req, res, next) => {
+      const hiddenPath = req.path
+        .split('/')
+        .some((part) => part.startsWith('.'));
+      if (hiddenPath || extname(req.path) || !req.accepts('html')) {
+        next();
+        return;
+      }
+      res.sendFile(join(frontendDirectory, 'index.html'));
+    });
+  }
   app.use((_req, res) => {
     res.status(404).json({ code: 'NOT_FOUND', message: messages.notFound });
   });
