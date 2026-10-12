@@ -25,3 +25,9 @@ Use `npm audit --audit-level=high` for the complete dependency graph, including 
 If Playwright's Chromium download is unavailable on Windows but Google Chrome is installed, set `$env:PLAYWRIGHT_CHANNEL='chrome'` before running `npm run test:e2e`. This starts a separate headless test browser and does not use the user's browser profile. CI installs Chromium directly.
 
 Each increment must record actual outcomes and blockers in the delivery report. A committed workflow is not evidence that remote CI ran successfully. No restaurant workflow, tenant isolation, payment, or inventory test is claimed before its implementation phase.
+
+## Phase 2 additions
+
+- `npm run test:integration` now applies migrations (`prisma migrate deploy`) and runs `backend/test/*.integration.test.ts` against real PostgreSQL: authentication, lockout, MFA replay, device-bound PIN, tenant isolation, privilege escalation, step-up, suspension, last-owner and audit immutability.
+- `backend/test/security.test.ts` covers scrypt hashing, AES-GCM secret box, PIN keying and RFC 6238 TOTP vectors.
+- Playwright `e2e/global-setup.ts` seeds a unique demo business per run; `e2e/auth.spec.ts` covers login errors, staff creation, device registration, audit entries and PIN keypad login on desktop and mobile. The status screen moved to `/holat`.

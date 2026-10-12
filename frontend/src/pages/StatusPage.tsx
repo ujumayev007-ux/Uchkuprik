@@ -1,21 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { getReadiness } from './api';
-import { defaultLocale, text } from './i18n';
+import { Link } from 'react-router';
+import { getReadiness } from '../api';
+import { useTheme } from '../components/ui';
+import { defaultLocale, t, text } from '../i18n';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'offline';
 
-export default function App() {
+export function StatusPage() {
   const [status, setStatus] = useState<Status>('loading');
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [dark, setDark] = useState(
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches,
-  );
+  const { dark, toggle } = useTheme();
   const pending = useRef(false);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  }, [dark]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,7 +49,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label={text.brand}>
+        <Link className="brand" to="/" aria-label={text.brand}>
           <span className="brand-mark" aria-hidden="true">
             F<span>•</span>
           </span>
@@ -61,10 +57,10 @@ export default function App() {
             <strong>{text.brand}</strong>
             <small>{text.product}</small>
           </span>
-        </a>
+        </Link>
         <button
           className="theme-button"
-          onClick={() => setDark(!dark)}
+          onClick={toggle}
           aria-label={dark ? text.lightTheme : text.darkTheme}
         >
           <span aria-hidden="true">{dark ? '☀' : '☾'}</span>
@@ -136,7 +132,9 @@ export default function App() {
       <footer>
         <span>{text.brand}</span>
         <p>{text.footer}</p>
-        <span className="locale">O‘zbekcha</span>
+        <Link className="locale" to="/kirish">
+          {t.auth.submit}
+        </Link>
       </footer>
     </div>
   );

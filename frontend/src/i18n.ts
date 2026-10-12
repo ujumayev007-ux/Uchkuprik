@@ -1,3 +1,5 @@
+import { uz as uzCatalog } from './locales/uz';
+
 // Extend the locale union and add complete catalogs when translations are approved.
 export type SupportedLocale = 'uz';
 export const defaultLocale: SupportedLocale = 'uz';
@@ -29,3 +31,9 @@ const uz = {
 } as const;
 const catalogs = { uz };
 export const text = catalogs[defaultLocale];
+
+// Application catalog (see locales/). Future locales must satisfy the same shape.
+type Widen<T> = { [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
+export type Catalog = Widen<typeof uzCatalog>;
+const appCatalogs: Record<SupportedLocale, Catalog> = { uz: uzCatalog };
+export const t = appCatalogs[defaultLocale];

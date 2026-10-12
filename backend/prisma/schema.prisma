@@ -1,11 +1,242 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-// Phase 2 introduces tenant-scoped business models and the first reviewed migration.
-// Phase 1 uses a read-only PostgreSQL probe and does not modify any database schema.
+// Conventions: UUIDv7 keys, table names mapped to snake_case, every business row
+// carries tenantId. Tenant scoping is enforced in the service layer from the
+// authenticated session, never from client-provided identifiers.
+
+enum TenantKind {
+  PLATFORM
+  BUSINESS
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AuthMethod {
+  PASSWORD
+  PIN
+}
+
+enum DeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+model Tenant {
+  id                  String       @id @default(uuid(7)) @db.Uuid
+  slug                String       @unique
+  name                String
+  kind                TenantKind   @default(BUSINESS)
+  status              TenantStatus @default(ACTIVE)
+  // Security policy: when true every user with a privileged role must use MFA.
+  requireMfaForAdmins Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  branches Branch[]
+  users    User[]
+  roles    Role[]
+  sessions Session[]
+  devices  Device[]
+
+  @@map("tenants")
+}
+
+model Branch {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  tenantId  String    @db.Uuid
+  code      String
+  name      String
+  address   String?
+  phone     String?
+  timezone  String    @default("Asia/Tashkent")
+  currency  String    @default("UZS")
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  users    UserBranch[]
+  devices  Device[]
+  sessions Session[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@index([tenantId, isActive])
+  @@map("branches")
+}
+
+model User {
+  id                 String     @id @default(uuid(7)) @db.Uuid
+  tenantId           String     @db.Uuid
+  username           String
+  displayName        String
+  phone              String?
+  status             UserStatus @default(ACTIVE)
+  isPlatformAdmin    Boolean    @default(false)
+  // True grants access to every branch of the tenant; otherwise see UserBranch.
+  allBranches        Boolean    @default(false)
+  passwordHash       String?
+  passwordChangedAt  DateTime?
+  mustChangePassword Boolean    @default(false)
+  pinHash            String?
+  pinChangedAt       DateTime?
+  mfaSecretEnc       String?
+  mfaEnabledAt       DateTime?
+  mfaLastStep        BigInt?
+  failedLoginCount   Int        @default(0)
+  lockedUntil        DateTime?
+  failedPinCount     Int        @default(0)
+  pinLockedUntil     DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  roles    UserRole[]
+  branches UserBranch[]
+  sessions Session[]
+
+  @@unique([tenantId, username])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  // Stable key for system roles (owner, admin, cashier...). Null for custom roles.
+  systemKey   String?
+  name        String
+  description String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  users  UserRole[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, systemKey])
+  @@unique([tenantId, id])
+  @@map("roles")
+}
+
+model UserRole {
+  tenantId  String   @db.Uuid
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  // Composite foreign keys make cross-tenant assignments impossible in the database.
+  user User @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Cascade)
+  role Role @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([tenantId, roleId])
+  @@map("user_roles")
+}
+
+model UserBranch {
+  tenantId String @db.Uuid
+  userId   String @db.Uuid
+  branchId String @db.Uuid
+
+  user   User   @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Cascade)
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([userId, branchId])
+  @@index([tenantId, branchId])
+  @@map("user_branches")
+}
+
+model Device {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  tenantId       String       @db.Uuid
+  branchId       String       @db.Uuid
+  name           String
+  tokenHash      String       @unique
+  status         DeviceStatus @default(ACTIVE)
+  registeredById String       @db.Uuid
+  lastSeenAt     DateTime?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch   Branch    @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  sessions Session[]
+
+  @@index([tenantId, branchId])
+  @@map("devices")
+}
+
+model Session {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  tokenHash     String     @unique
+  tenantId      String     @db.Uuid
+  userId        String     @db.Uuid
+  branchId      String?    @db.Uuid
+  deviceId      String?    @db.Uuid
+  authMethod    AuthMethod
+  // False until the second factor is verified for MFA-enabled users.
+  mfaVerified   Boolean    @default(false)
+  reauthAt      DateTime?
+  createdAt     DateTime   @default(now())
+  lastSeenAt    DateTime   @default(now())
+  idleExpiresAt DateTime
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokeReason  String?
+  ipAddress     String?
+  userAgent     String?
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user   User    @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, revokedAt])
+  @@index([tenantId, createdAt])
+  @@map("sessions")
+}
+
+// Append-only. A database trigger rejects UPDATE and DELETE (see migration).
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  tenantId    String?  @db.Uuid
+  branchId    String?  @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String?
+  entityId    String?
+  outcome     String   @default("SUCCESS")
+  data        Json?
+  ipAddress   String?
+  requestId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action, createdAt])
+  @@map("audit_logs")
+}

@@ -119,7 +119,7 @@ a:focus-visible {
 .theme-button > span:first-child {
   font-size: 20px;
 }
-main {
+.app-shell main {
   flex: 1;
   padding: 65px 0 45px;
 }
@@ -139,7 +139,7 @@ main {
   border-radius: 50%;
   background: var(--accent);
 }
-h1 {
+.app-shell h1 {
   font-family: 'Manrope', system-ui, sans-serif;
   font-size: clamp(32px, 4.2vw, 54px);
   line-height: 1.18;
@@ -147,7 +147,7 @@ h1 {
   margin: 20px 0 16px;
   font-weight: 800;
 }
-h1 em {
+.app-shell h1 em {
   font-style: normal;
   color: var(--accent);
 }
@@ -174,7 +174,7 @@ h1 em {
   padding-bottom: 22px;
   border-bottom: 1px solid var(--line);
 }
-h2 {
+.app-shell h2 {
   margin: 0;
   font-size: 15px;
   font-weight: 700;
@@ -210,7 +210,7 @@ h2 {
 .loading .status-icon {
   animation: spin 2s linear infinite;
 }
-h3 {
+.app-shell h3 {
   font-size: 19px;
   margin: 0 0 9px;
   font-weight: 700;
@@ -263,7 +263,7 @@ h3 {
 .phase-note span {
   font-size: 18px;
 }
-footer {
+.app-shell footer {
   border-top: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -272,13 +272,13 @@ footer {
   color: var(--muted);
   font-size: 11px;
 }
-footer > span:first-child {
+.app-shell footer > span:first-child {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--text);
 }
-footer p {
+.app-shell footer p {
   margin: 0;
 }
 .locale {

@@ -102,11 +102,11 @@ describe('health API', () => {
 
   it('limits readiness traffic while preserving liveness probes', async () => {
     const { app, check } = fixture();
-    for (let index = 0; index < 120; index += 1)
+    for (let index = 0; index < 600; index += 1)
       await request(app).get('/api/health/ready').expect(200);
     const limited = await request(app).get('/api/health/ready').expect(429);
     expect(limited.body.code).toBe('RATE_LIMITED');
-    expect(check).toHaveBeenCalledTimes(120);
+    expect(check).toHaveBeenCalledTimes(600);
     await request(app).get('/api/health/live').expect(200);
   });
 });

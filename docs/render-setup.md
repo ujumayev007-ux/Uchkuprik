@@ -28,12 +28,15 @@ The root `.nvmrc` selects Node.js 24. Remove/update any conflicting older `NODE_
 
 In **Environment**, configure:
 
-| Key            | Value                                                   |
-| -------------- | ------------------------------------------------------- |
-| `NODE_ENV`     | `production`                                            |
-| `HOST`         | `0.0.0.0`                                               |
-| `APP_ORIGIN`   | `https://uchkuprikfastfood.onrender.com`                |
-| `DATABASE_URL` | Your database's external URL with `sslmode=verify-full` |
+| Key              | Value                                                                                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`       | `production`                                                                                                                                                                               |
+| `HOST`           | `0.0.0.0`                                                                                                                                                                                  |
+| `APP_ORIGIN`     | `https://uchkuprikfastfood.onrender.com`                                                                                                                                                   |
+| `DATABASE_URL`   | Your database's external URL with `sslmode=verify-full`                                                                                                                                    |
+| `APP_SECRET_KEY` | 32 random bytes, base64. **Required since Phase 2.** Generate once (for example with `openssl rand -base64 32`) and keep it stable: changing it invalidates MFA enrolments and staff PINs. |
+
+`npm start` applies pending database migrations (`prisma migrate deploy`, non-destructive) before starting. Create the first platform administrator once from the Render Shell: `PLATFORM_ADMIN_USERNAME=<login> PLATFORM_ADMIN_PASSWORD=<strong password> npm run admin:create`, then sign in with business code `platform` and enrol MFA. On Render, `TRUST_PROXY` defaults to 1.
 
 Render supplies `PORT` automatically; do not copy the local `.env` to Render. The code also understands Render's `RENDER_EXTERNAL_URL` if `APP_ORIGIN` is absent. A custom domain requires updating `APP_ORIGIN` accordingly. `DATABASE_URL` remains required; a missing or invalid database configuration must not appear as a healthy deployment.
 

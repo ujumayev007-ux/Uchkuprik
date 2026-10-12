@@ -9,4 +9,25 @@ export const messages = {
   rateLimited:
     'So‘rovlar soni oshib ketdi. Birozdan keyin qayta urinib ko‘ring.',
   internal: 'Kutilmagan xatolik yuz berdi. Qayta urinib ko‘ring.',
+  validation: 'Kiritilgan ma’lumotlarni tekshiring.',
+  invalidCredentials: 'Login yoki parol noto‘g‘ri.',
+  invalidPin: 'PIN-kod noto‘g‘ri.',
+  accountLocked:
+    'Juda ko‘p noto‘g‘ri urinish. Hisob vaqtincha bloklandi, keyinroq urinib ko‘ring.',
+  unauthenticated: 'Iltimos, tizimga kiring.',
+  forbidden: 'Bu amal uchun ruxsatingiz yo‘q.',
+  mfaRequired: 'Ikki bosqichli tasdiqlash kodi talab qilinadi.',
+  mfaSetupRequired: 'Davom etish uchun ikki bosqichli himoyani yoqing.',
+  mfaInvalid: 'Tasdiqlash kodi noto‘g‘ri yoki eskirgan.',
+  reauthRequired: 'Bu amal uchun parolingizni qayta kiriting.',
+  passwordChangeRequired: 'Davom etish uchun parolingizni almashtiring.',
+  tenantSuspended:
+    'Biznes hisobi to‘xtatilgan. Qo‘llab-quvvatlash xizmatiga murojaat qiling.',
+  deviceRequired: 'Bu amal faqat ro‘yxatdan o‘tgan qurilmada bajariladi.',
+  conflict: 'Bunday yozuv allaqachon mavjud.',
+  weakPassword:
+    'Parol kamida 10 ta belgidan iborat bo‘lishi va harf hamda raqamni o‘z ichiga olishi kerak.',
+  lastOwner: 'Kamida bitta faol biznes egasi qolishi kerak.',
 } as const;
+
+export type MessageKey = keyof typeof messages;

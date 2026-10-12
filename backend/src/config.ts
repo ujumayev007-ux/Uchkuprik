@@ -49,6 +49,17 @@ const schema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // 32 random bytes (base64). Encrypts MFA secrets and keys PIN hashes.
+    APP_SECRET_KEY: z
+      .string()
+      .refine(
+        (value) =>
+          !value.includes('REPLACE_WITH_') &&
+          Buffer.from(value, 'base64').length >= 32,
+        'APP_SECRET_KEY must be at least 32 random bytes in base64.',
+      ),
+    // Number of trusted reverse-proxy hops (Render: 1). 0 trusts no forwarding headers.
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -81,6 +92,7 @@ export function parseConfig(env: NodeJS.ProcessEnv): AppConfig {
     ...env,
     HOST: env.HOST ?? (onRender ? '0.0.0.0' : undefined),
     PORT: env.PORT ?? (onRender ? '10000' : undefined),
+    TRUST_PROXY: env.TRUST_PROXY ?? (onRender ? '1' : undefined),
     APP_ORIGIN:
       env.APP_ORIGIN ?? (onRender ? env.RENDER_EXTERNAL_URL : undefined),
   });

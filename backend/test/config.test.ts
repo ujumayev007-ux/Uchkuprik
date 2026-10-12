@@ -4,6 +4,7 @@ import { parseConfig } from '../src/config.js';
 const env = {
   APP_ORIGIN: 'http://localhost:5173',
   DATABASE_URL: 'postgresql://test:unit-test-value@localhost:5433/test',
+  APP_SECRET_KEY: Buffer.alloc(32, 7).toString('base64'),
 };
 
 describe('environment validation', () => {
@@ -19,8 +20,10 @@ describe('environment validation', () => {
       RENDER_EXTERNAL_URL: 'https://uchkuprikfastfood.onrender.com',
       NODE_ENV: 'production',
       DATABASE_URL: `${env.DATABASE_URL}?sslmode=verify-full`,
+      APP_SECRET_KEY: env.APP_SECRET_KEY,
       SERVE_FRONTEND: 'true',
     });
+    expect(config.TRUST_PROXY).toBe(1);
     expect(config.HOST).toBe('0.0.0.0');
     expect(config.PORT).toBe(10000);
     expect(config.APP_ORIGIN).toBe('https://uchkuprikfastfood.onrender.com');
@@ -51,6 +54,19 @@ describe('environment validation', () => {
     expect(() => parseConfig({ ...env, SERVE_FRONTEND: 'yes' })).toThrow(
       'SERVE_FRONTEND',
     );
+  });
+
+  it('requires a strong APP_SECRET_KEY and trusts no proxy by default', () => {
+    expect(parseConfig(env).TRUST_PROXY).toBe(0);
+    for (const APP_SECRET_KEY of [
+      undefined,
+      'short',
+      'REPLACE_WITH_RANDOM_SECRET_KEY',
+      Buffer.alloc(16).toString('base64'),
+    ])
+      expect(() => parseConfig({ ...env, APP_SECRET_KEY })).toThrow(
+        'APP_SECRET_KEY',
+      );
   });
 
   it.each([

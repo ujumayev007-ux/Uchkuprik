@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-005 — Phase 2 identity architecture (2026-10-12)
+
+- **Decision:** Prisma 7 client (pg adapter) for persistence with hand-reviewed SQL migrations. Platform administrators live in a reserved `PLATFORM` tenant so one `(tenantId, username)` uniqueness rule covers everyone. Opaque server-side sessions in SameSite=Strict httpOnly cookies (no JWT). scrypt via Node crypto (no native deps) for passwords and PINs; PIN input is HMAC-keyed with a secret derived from `APP_SECRET_KEY`. PIN login only on registered devices; PIN sessions can never step up. TOTP implemented in-house (RFC 6238 vectors tested). Branch access = all branches or explicit list.
+- **Reason:** Instant revocation, simple CSRF story, no extra infrastructure, and a 4-digit PIN is never the sole protection for administrative operations.
+- **Reversal:** Move rate limiting/session cache to Redis when running multiple instances.
+
 ## D-004 — CI is the authoritative database gate (2026-10-12)
 
 - **Decision:** Database acceptance gates are satisfied by the GitHub Actions run against a real PostgreSQL, since no local database is available. Phase 1 accepted on run 38213267724.

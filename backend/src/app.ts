@@ -2,15 +2,29 @@ import { randomUUID } from 'node:crypto';
 import { extname, join } from 'node:path';
 import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { sha256 } from './lib/crypto.js';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
 import type { AppConfig } from './config.js';
+import type { Services } from './context.js';
 import type { DatabaseProbe } from './database.js';
+import { AppError, sendError } from './http/errors.js';
 import { messages } from './messages.js';
+import { auditRouter } from './modules/audit/audit.routes.js';
+import { authRouter } from './modules/auth/auth.routes.js';
+import { loadSession } from './modules/auth/session.js';
+import { branchesRouter } from './modules/branches/branches.routes.js';
+import { devicesRouter } from './modules/devices/devices.routes.js';
+import { platformRouter } from './modules/tenants/platform.routes.js';
+import { rolesRouter } from './modules/users/roles.routes.js';
+import { usersRouter } from './modules/users/users.routes.js';
 
 type Dependencies = {
-  config: Pick<AppConfig, 'APP_ORIGIN'>;
+  config: Pick<AppConfig, 'APP_ORIGIN'> &
+    Partial<Pick<AppConfig, 'TRUST_PROXY'>>;
+  // Business APIs are mounted only when persistence services are provided.
+  services?: Services;
   database: DatabaseProbe;
   logger: Logger;
   isShuttingDown?: () => boolean;
@@ -23,10 +37,12 @@ export function createApp({
   logger,
   isShuttingDown = () => false,
   frontendDirectory,
+  services,
 }: Dependencies) {
   const app = express();
   app.disable('x-powered-by');
-  // Proxy trust stays off until a deployment-specific trusted proxy range is defined.
+  // Trust only the configured number of proxy hops so req.ip cannot be spoofed.
+  app.set('trust proxy', config.TRUST_PROXY ?? 0);
   app.use(helmet());
   app.use((_req, res, next) => {
     const requestId = randomUUID();
@@ -67,7 +83,17 @@ export function createApp({
     '/api',
     rateLimit({
       windowMs: 60000,
-      limit: 120,
+      limit: services?.limits?.apiPerMinute ?? 600,
+      // Terminals of one restaurant often share a NAT address, so authenticated
+      // traffic is limited per session and anonymous traffic per IP.
+      keyGenerator: (req) => {
+        const cookie = req.headers.cookie?.match(
+          /ff_session=([A-Za-z0-9_-]+)/,
+        )?.[1];
+        return cookie
+          ? `s:${sha256(cookie)}`
+          : `ip:${ipKeyGenerator(req.ip ?? '')}`;
+      },
       standardHeaders: 'draft-8',
       legacyHeaders: false,
       message: { code: 'RATE_LIMITED', message: messages.rateLimited },
@@ -93,6 +119,20 @@ export function createApp({
         .json({ status: 'unavailable', message: messages.unavailable });
     }
   });
+  if (services) {
+    app.use('/api', express.json({ limit: '100kb' }));
+    app.use('/api', loadSession(services));
+    for (const router of [
+      authRouter,
+      usersRouter,
+      rolesRouter,
+      branchesRouter,
+      devicesRouter,
+      platformRouter,
+      auditRouter,
+    ])
+      app.use('/api', router(services));
+  }
   // Never return the SPA document for an unknown API endpoint.
   app.use('/api', (_req, res) => {
     res.status(404).json({ code: 'NOT_FOUND', message: messages.notFound });
@@ -121,13 +161,38 @@ export function createApp({
     res.status(404).json({ code: 'NOT_FOUND', message: messages.notFound });
   });
   const handleError: ErrorRequestHandler = (
-    _error: unknown,
+    error: unknown,
     _req,
     res,
     _next,
   ) => {
+    if (error instanceof AppError) {
+      if (!res.headersSent) sendError(res, error);
+      return;
+    }
+    // Malformed JSON bodies from express.json().
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'type' in error &&
+      (error.type === 'entity.parse.failed' ||
+        error.type === 'entity.too.large')
+    ) {
+      res
+        .status(400)
+        .json({ code: 'VALIDATION_ERROR', message: messages.validation });
+      return;
+    }
+    // Log only the error class and driver code; messages may contain data.
     logger.error(
-      { requestId: res.locals.requestId },
+      {
+        requestId: res.locals.requestId,
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorCode:
+          typeof error === 'object' && error !== null && 'code' in error
+            ? String(error.code)
+            : undefined,
+      },
       'Unhandled request error',
     );
     if (!res.headersSent)

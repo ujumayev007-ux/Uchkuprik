@@ -18,3 +18,5 @@ services:
         value: https://uchkuprikfastfood.onrender.com
       - key: DATABASE_URL
         sync: false
+      - key: APP_SECRET_KEY
+        generateValue: true

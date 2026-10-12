@@ -1,0 +1,226 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router';
+import { can, meKey, useMe, type Me } from '../auth/session';
+import { t } from '../i18n';
+import { api, post } from '../lib/api';
+import { ReauthDialog } from './ReauthDialog';
+import { useTheme, useToast } from './ui';
+
+export type Branch = {
+  id: string;
+  code: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  timezone: string;
+  currency: string;
+  isActive: boolean;
+};
+
+type NavItem = {
+  to: string;
+  label: string;
+  icon: string;
+  visible: (me: Me) => boolean;
+};
+
+// Items appear only when the server-issued permissions allow them. Hiding a link is a
+// convenience; every endpoint still enforces authorization on the server.
+export const navItems: NavItem[] = [
+  {
+    to: '/',
+    label: t.nav.dashboard,
+    icon: '◧',
+    visible: (me) => me.tenantKind === 'BUSINESS',
+  },
+  {
+    to: '/xodimlar',
+    label: t.nav.staff,
+    icon: '◉',
+    visible: (me) => can(me, 'users.view'),
+  },
+  {
+    to: '/rollar',
+    label: t.nav.roles,
+    icon: '⚿',
+    visible: (me) => can(me, 'users.view'),
+  },
+  {
+    to: '/filiallar',
+    label: t.nav.branches,
+    icon: '⌂',
+    visible: (me) => can(me, 'branches.view') || can(me, 'branches.manage'),
+  },
+  {
+    to: '/qurilmalar',
+    label: t.nav.devices,
+    icon: '▣',
+    visible: (me) => can(me, 'devices.manage'),
+  },
+  {
+    to: '/audit',
+    label: t.nav.audit,
+    icon: '☰',
+    visible: (me) => can(me, 'audit.view'),
+  },
+  {
+    to: '/platforma/bizneslar',
+    label: t.nav.tenants,
+    icon: '◈',
+    visible: (me) => me.isPlatformAdmin,
+  },
+  {
+    to: '/platforma/audit',
+    label: t.nav.platformAudit,
+    icon: '☰',
+    visible: (me) => me.isPlatformAdmin,
+  },
+  {
+    to: '/hisob',
+    label: t.nav.account,
+    icon: '☺',
+    visible: (me) => me.authMethod === 'PASSWORD',
+  },
+];
+
+export function useBranches(enabled = true) {
+  return useQuery({
+    queryKey: ['branches'],
+    queryFn: () =>
+      api<{ branches: Branch[] }>('/branches').then((data) => data.branches),
+    enabled,
+  });
+}
+
+function BranchSwitcher({ me }: { me: Me }) {
+  const branches = useBranches(me.tenantKind === 'BUSINESS');
+  const client = useQueryClient();
+  const toast = useToast();
+  const active = branches.data?.filter((branch) => branch.isActive) ?? [];
+  if (me.tenantKind !== 'BUSINESS' || active.length === 0) return null;
+  if (me.authMethod === 'PIN') {
+    const branch = active.find((item) => item.id === me.activeBranchId);
+    return <span className="branch-pill">⌂ {branch?.name ?? '—'}</span>;
+  }
+  return (
+    <label className="branch-select">
+      <span className="sr-only">{t.nav.branch}</span>
+      <select
+        value={me.activeBranchId ?? ''}
+        onChange={async (event) => {
+          try {
+            await post('/auth/branch', { branchId: event.target.value });
+            await client.invalidateQueries();
+          } catch {
+            toast(t.common.errorTitle, 'error');
+          }
+        }}
+      >
+        {!me.activeBranchId && <option value="">{t.nav.selectBranch}</option>}
+        {active.map((branch) => (
+          <option key={branch.id} value={branch.id}>
+            {branch.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function AppShell() {
+  const { data: me } = useMe();
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const [menuOpen, setMenuOpen] = useState(false);
+  if (!me) return null;
+  const items = navItems.filter((item) => item.visible(me));
+
+  const logout = async () => {
+    await post('/auth/logout').catch(() => undefined);
+    client.setQueryData(meKey, null);
+    client.clear();
+    navigate(me.authMethod === 'PIN' ? '/pin' : '/kirish', { replace: true });
+  };
+
+  return (
+    <div className={`shell ${menuOpen ? 'menu-open' : ''}`}>
+      <aside className="sidebar" aria-label={t.nav.openMenu}>
+        <div className="sidebar-brand">
+          <span className="brand-mark" aria-hidden="true">
+            F<span>•</span>
+          </span>
+          <span>
+            <strong>FAST FOOD</strong>
+            <small>{me.tenant.name}</small>
+          </span>
+        </div>
+        <nav>
+          {items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `nav-link ${isActive ? 'active' : ''}`
+              }
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <NavLink to="/holat" className="nav-link subtle">
+            <span aria-hidden="true">◎</span>
+            {t.nav.systemStatus}
+          </NavLink>
+        </div>
+      </aside>
+      <div className="shell-main">
+        <header className="shell-topbar">
+          <button
+            className="icon-button menu-toggle"
+            aria-label={t.nav.openMenu}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            ☰
+          </button>
+          <BranchSwitcher me={me} />
+          <div className="topbar-spacer" />
+          <button
+            className="icon-button"
+            onClick={theme.toggle}
+            aria-label={theme.dark ? t.nav.lightTheme : t.nav.darkTheme}
+            title={theme.dark ? t.nav.lightTheme : t.nav.darkTheme}
+          >
+            {theme.dark ? '☀' : '☾'}
+          </button>
+          <div className="user-chip">
+            <span className="avatar" aria-hidden="true">
+              {me.displayName.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="user-name">{me.displayName}</span>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={logout}>
+            {t.nav.logout}
+          </button>
+        </header>
+        <main className="shell-content" id="main">
+          <Outlet />
+        </main>
+      </div>
+      {menuOpen && (
+        <button
+          className="scrim"
+          aria-label={t.common.close}
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+      <ReauthDialog />
+    </div>
+  );
+}

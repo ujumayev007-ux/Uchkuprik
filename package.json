@@ -15,7 +15,7 @@
     "setup:env": "node scripts/setup-env.mjs",
     "dev": "concurrently --kill-others -n api,web \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build --workspaces",
-    "start": "node scripts/start.mjs",
+    "start": "npm run db:migrate -w backend && node scripts/start.mjs",
     "test:deploy": "node scripts/smoke-render.mjs",
     "typecheck": "npm run typecheck --workspaces",
     "format": "prettier --write .",
@@ -27,7 +27,9 @@
     "db:up": "docker compose up -d --wait db",
     "db:stop": "docker compose stop db",
     "db:check": "npm run db:check -w backend",
-    "db:validate": "npm run db:validate -w backend"
+    "db:validate": "npm run db:validate -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "admin:create": "npm run admin:create -w backend"
   },
   "overrides": {
     "@prisma/config": {

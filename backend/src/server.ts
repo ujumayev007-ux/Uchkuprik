@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDatabase } from './database.js';
+import { createPrisma } from './db.js';
+import { createSecretBox } from './lib/crypto.js';
 import { createLogger } from './logger.js';
 
 async function main(): Promise<void> {
@@ -22,11 +24,18 @@ async function main(): Promise<void> {
   database.pool.on('error', () =>
     logger.error('Idle database connection failed'),
   );
+  const prisma = createPrisma(config.DATABASE_URL);
   let shuttingDown = false;
   const app = createApp({
     config,
     database,
     logger,
+    services: {
+      db: prisma,
+      secrets: createSecretBox(config.APP_SECRET_KEY),
+      logger,
+      secureCookies: config.NODE_ENV === 'production',
+    },
     isShuttingDown: () => shuttingDown,
     ...(config.SERVE_FRONTEND ? { frontendDirectory } : {}),
   });
@@ -53,8 +62,7 @@ async function main(): Promise<void> {
     }, 10000);
     deadline.unref();
     server.close(() => {
-      void database
-        .close()
+      void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {
           clearTimeout(deadline);
           logger.info('Graceful shutdown completed');

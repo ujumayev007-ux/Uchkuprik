@@ -7,17 +7,22 @@
 - Environment setup generates a random local password without overwriting existing settings.
 - `backend/src/database.ts` owns the connection pool with bounded connection/query timeouts and a five-connection maximum.
 - Health checks use only `SELECT 1`; integration tests are read-only and do not change existing data.
-- `backend/prisma/schema.prisma` and `prisma.config.ts` define the PostgreSQL provider and migration location. There are no business models, generated Prisma repositories, or migrations yet.
+- Prisma 7 schema with versioned SQL migrations in `backend/prisma/migrations`; the runtime uses the generated client with the `pg` driver adapter. `npm start` runs `prisma migrate deploy` (non-destructive).
 
-Do not treat an empty schema or successful probe as completed business persistence. The first domain migration belongs to Phase 2. Never run reset or force-push schema commands against user data.
+## Phase 2 schema (migration `identity_and_security`)
 
-## Phase 2 design constraints
+| Table                         | Purpose / key constraints                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tenants`                     | Business root (kind BUSINESS) plus one reserved PLATFORM tenant (partial unique index); slug format check; status ACTIVE/SUSPENDED/CLOSED. |
+| `branches`                    | Tenant-scoped; unique `(tenantId, code)`; soft delete.                                                                                     |
+| `users`                       | Unique `(tenantId, username)`; password/PIN hashes, encrypted TOTP secret, last TOTP step, lockout counters, `allBranches`.                |
+| `roles`                       | Per-tenant permission sets; `systemKey` for seeded roles.                                                                                  |
+| `user_roles`, `user_branches` | Composite FKs on `tenantId` make cross-tenant links impossible.                                                                            |
+| `devices`                     | Registered terminals bound to a branch; token hash only.                                                                                   |
+| `sessions`                    | Token hash, method (PASSWORD/PIN), MFA state, re-auth time, idle/absolute expiry, revocation.                                              |
+| `audit_logs`                  | Append-only (trigger rejects UPDATE/DELETE/TRUNCATE).                                                                                      |
 
-Use organization/tenant as the root boundary, with brands and branches under it. Membership and branch grants must be verified from authenticated server-side context. Business tables must carry tenant scope; branch-specific data must also carry branch scope. Use composite foreign keys and tenant-scoped uniqueness where required to prevent references crossing tenant boundaries.
-
-Design users, password/PIN hashes, devices, sessions, memberships, grants, and append-only audit events before authentication endpoints. An application write role must not be able to rewrite historical audit records. A final model and migration need authorization/integration tests before acceptance.
-
-Use integer minor currency units or explicit fixed-precision decimals, never floating-point arithmetic for money. Phase 4 must define order/payment/shift transaction boundaries and idempotency constraints. Phase 6 must introduce an inventory movement ledger and transactional stock rules.
+Conventions: UUIDv7 keys, snake_case table names, camelCase columns, integer minor units for money (Phase 4 onward), every business table carries `tenantId` and, where relevant, `branchId`.
 
 ## Operations
 

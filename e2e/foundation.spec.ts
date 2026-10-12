@@ -8,7 +8,7 @@ test('shows the real API result in Uzbek and supports retry and theme switching'
   expect([200, 503]).toContain(response.status());
   if (process.env.REQUIRE_DATABASE === 'true')
     expect(response.status()).toBe(200);
-  await page.goto('/');
+  await page.goto('/holat');
   await expect(page.locator('html')).toHaveAttribute('lang', 'uz');
   await expect(
     page.getByRole('heading', { name: 'Tizim holati' }),
@@ -50,7 +50,7 @@ test('shows a recoverable network error instead of reporting success', async ({
   await page.route('**/api/health/ready', (route) =>
     route.abort('connectionfailed'),
   );
-  await page.goto('/');
+  await page.goto('/holat');
   await expect(
     page.getByRole('heading', { name: 'Xizmat bilan bog‘lanib bo‘lmadi' }),
   ).toBeVisible();
@@ -69,7 +69,7 @@ test('does not interpret an invalid API response as a healthy connection', async
       body: '{"status":"unavailable","message":"Invalid success"}',
     }),
   );
-  await page.goto('/');
+  await page.goto('/holat');
   await expect(
     page.getByRole('heading', { name: 'Xizmat bilan bog‘lanib bo‘lmadi' }),
   ).toBeVisible();
