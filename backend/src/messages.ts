@@ -72,6 +72,10 @@ export const messages = {
   planUsageExceeds: 'Joriy foydalanish tanlangan tarif limitlaridan oshadi.',
   signupDisabled: 'Ro‘yxatdan o‘tish vaqtincha yopiq.',
   confirmMismatch: 'Tasdiqlash matni mos kelmadi.',
+  branchFranchised: 'Filial allaqachon boshqa franchayziga biriktirilgan.',
+  contractLocked: 'Faol yoki bekor qilingan shartnomani o‘zgartirib bo‘lmaydi.',
+  territoryConflict: 'Bu hudud boshqa faol eksklyuziv shartnoma bilan band.',
+  monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

@@ -19,6 +19,7 @@ export type Branch = {
   timezone: string;
   currency: string;
   isActive: boolean;
+  brandId: string | null;
 };
 
 type NavItem = {
@@ -144,6 +145,29 @@ export const navItems: NavItem[] = [
     label: t.nav.roles,
     icon: '⚿',
     visible: (me) => can(me, 'users.view'),
+  },
+  {
+    to: '/brendlar',
+    label: t.nav.brands,
+    icon: '❖',
+    visible: (me) =>
+      hasFeature(me, 'multi_brand') &&
+      (can(me, 'brands.manage') || can(me, 'reports.view')),
+  },
+  {
+    to: '/franshiza',
+    label: t.nav.franchise,
+    icon: '⚑',
+    visible: (me) => hasFeature(me, 'franchise') && can(me, 'franchise.manage'),
+  },
+  {
+    to: '/portal',
+    label: t.nav.franchisePortal,
+    icon: '⚑',
+    visible: (me) =>
+      hasFeature(me, 'franchise') &&
+      can(me, 'franchise.portal') &&
+      !can(me, 'franchise.manage'),
   },
   {
     to: '/filiallar',

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { assertWithinLimit } from '../billing/entitlements.js';
+import { assertBrand } from '../brands/brands.routes.js';
 import type { Services } from '../../context.js';
 import { errors, isUniqueViolation, parse } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
@@ -27,6 +28,7 @@ const branchInput = z.object({
     .optional(),
   timezone: z.string().trim().min(3).max(60).default('Asia/Tashkent'),
   isActive: z.boolean().default(true),
+  brandId: z.uuid().nullable().optional(),
 });
 
 export function branchesRouter(services: Services) {
@@ -56,6 +58,7 @@ export function branchesRouter(services: Services) {
         timezone: branch.timezone,
         currency: branch.currency,
         isActive: branch.isActive,
+        brandId: branch.brandId,
       })),
     });
   });
@@ -72,6 +75,7 @@ export function branchesRouter(services: Services) {
         const branch = await db.$transaction(async (tx) => {
           if (input.isActive)
             await assertWithinLimit(tx, auth.tenantId, 'branches');
+          await assertBrand(tx, auth.tenantId, input.brandId);
           const created = await tx.branch.create({
             data: {
               tenantId: auth.tenantId,
@@ -81,6 +85,7 @@ export function branchesRouter(services: Services) {
               phone: input.phone ?? null,
               timezone: input.timezone,
               isActive: input.isActive,
+              brandId: input.brandId ?? null,
             },
           });
           await audit(tx, req, {
@@ -117,6 +122,7 @@ export function branchesRouter(services: Services) {
           if (!found) throw errors.notFound();
           if (input.isActive && !found.isActive)
             await assertWithinLimit(tx, auth.tenantId, 'branches');
+          await assertBrand(tx, auth.tenantId, input.brandId);
           await tx.branch.update({
             where: { id },
             data: {
@@ -126,6 +132,7 @@ export function branchesRouter(services: Services) {
               phone: input.phone ?? null,
               timezone: input.timezone,
               isActive: input.isActive,
+              brandId: input.brandId ?? null,
             },
           });
           await audit(tx, req, {

@@ -13,6 +13,8 @@ export const planFeatures = [
   'online_payments',
   'hr',
   'finance',
+  'multi_brand',
+  'franchise',
 ] as const;
 export type PlanFeature = (typeof planFeatures)[number];
 
@@ -86,6 +88,9 @@ const gatedPaths: [RegExp, PlanFeature][] = [
   [/^\/(hr|payroll|schedule)(\/|$)/, 'hr'],
   [/^\/(expenses|finance)(\/|$)/, 'finance'],
   [/^\/reports\/pnl(\.csv)?$/, 'finance'],
+  [/^\/brands(\/|$)/, 'multi_brand'],
+  [/^\/reports\/brands$/, 'multi_brand'],
+  [/^\/(franchise|supplier-agreements)(\/|$)/, 'franchise'],
 ];
 
 export function featureForPath(path: string): PlanFeature | null {

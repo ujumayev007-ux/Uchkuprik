@@ -2,6 +2,18 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-014 — Royalty basis and territories (2026-10-12)
+
+- **Decision:** Royalties and marketing fees are basis points of net sales (completed order totals minus refunds of those orders) of the franchisee's branches for the licensed brand, per calendar month clipped to contract dates; a minimum monthly fee tops up the royalty. Statements are drafts until issued after month end, then locked. Territories are free-text names compared case- and whitespace-insensitively; exclusivity blocks overlapping active contracts of the same brand.
+- **Reason:** Matches common franchise agreements and keeps calculations reproducible from the order ledger.
+- **Reversal:** Add tiered royalty rates, geographic (polygon) territories and invoice integration with accounting when contracts require them.
+
+## D-013 — Brands inside one tenant (2026-10-12)
+
+- **Decision:** A brand is a trading identity inside a tenant (organization). Branches optionally belong to one brand; menu categories are either shared or brand-specific; staff, inventory, prices and finances remain per branch as before, so brand separation follows from branch assignment and branch-scoped roles (delegated permissions). Existing single-brand tenants need no migration.
+- **Reason:** Keeps one authorization model (tenant + branch scope) while supporting multi-brand operators; avoids duplicating the menu engine per brand.
+- **Reversal:** Introduce brand-scoped roles and brand-level price lists if operators need brand managers without branch lists.
+
 ## D-012 — SaaS billing model (2026-10-12)
 
 - **Decision:** Subscriptions are billed in advance per period; invoices are due 7 days after the period starts, the subscription becomes PAST_DUE after the due date and the tenant is suspended 7 days later. Payment is recorded by a platform administrator (bank transfer reference) until a SaaS payment provider is contracted. Plan changes apply immediately to entitlements and to the next invoice (no proration). Tenants created before plans existed stay unrestricted until a plan is assigned. Reminders are shown in-app (banner and subscription page); email/SMS/Telegram delivery waits for the notification service (Phase 14).

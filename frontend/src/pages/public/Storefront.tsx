@@ -187,6 +187,7 @@ export function Storefront({
   header,
   needsContact,
   needsAddress,
+  accent,
 }: {
   title: string;
   subtitle?: string | undefined;
@@ -195,6 +196,8 @@ export function Storefront({
   header?: ReactNode;
   needsContact: boolean;
   needsAddress: boolean;
+  // Brand colour; overrides the accent token for this storefront.
+  accent?: string | null | undefined;
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -249,7 +252,12 @@ export function Storefront({
   };
 
   return (
-    <div className="store">
+    <div
+      className="store"
+      style={
+        accent ? ({ '--accent': accent } as React.CSSProperties) : undefined
+      }
+    >
       <header className="store-header">
         <div>
           <h1>{title}</h1>

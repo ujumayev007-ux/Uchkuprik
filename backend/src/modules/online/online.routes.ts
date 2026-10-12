@@ -100,9 +100,16 @@ export async function publicMenu(
   tenantId: string,
   branchId: string,
 ) {
+  const branch = await db.branch.findFirst({
+    where: { id: branchId, tenantId },
+    select: { brandId: true },
+  });
+  const brandFilter = {
+    OR: [{ brandId: null }, { brandId: branch?.brandId ?? null }],
+  };
   const [categories, products, groups] = await Promise.all([
     db.menuCategory.findMany({
-      where: { tenantId, isActive: true },
+      where: { tenantId, isActive: true, ...brandFilter },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
     db.product.findMany({
@@ -110,7 +117,7 @@ export async function publicMenu(
         tenantId,
         isActive: true,
         deletedAt: null,
-        category: { isActive: true },
+        category: { isActive: true, ...brandFilter },
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
@@ -189,7 +196,15 @@ export function onlineRouter(services: Services) {
     const branches = await db.branch.findMany({
       where: { tenantId: tenant.id, isActive: true, deletedAt: null },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, address: true, phone: true },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        brand: {
+          select: { name: true, logoUrl: true, primaryColor: true },
+        },
+      },
     });
     res.json({
       name: tenant.name,

@@ -26,7 +26,7 @@ const range = z.object({
 });
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
-function csv(
+export function csv(
   res: import('express').Response,
   filename: string,
   header: string[],
@@ -35,7 +35,8 @@ function csv(
   const escape = (value: string | number) =>
     typeof value === 'number'
       ? String(value)
-      : `"${value.replace(/"/g, '""')}"`;
+      : // A leading formula character is neutralized against CSV injection.
+        `"${/^[=+\-@\t\r]/.test(value) ? "'" : ''}${value.replace(/"/g, '""')}"`;
   res.type('text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   // BOM and semicolons make the file open correctly in Excel with Uzbek text.

@@ -23,6 +23,10 @@ export async function priceVariants(
   branchId: string,
   variantIds: string[],
 ): Promise<Map<string, PricedVariant>> {
+  const branch = await db.branch.findFirst({
+    where: { id: branchId, tenantId },
+    select: { brandId: true },
+  });
   const variants = await db.productVariant.findMany({
     where: { tenantId, id: { in: variantIds } },
     include: {
@@ -48,6 +52,9 @@ export async function priceVariants(
         variant.product.isActive &&
         variant.product.deletedAt === null &&
         variant.product.category.isActive &&
+        // Brand-specific categories are sold only at that brand's branches.
+        (variant.product.category.brandId === null ||
+          variant.product.category.brandId === (branch?.brandId ?? null)) &&
         (override?.isAvailable ?? true),
     });
   }

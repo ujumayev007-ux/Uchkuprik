@@ -16,8 +16,9 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                   |
 | 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364) |
 | 10 Finance, HR, reporting       | Accepted 2026-10-12 (CI 38247414281)                       |
-| 11 SaaS commercial platform     | Implemented and validated locally; CI pending on push      |
-| 12–16                           | Not started                                                |
+| 11 SaaS commercial platform     | Accepted 2026-10-12 (CI 38274348733)                       |
+| 12 Multi-brand and franchise    | Implemented and validated locally; CI pending on push      |
+| 13–16                           | Not started                                                |
 
 ## Phase 2 — delivered
 
@@ -121,6 +122,21 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 77 integration (6 new), 32 Playwright tests (desktop + mobile billing flow).
 - Deferred: online subscription checkout and proration (no contracted SaaS payment provider), email/SMS reminders (Phase 14 notifications), CAPTCHA/phone verification for public sign-up.
 
+## Phase 12a — delivered
+
+- Brands page (`/brendlar`): create/edit brands with logo, colour and receipt texts; cross-brand sales report.
+- Branches and menu categories can be assigned to a brand; POS, server pricing and the public storefront show only shared and own-brand categories; receipts and the storefront use the brand identity.
+- Multi-brand is an Enterprise plan feature (`multi_brand`).
+- Evidence: 2 new integration tests, Playwright brand flow on desktop and mobile.
+
+## Phase 12b — delivered
+
+- Franchise page (`/franshiza`): franchisees with branch assignment, contracts with territories (exclusive conflict check), activation/termination, monthly royalty statements (generate, issue, paid, CSV), inspections with checklist scores, scorecards, supplier agreements.
+- Franchisee portal (`/portal`) and the `franchisee` system role.
+- Franchise is an Enterprise plan feature (`franchise`); CSV exports now neutralize formula injection.
+- Evidence: 40 unit, 83 integration (4 new franchise, 2 brand), 36 Playwright tests.
+- Deferred: tiered royalties, geographic territory maps, franchise onboarding document workflow (Phase 13 approvals), accounting exports.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -135,4 +151,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 12 — Multi-brand and franchise: brands under one tenant, brand-level menus and branding, franchise contracts and royalty calculation, scoped reporting and delegated administration.
+Phase 13 — Enterprise operations: SOP library, opening/closing checklists, food safety (temperature logs, HACCP checks, expiry/recall), equipment and maintenance, training and certifications, approval workflows.

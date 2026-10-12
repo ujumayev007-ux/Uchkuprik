@@ -46,7 +46,16 @@ export function WebsiteMenuPage() {
       api<{
         name: string;
         phone: string | null;
-        branches: { id: string; name: string; address: string | null }[];
+        branches: {
+          id: string;
+          name: string;
+          address: string | null;
+          brand: {
+            name: string;
+            logoUrl: string | null;
+            primaryColor: string | null;
+          } | null;
+        }[];
       }>(`/public/r/${slug}`),
     retry: false,
   });
@@ -63,11 +72,14 @@ export function WebsiteMenuPage() {
   if (info.isPending || (branch && menu.isPending)) return <LoadingState />;
   if (info.error || menu.error || !branch || !menu.data)
     return <StoreUnavailable />;
+  // Branches trading under a brand show the brand name and colour.
+  const brand = info.data.branches.find((item) => item.id === branch)?.brand;
   return (
     <Storefront
       key={`${branch}-${type}`}
-      title={info.data.name}
+      title={brand?.name ?? info.data.name}
       subtitle={info.data.phone ?? undefined}
+      accent={brand?.primaryColor}
       menu={menu.data}
       source={{
         kind: 'web',
@@ -91,6 +103,7 @@ export function WebsiteMenuPage() {
               >
                 {info.data.branches.map((item) => (
                   <option key={item.id} value={item.id}>
+                    {item.brand ? `${item.brand.name} · ` : ''}
                     {item.name}
                     {item.address ? ` — ${item.address}` : ''}
                   </option>

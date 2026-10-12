@@ -37,6 +37,9 @@ export const permissionCatalog = {
   'finance.manage': 'Xarajatlar va moliyaviy davrlarni boshqarish',
   'notifications.manage': 'Bildirishnomalarni sozlash',
   'operations.manage': 'Operatsion nazoratni boshqarish',
+  'brands.manage': 'Brendlarni boshqarish',
+  'franchise.manage': 'Franshiza va shartnomalarni boshqarish',
+  'franchise.portal': 'Franchayzi portaliga kirish',
 } as const;
 
 export type Permission = keyof typeof permissionCatalog;
@@ -123,5 +126,11 @@ export const systemRoles: Record<string, SystemRole> = {
       'purchasing.manage',
       'menu.view',
     ],
+  },
+  franchisee: {
+    name: 'Franchayzi',
+    description:
+      'Franchayzi portali: o‘z filiallari, shartnoma va hisob-kitoblar',
+    permissions: ['franchise.portal', 'reports.view', 'branches.view'],
   },
 };

@@ -18,6 +18,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { BrandSelect } from '../lib/brands';
 import { api, del, patch, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import { RecipeDialog } from '../components/RecipeDialog';
@@ -54,6 +55,7 @@ export type Category = {
   name: string;
   parentId: string | null;
   stationId: string | null;
+  brandId: string | null;
   sortOrder: number;
   isActive: boolean;
 };
@@ -114,6 +116,7 @@ function CategoryForm({
   const [name, setName] = useState(category?.name ?? '');
   const [parentId, setParentId] = useState(category?.parentId ?? '');
   const [stationId, setStationId] = useState(category?.stationId ?? '');
+  const [brandId, setBrandId] = useState(category?.brandId ?? '');
   const stations = useStations();
   const [sortOrder, setSortOrder] = useState(category?.sortOrder ?? 0);
   const [isActive, setActive] = useState(category?.isActive ?? true);
@@ -130,6 +133,7 @@ function CategoryForm({
           name,
           parentId: parentId || null,
           stationId: stationId || null,
+          brandId: brandId || null,
           sortOrder,
           isActive,
         };
@@ -178,6 +182,11 @@ function CategoryForm({
           </option>
         ))}
       </SelectField>
+      <BrandSelect
+        value={brandId}
+        emptyLabel={t.brands.shared}
+        onChange={setBrandId}
+      />
       <TextField
         label={t.floor.sortOrder}
         type="number"

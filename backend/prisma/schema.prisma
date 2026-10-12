@@ -54,6 +54,7 @@ model Tenant {
   closedAt            DateTime?
 
   subscription   Subscription?
+  brands         Brand[]
   invoices       Invoice[]
   branches       Branch[]
   users          User[]
@@ -68,29 +69,36 @@ model Tenant {
 }
 
 model Branch {
-  id        String    @id @default(uuid(7)) @db.Uuid
-  tenantId  String    @db.Uuid
-  code      String
-  name      String
-  address   String?
-  phone     String?
-  timezone  String    @default("Asia/Tashkent")
-  currency  String    @default("UZS")
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id           String    @id @default(uuid(7)) @db.Uuid
+  tenantId     String    @db.Uuid
+  code         String
+  name         String
+  address      String?
+  phone        String?
+  timezone     String    @default("Asia/Tashkent")
+  currency     String    @default("UZS")
+  isActive     Boolean   @default(true)
+  // Brand this branch trades under (null = the business's own name and menu).
+  brandId      String?   @db.Uuid
+  // Franchise partner operating this branch (null = company-owned).
+  franchiseeId String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
-  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  users      UserBranch[]
-  devices    Device[]
-  sessions   Session[]
-  rooms      Room[]
-  tables     DiningTable[]
-  prices     BranchVariantPrice[]
-  shifts     CashShift[]
-  orders     Order[]
-  warehouses Warehouse[]
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  brand       Brand?               @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  franchisee  Franchisee?          @relation(fields: [tenantId, franchiseeId], references: [tenantId, id], onDelete: Restrict)
+  inspections Inspection[]
+  users       UserBranch[]
+  devices     Device[]
+  sessions    Session[]
+  rooms       Room[]
+  tables      DiningTable[]
+  prices      BranchVariantPrice[]
+  shifts      CashShift[]
+  orders      Order[]
+  warehouses  Warehouse[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -334,6 +342,8 @@ model MenuCategory {
   parentId  String?  @db.Uuid
   // Kitchen station that prepares this category's items (null = every station).
   stationId String?  @db.Uuid
+  // Brand-specific category (null = shared by every brand).
+  brandId   String?  @db.Uuid
   name      String
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
@@ -343,6 +353,7 @@ model MenuCategory {
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   parent   MenuCategory?   @relation("CategoryTree", fields: [tenantId, parentId], references: [tenantId, id], onDelete: Restrict)
   station  KitchenStation? @relation(fields: [tenantId, stationId], references: [tenantId, id], onDelete: Restrict)
+  brand    Brand?          @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
   children MenuCategory[]  @relation("CategoryTree")
   products Product[]
 
@@ -957,8 +968,9 @@ model Supplier {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  purchases Purchase[]
-  payments  SupplierPayment[]
+  purchases  Purchase[]
+  payments   SupplierPayment[]
+  agreements SupplierAgreement[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
@@ -1513,4 +1525,179 @@ model Invoice {
   @@index([tenantId, createdAt])
   @@index([status, dueDate])
   @@map("invoices")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 12: brands (multi-brand organizations).
+
+model Brand {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  tenantId      String   @db.Uuid
+  code          String
+  name          String
+  logoUrl       String?
+  // Hex colour used on the storefront and receipts.
+  primaryColor  String?
+  receiptHeader String?
+  receiptFooter String?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branches   Branch[]
+  categories MenuCategory[]
+  contracts  FranchiseContract[]
+  agreements SupplierAgreement[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("brands")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 12b: franchise partners, contracts, royalties, inspections, agreements.
+
+enum FranchiseeStatus {
+  ONBOARDING
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+model Franchisee {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  tenantId    String           @db.Uuid
+  name        String
+  legalName   String?
+  taxId       String?
+  contactName String?
+  phone       String?
+  email       String?
+  status      FranchiseeStatus @default(ONBOARDING)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  branches  Branch[]
+  contracts FranchiseContract[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@map("franchisees")
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+}
+
+model FranchiseContract {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  tenantId          String         @db.Uuid
+  franchiseeId      String         @db.Uuid
+  // Brand licensed by the contract (null = every brand of the franchisee's branches).
+  brandId           String?        @db.Uuid
+  number            String
+  territory         String
+  // Exclusive territories cannot overlap for the same brand while active.
+  exclusive         Boolean        @default(false)
+  startDate         DateTime       @db.Date
+  endDate           DateTime?      @db.Date
+  // Fees in basis points of net sales (500 = 5%).
+  royaltyBp         Int
+  marketingFeeBp    Int            @default(0)
+  // Minimum monthly royalty in so‘m (the difference is charged as a top-up).
+  minimumMonthlyFee Int            @default(0)
+  status            ContractStatus @default(DRAFT)
+  activatedAt       DateTime?
+  terminatedAt      DateTime?
+  terminationReason String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  franchisee Franchisee         @relation(fields: [tenantId, franchiseeId], references: [tenantId, id], onDelete: Restrict)
+  brand      Brand?             @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  statements RoyaltyStatement[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("franchise_contracts")
+}
+
+enum StatementStatus {
+  DRAFT
+  ISSUED
+  PAID
+}
+
+model RoyaltyStatement {
+  id           String          @id @default(uuid(7)) @db.Uuid
+  tenantId     String          @db.Uuid
+  contractId   String          @db.Uuid
+  // Calendar month, YYYY-MM.
+  month        String
+  grossSales   Int
+  refunds      Int
+  netSales     Int
+  royalty      Int
+  marketingFee Int
+  minimumTopUp Int
+  total        Int
+  status       StatementStatus @default(DRAFT)
+  issuedAt     DateTime?
+  paidAt       DateTime?
+  reference    String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  contract FranchiseContract @relation(fields: [tenantId, contractId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([contractId, month])
+  @@index([tenantId, month])
+  @@map("royalty_statements")
+}
+
+model Inspection {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  branchId    String   @db.Uuid
+  inspectorId String   @db.Uuid
+  inspectedAt DateTime
+  // Checklist results: [{ label, passed, note }].
+  items       Json
+  // Percentage of passed checklist items (0–100).
+  score       Int
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, inspectedAt])
+  @@map("inspections")
+}
+
+model SupplierAgreement {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  tenantId         String    @db.Uuid
+  supplierId       String    @db.Uuid
+  // Brand the agreement applies to (null = the whole organization).
+  brandId          String?   @db.Uuid
+  title            String
+  startDate        DateTime  @db.Date
+  endDate          DateTime? @db.Date
+  paymentTermsDays Int?
+  terms            String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  supplier Supplier @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
+  brand    Brand?   @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, supplierId])
+  @@map("supplier_agreements")
 }

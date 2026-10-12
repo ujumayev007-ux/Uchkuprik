@@ -70,3 +70,11 @@ Pay rates, payroll adjustments, payroll approval and period closing require re-a
 ## SaaS entitlements and billing (Phase 11)
 
 Plan features are enforced server-side by a path-prefix gate after session loading (inventory, delivery, online ordering, loyalty, kitchen printing, online payments, HR, finance), and the public storefront requires the online-ordering feature. Branch, user and device limits are checked inside the creating transaction under a tenant row lock, so concurrent requests cannot exceed them. Hiding navigation is only a convenience. Plan changes, data export and account closure are restricted to the owner role with re-authentication and are audited; platform plan, subscription and invoice changes require platform administrator step-up and are audited. Exports omit password/PIN hashes, MFA secrets, device tokens, table QR tokens, order tracking tokens and payment provider secrets. Billing suspension only lifts suspensions it imposed itself (`suspendedForBilling`), so a manual platform suspension is never undone by a payment. Self-service registration is rate-limited per IP (`SIGNUP_RATE_LIMIT`, 0 disables it); add CAPTCHA/phone verification before opening registration widely.
+
+## Brands (Phase 12a)
+
+Brand references are validated against the tenant and additionally protected by composite tenant foreign keys. Brand-specific menu visibility is enforced in server pricing, not only in the UI. The cross-brand report only aggregates branches the user is assigned to. Brand logos must be HTTPS URLs (the CSP already limits images to self, data: and https:).
+
+## Franchise (Phase 12b)
+
+Franchise partner data, contracts and royalty statements require `franchise.manage`; activation, termination, issuing and payment require step-up and are audited. Issued statements are immutable through the API, inspections are append-only at the database level. Franchisee portal users see only partners operating the branches they are assigned to (branch scope is the delegation mechanism), never other partners' figures, scorecards or management endpoints. Exclusive territory checks run under a tenant row lock.

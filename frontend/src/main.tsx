@@ -46,6 +46,8 @@ import { ReceiptPage, ZReportPage } from './pages/PrintPages';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { PlatformBillingPage } from './pages/PlatformBillingPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
+import { BrandsPage } from './pages/BrandsPage';
+import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ShiftPage } from './pages/ShiftPage';
 import { PlatformTenantsPage } from './pages/PlatformTenantsPage';
@@ -444,6 +446,39 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => me.isPlatformAdmin}>
             <PlatformTenantsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/brendlar',
+        element: (
+          <Guard
+            feature="multi_brand"
+            allow={(me) => can(me, 'brands.manage') || can(me, 'reports.view')}
+          >
+            <BrandsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/franshiza',
+        element: (
+          <Guard
+            feature="franchise"
+            allow={(me) => can(me, 'franchise.manage')}
+          >
+            <FranchisePage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/portal',
+        element: (
+          <Guard
+            feature="franchise"
+            allow={(me) => can(me, 'franchise.portal')}
+          >
+            <FranchisePortalPage />
           </Guard>
         ),
       },

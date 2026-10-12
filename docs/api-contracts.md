@@ -206,3 +206,31 @@ Payroll: HOURLY = regular minutes × rate/60 + daily overtime beyond `overtimeAf
 
 `GET /auth/me` now returns `entitlements` {planCode, status, features (null = unrestricted), limits} and `billing` (trial days left, oldest open invoice) for settings managers.
 Errors: `403 FEATURE_NOT_IN_PLAN` {feature} for modules outside the plan, `403 PLAN_LIMIT_REACHED` {limit, max} when creating or re-enabling branches, users or devices beyond the plan.
+
+## Phase 12a: brands
+
+| Endpoint                                                                                                                                                                       | Access                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `GET /brands` (with branch and category counts)                                                                                                                                | business session; plan feature `multi_brand` |
+| `POST /brands`; `PUT /brands/:id` {code, name, logoUrl (https), primaryColor (#rrggbb), receiptHeader, receiptFooter, isActive, sortOrder}                                     | brands.manage, audited                       |
+| `GET /reports/brands?from&to` (completed sales, orders and average check per brand and branch; branches without a brand grouped separately; only branches the user can access) | reports.view; `multi_brand`                  |
+
+Branches (`POST /branches`, `PATCH /branches/:id`) and menu categories accept `brandId` (null = no brand / shared). `GET /menu` (selling view) returns only shared categories and those of the branch's brand; the editor view (`all=true`) returns everything with `brandId`. Order pricing rejects another brand's items with `ITEM_UNAVAILABLE`. Public storefront branches include `brand` {name, logoUrl, primaryColor} and the public menu is filtered by the branch brand. Receipts use the brand name and receipt texts when the branch has a brand.
+
+## Phase 12b: franchise
+
+All endpoints require the plan feature `franchise` (Enterprise).
+
+| Endpoint                                                                                                                                                                                                                                        | Access                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `GET/POST /franchise/franchisees`, `PUT /franchise/franchisees/:id` {name, legalName, taxId (9 or 14 digits), contactName, phone, email, status, notes, branchIds}; 409 `BRANCH_FRANCHISED` when a branch already belongs to another franchisee | franchise.manage, audited                   |
+| `GET/POST /franchise/contracts`, `PUT /franchise/contracts/:id` (DRAFT only, else 409 `CONTRACT_LOCKED`) {franchiseeId, brandId, number, territory, exclusive, startDate, endDate, royaltyBp, marketingFeeBp, minimumMonthlyFee}                | franchise.manage                            |
+| `POST /franchise/contracts/:id/activate` (409 `TERRITORY_CONFLICT` for overlapping exclusive territories of the same brand); `POST /franchise/contracts/:id/terminate` {reason}                                                                 | franchise.manage + step-up                  |
+| `GET /franchise/statements?month`; `POST /franchise/statements/generate` {month} (creates/refreshes DRAFT statements, never touches ISSUED/PAID)                                                                                                | franchise.manage                            |
+| `POST /franchise/statements/:id/issue` (finished months only, recomputed); `POST /franchise/statements/:id/paid` {reference}; `GET /franchise/statements.csv?month`                                                                             | franchise.manage (+ step-up for issue/paid) |
+| `GET/POST /franchise/inspections` {branchId, inspectedAt, items [{label, passed, note}], notes}; score = passed / total × 100                                                                                                                   | franchise.manage                            |
+| `GET /franchise/scorecards?month` (sales, orders, 90-day average inspection score, outstanding royalties, contract end)                                                                                                                         | franchise.manage                            |
+| `GET /franchise/portal` (only franchisees operating branches the user is assigned to: contracts, issued/paid statements, inspections)                                                                                                           | franchise.portal                            |
+| `GET/POST /supplier-agreements`, `PUT /supplier-agreements/:id` {supplierId, brandId, title, startDate, endDate, paymentTermsDays, terms, isActive}                                                                                             | franchise.manage                            |
+
+Royalty = royaltyBp × net sales, marketing = marketingFeeBp × net sales, where net sales = completed sales of the franchisee's branches (licensed brand only) within the month and contract dates minus refunds of those orders; if the royalty is below the minimum monthly fee the difference is added as a top-up. CSV exports neutralize leading formula characters.

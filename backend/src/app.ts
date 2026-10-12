@@ -14,6 +14,8 @@ import { messages } from './messages.js';
 import { auditRouter } from './modules/audit/audit.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { billingRouter } from './modules/billing/billing.routes.js';
+import { brandsRouter } from './modules/brands/brands.routes.js';
+import { franchiseRouter } from './modules/franchise/franchise.routes.js';
 import { enforcePlanFeatures } from './modules/billing/entitlements.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
@@ -172,6 +174,8 @@ export function createApp({
       hrRouter,
       financeRouter,
       billingRouter,
+      brandsRouter,
+      franchiseRouter,
     ])
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));

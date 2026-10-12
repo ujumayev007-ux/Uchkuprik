@@ -17,6 +17,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { patch, post } from '../lib/api';
+import { BrandSelect } from '../lib/brands';
 
 function BranchForm({
   branch,
@@ -32,6 +33,7 @@ function BranchForm({
     phone: branch?.phone ?? '',
     timezone: branch?.timezone ?? 'Asia/Tashkent',
     isActive: branch?.isActive ?? true,
+    brandId: branch?.brandId ?? '',
   });
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +48,7 @@ function BranchForm({
           ...form,
           address: form.address.trim() || null,
           phone: form.phone.trim() || null,
+          brandId: form.brandId || null,
         };
         try {
           if (branch) await patch(`/branches/${branch.id}`, body);
@@ -93,6 +96,11 @@ function BranchForm({
           value={form.timezone}
           onChange={(e) => setForm({ ...form, timezone: e.target.value })}
           required
+        />
+        <BrandSelect
+          value={form.brandId}
+          emptyLabel={t.brands.noBrand}
+          onChange={(brandId) => setForm({ ...form, brandId })}
         />
       </div>
       <Checkbox

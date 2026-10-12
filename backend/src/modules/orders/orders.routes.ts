@@ -1009,7 +1009,10 @@ export function ordersRouter(services: Services) {
           where: { id: auth.tenantId },
           include: { profile: true },
         }),
-        db.branch.findUniqueOrThrow({ where: { id: order.branchId } }),
+        db.branch.findUniqueOrThrow({
+          where: { id: order.branchId },
+          include: { brand: true },
+        }),
         order.createdById
           ? db.user.findUnique({
               where: { id: order.createdById },
@@ -1019,13 +1022,26 @@ export function ordersRouter(services: Services) {
       ]);
       const data = serialize(order, { ...auth, permissions: new Set() });
       res.json({
+        // A branch trading under a brand prints the brand name and texts.
         business: {
-          name: tenant.name,
+          name: branch.brand?.name ?? tenant.name,
+          brand: branch.brand
+            ? {
+                logoUrl: branch.brand.logoUrl,
+                primaryColor: branch.brand.primaryColor,
+              }
+            : null,
           legalName: tenant.profile?.legalName ?? null,
           taxId: tenant.profile?.taxId ?? null,
           phone: tenant.profile?.phone ?? null,
-          header: tenant.profile?.receiptHeader ?? null,
-          footer: tenant.profile?.receiptFooter ?? null,
+          header:
+            branch.brand?.receiptHeader ??
+            tenant.profile?.receiptHeader ??
+            null,
+          footer:
+            branch.brand?.receiptFooter ??
+            tenant.profile?.receiptFooter ??
+            null,
         },
         branch: {
           name: branch.name,

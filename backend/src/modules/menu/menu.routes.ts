@@ -8,6 +8,7 @@ import {
   isUniqueViolation,
   parse,
 } from '../../http/errors.js';
+import { assertBrand, categoryVisible } from '../brands/brands.routes.js';
 import { audit } from '../audit/audit.js';
 import {
   getAuth,
@@ -25,6 +26,7 @@ const categoryInput = z.object({
   name: z.string().trim().min(1).max(80),
   parentId: z.uuid().nullable().optional(),
   stationId: z.uuid().nullable().optional(),
+  brandId: z.uuid().nullable().optional(),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   isActive: z.boolean().default(true),
 });
@@ -267,44 +269,55 @@ export function menuRouter(services: Services) {
           },
         }),
       ]);
+      // Selling views only show shared categories and those of the branch's brand.
+      const shown = includeInactive
+        ? categories
+        : categories.filter((category) => categoryVisible(category, branch));
+      const shownIds = new Set(shown.map((category) => category.id));
       res.json({
         branchId: branch.id,
-        categories: categories.map((category) => ({
+        brandId: branch.brandId,
+        categories: shown.map((category) => ({
           id: category.id,
           name: category.name,
           parentId: category.parentId,
           stationId: category.stationId,
+          brandId: category.brandId,
           sortOrder: category.sortOrder,
           isActive: category.isActive,
         })),
-        products: products.map((product) => ({
-          id: product.id,
-          categoryId: product.categoryId,
-          name: product.name,
-          description: product.description,
-          sku: product.sku,
-          barcode: product.barcode,
-          imageUrl: product.imageUrl,
-          allergens: product.allergens,
-          prepTimeMinutes: product.prepTimeMinutes,
-          isActive: product.isActive,
-          sortOrder: product.sortOrder,
-          version: product.version,
-          modifierGroupIds: product.modifierGroups.map((link) => link.groupId),
-          variants: product.variants.map((variant) => {
-            const override = variant.branchPrices[0];
-            return {
-              id: variant.id,
-              name: variant.name,
-              basePrice: variant.price,
-              branchPrice: override?.price ?? null,
-              price: override?.price ?? variant.price,
-              available: variant.isActive && (override?.isAvailable ?? true),
-              isActive: variant.isActive,
-              ...(costs ? { cost: variant.cost } : {}),
-            };
-          }),
-        })),
+        products: products
+          .filter((product) => shownIds.has(product.categoryId))
+          .map((product) => ({
+            id: product.id,
+            categoryId: product.categoryId,
+            name: product.name,
+            description: product.description,
+            sku: product.sku,
+            barcode: product.barcode,
+            imageUrl: product.imageUrl,
+            allergens: product.allergens,
+            prepTimeMinutes: product.prepTimeMinutes,
+            isActive: product.isActive,
+            sortOrder: product.sortOrder,
+            version: product.version,
+            modifierGroupIds: product.modifierGroups.map(
+              (link) => link.groupId,
+            ),
+            variants: product.variants.map((variant) => {
+              const override = variant.branchPrices[0];
+              return {
+                id: variant.id,
+                name: variant.name,
+                basePrice: variant.price,
+                branchPrice: override?.price ?? null,
+                price: override?.price ?? variant.price,
+                available: variant.isActive && (override?.isAvailable ?? true),
+                isActive: variant.isActive,
+                ...(costs ? { cost: variant.cost } : {}),
+              };
+            }),
+          })),
         modifierGroups: groups.map((group) => ({
           id: group.id,
           name: group.name,
@@ -329,12 +342,14 @@ export function menuRouter(services: Services) {
     const category = await db.$transaction(async (tx) => {
       await assertCategoryParent(tx, auth.tenantId, null, input.parentId);
       await assertStation(tx, auth.tenantId, input.stationId);
+      await assertBrand(tx, auth.tenantId, input.brandId);
       const created = await tx.menuCategory.create({
         data: {
           tenantId: auth.tenantId,
           name: input.name,
           parentId: input.parentId ?? null,
           stationId: input.stationId ?? null,
+          brandId: input.brandId ?? null,
           sortOrder: input.sortOrder,
           isActive: input.isActive,
         },
@@ -362,12 +377,14 @@ export function menuRouter(services: Services) {
       if (!category) throw errors.notFound();
       await assertCategoryParent(tx, auth.tenantId, id, input.parentId);
       await assertStation(tx, auth.tenantId, input.stationId);
+      await assertBrand(tx, auth.tenantId, input.brandId);
       await tx.menuCategory.update({
         where: { id },
         data: {
           name: input.name,
           parentId: input.parentId ?? null,
           stationId: input.stationId ?? null,
+          brandId: input.brandId ?? null,
           sortOrder: input.sortOrder,
           isActive: input.isActive,
         },

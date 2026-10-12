@@ -67,3 +67,11 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 11 schema (migrations `saas_billing`, `saas_billing_tenant_fk`)
 
 `plans` (code unique, monthly/yearly price in so‘m, nullable limits = unlimited, feature keys, trial days; CHECK constraints), `subscriptions` (one per tenant, TRIALING/ACTIVE/PAST_DUE/SUSPENDED/CANCELLED, billing cycle, current period, `suspendedForBilling`), `invoices` (sequential number, unique per subscription and period start, OPEN/PAID/VOID, due date, payment reference), `tenants.closedAt`. Default plans BASIC, PRO and ENTERPRISE are seeded by the migration with placeholder prices editable by the platform administrator. Tenants without a subscription (provisioned before Phase 11) keep unrestricted access.
+
+## Phase 12a schema (migrations `brands`, `multi_brand_feature`)
+
+`brands` (unique code per tenant, CHECK on code and colour format), nullable `branches.brandId` and `menu_categories.brandId` with composite (tenantId, brandId) foreign keys so a brand can never be attached across tenants. The ENTERPRISE plan gains the `multi_brand` feature.
+
+## Phase 12b schema (migration `franchise`)
+
+`franchisees`, nullable `branches.franchiseeId` (composite tenant FK), `franchise_contracts` (unique number per tenant; fee CHECKs 0–50%; DRAFT/ACTIVE/TERMINATED), `royalty_statements` (unique per contract and month; DRAFT/ISSUED/PAID), `inspections` (append-only trigger, score CHECK 0–100), `supplier_agreements`. The migration adds the `franchise` feature to the Enterprise plan and seeds the `franchisee` system role (franchise.portal, reports.view, branches.view) for existing tenants.
