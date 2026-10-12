@@ -84,6 +84,8 @@ model Branch {
   rooms    Room[]
   tables   DiningTable[]
   prices   BranchVariantPrice[]
+  shifts   CashShift[]
+  orders   Order[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -304,6 +306,8 @@ model DiningTable {
   room   Room   @relation(fields: [tenantId, roomId], references: [tenantId, id], onDelete: Restrict)
   branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
 
+  orders Order[]
+
   @@unique([tenantId, id])
   @@unique([branchId, name])
   @@index([tenantId, branchId])
@@ -375,6 +379,7 @@ model ProductVariant {
 
   product      Product              @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
   branchPrices BranchVariantPrice[]
+  orderItems   OrderItem[]
 
   @@unique([tenantId, id])
   @@index([productId])
@@ -444,4 +449,250 @@ model ProductModifierGroup {
 
   @@id([productId, groupId])
   @@map("product_modifier_groups")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: orders, payments and cashier shifts. Financial rows are never
+// deleted; corrections are new rows (refunds, cancellations, cash movements).
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderChannel {
+  POS
+  WAITER
+  QR
+  WEB
+  TELEGRAM
+}
+
+// DRAFT -> PLACED -> PREPARING -> READY -> SERVED -> COMPLETED; CANCELLED from
+// DRAFT/PLACED. Transitions are enforced in modules/orders/state.ts.
+enum OrderStatus {
+  DRAFT
+  PLACED
+  PREPARING
+  READY
+  SERVED
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  CLICK
+  PAYME
+  UZUM
+  OTHER
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model CashShift {
+  id           String      @id @default(uuid(7)) @db.Uuid
+  tenantId     String      @db.Uuid
+  branchId     String      @db.Uuid
+  // Register identity: the device id, or "user:<id>" for browser sessions.
+  registerKey  String
+  deviceId     String?     @db.Uuid
+  status       ShiftStatus @default(OPEN)
+  openedById   String      @db.Uuid
+  openedAt     DateTime    @default(now())
+  openingCash  Int
+  closedById   String?     @db.Uuid
+  closedAt     DateTime?
+  expectedCash Int?
+  countedCash  Int?
+  variance     Int?
+  closeNote    String?
+
+  branch        Branch         @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  cashMovements CashMovement[]
+  payments      Payment[]
+  refunds       Refund[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, branchId, openedAt])
+  @@map("cash_shifts")
+}
+
+model CashMovement {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  shiftId     String   @db.Uuid
+  // Positive = cash in (pay-in), negative = cash out (pay-out).
+  amount      Int
+  reason      String
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  shift CashShift @relation(fields: [tenantId, shiftId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([shiftId])
+  @@map("cash_movements")
+}
+
+model OrderCounter {
+  branchId     String   @db.Uuid
+  businessDate DateTime @db.Date
+  lastNumber   Int      @default(0)
+
+  @@id([branchId, businessDate])
+  @@map("order_counters")
+}
+
+model Order {
+  id              String       @id @default(uuid(7)) @db.Uuid
+  tenantId        String       @db.Uuid
+  branchId        String       @db.Uuid
+  // Short daily number shown on receipts and queue screens.
+  number          Int
+  businessDate    DateTime     @db.Date
+  type            OrderType
+  channel         OrderChannel @default(POS)
+  status          OrderStatus  @default(DRAFT)
+  tableId         String?      @db.Uuid
+  customerName    String?
+  customerPhone   String?
+  deliveryAddress String?
+  note            String?
+  subtotal        Int          @default(0)
+  // Discount rule: percentage (basis points) and/or fixed amount, recomputed on change.
+  discountBp      Int          @default(0)
+  discountFixed   Int          @default(0)
+  discountTotal   Int          @default(0)
+  discountReason  String?
+  serviceChargeBp Int          @default(0)
+  serviceCharge   Int          @default(0)
+  total           Int          @default(0)
+  paidTotal       Int          @default(0)
+  refundedTotal   Int          @default(0)
+  idempotencyKey  String
+  createdById     String?      @db.Uuid
+  version         Int          @default(1)
+  placedAt        DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  branch   Branch       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  table    DiningTable? @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  items    OrderItem[]
+  events   OrderEvent[]
+  payments Payment[]
+  refunds  Refund[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@unique([branchId, businessDate, number])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, branchId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  tenantId       String          @db.Uuid
+  orderId        String          @db.Uuid
+  variantId      String          @db.Uuid
+  // Snapshots: later menu changes never alter historical orders.
+  productName    String
+  variantName    String
+  unitPrice      Int
+  unitCost       Int?
+  modifiers      Json            @default("[]")
+  modifiersTotal Int             @default(0)
+  quantity       Int
+  lineTotal      Int
+  note           String?
+  status         OrderItemStatus @default(ACTIVE)
+  cancelReason   String?
+  createdById    String?         @db.Uuid
+  createdAt      DateTime        @default(now())
+
+  order   Order          @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Restrict)
+  variant ProductVariant @relation(fields: [tenantId, variantId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([tenantId, variantId])
+  @@map("order_items")
+}
+
+// Append-only order history (status changes, edits, payments).
+model OrderEvent {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  String   @db.Uuid
+  orderId   String   @db.Uuid
+  type      String
+  data      Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([orderId, id])
+  @@map("order_events")
+}
+
+model Payment {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  tenantId       String        @db.Uuid
+  branchId       String        @db.Uuid
+  orderId        String        @db.Uuid
+  shiftId        String?       @db.Uuid
+  method         PaymentMethod
+  amount         Int
+  // Cash only: amount handed over and change returned.
+  tendered       Int?
+  change         Int?
+  // External terminal or provider reference (card slip number, provider transaction id).
+  reference      String?
+  idempotencyKey String
+  createdById    String?       @db.Uuid
+  createdAt      DateTime      @default(now())
+
+  order   Order      @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Restrict)
+  shift   CashShift? @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  refunds Refund[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([orderId])
+  @@index([shiftId])
+  @@map("payments")
+}
+
+model Refund {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  tenantId     String        @db.Uuid
+  orderId      String        @db.Uuid
+  paymentId    String        @db.Uuid
+  shiftId      String?       @db.Uuid
+  method       PaymentMethod
+  amount       Int
+  reason       String
+  approvedById String        @db.Uuid
+  createdAt    DateTime      @default(now())
+
+  order   Order      @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Restrict)
+  payment Payment    @relation(fields: [tenantId, paymentId], references: [tenantId, id], onDelete: Restrict)
+  shift   CashShift? @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([shiftId])
+  @@map("refunds")
 }

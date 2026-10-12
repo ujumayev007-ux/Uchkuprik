@@ -33,6 +33,21 @@ export const messages = {
   variantRequired:
     'Mahsulotda kamida bitta faol o‘lcham yoki variant bo‘lishi kerak.',
   inUse: 'Bu yozuv ishlatilmoqda va o‘chirib bo‘lmaydi.',
+  invalidTransition: 'Buyurtma holatini bunday o‘zgartirib bo‘lmaydi.',
+  itemUnavailable: 'Tanlangan taom hozir mavjud emas.',
+  invalidModifiers: 'Qo‘shimchalar to‘g‘ri tanlanmagan.',
+  overpaid:
+    'Bu o‘zgarishdan keyin to‘langan summa buyurtma summasidan oshib ketadi. Avval pulni qaytaring.',
+  shiftRequired: 'To‘lov qabul qilish uchun kassa smenasini oching.',
+  shiftAlreadyOpen: 'Bu kassada smena allaqachon ochiq.',
+  amountExceedsDue: 'To‘lov summasi qolgan qarzdan oshmasligi kerak.',
+  insufficientCash: 'Berilgan naqd pul to‘lov summasidan kam.',
+  notFullyPaid: 'Buyurtma to‘liq to‘lanmagan.',
+  refundExceedsPayment: 'Qaytarish summasi to‘lov summasidan oshmasligi kerak.',
+  paidOrderCancel:
+    'To‘langan buyurtmani bekor qilishdan oldin pulni qaytaring.',
+  providerNotConfigured: 'Bu to‘lov usuli hali ulanmagan.',
+  orderClosed: 'Yopilgan buyurtmani o‘zgartirib bo‘lmaydi.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

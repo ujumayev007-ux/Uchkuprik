@@ -105,10 +105,9 @@ test('owner manages staff, registers a terminal, and a cashier signs in with a P
   await expect(page.getByRole('alert')).toHaveText('PIN-kod noto‘g‘ri.');
   for (const digit of pin())
     await page.getByRole('button', { name: digit, exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: /Xush kelibsiz, Dilnoza Rahimova/ }),
-  ).toBeVisible();
-  await expect(page.getByText('Kirish usuli: PIN-kod')).toBeVisible();
+  // Terminal cashiers land on the POS screen.
+  await expect(page).toHaveURL(/\/kassa$/);
+  await expect(page.getByRole('heading', { name: 'Savat' })).toBeVisible();
   // Cashiers do not see staff administration.
   await expect(
     page.getByRole('link', { name: 'Xodimlar', exact: true }),

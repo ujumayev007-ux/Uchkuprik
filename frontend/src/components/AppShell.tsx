@@ -35,6 +35,30 @@ export const navItems: NavItem[] = [
     visible: (me) => me.tenantKind === 'BUSINESS',
   },
   {
+    to: '/kassa',
+    label: t.nav.pos,
+    icon: '⊞',
+    visible: (me) => can(me, 'pos.access'),
+  },
+  {
+    to: '/buyurtmalar',
+    label: t.nav.orders,
+    icon: '☰',
+    visible: (me) => can(me, 'orders.view'),
+  },
+  {
+    to: '/smena',
+    label: t.nav.shift,
+    icon: '◴',
+    visible: (me) => can(me, 'shifts.manage'),
+  },
+  {
+    to: '/hisobotlar',
+    label: t.nav.reports,
+    icon: '▤',
+    visible: (me) => can(me, 'reports.view'),
+  },
+  {
     to: '/menyu',
     label: t.nav.menu,
     icon: '☷',

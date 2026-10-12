@@ -8,8 +8,9 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | ------------------------------- | ----------------------------------------------------- |
 | 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)              |
 | 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)              |
-| 3 Core restaurant configuration | Implemented and validated locally; CI pending on push |
-| 4–16                            | Not started                                           |
+| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)              |
+| 4 Admin and cashier POS         | Implemented and validated locally; CI pending on push |
+| 5–16                            | Not started                                           |
 
 ## Phase 2 — delivered
 
@@ -28,6 +29,16 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 36 unit, 26 integration (7 new), 14 Playwright tests (4 new), deploy smoke.
 - Deferred within §8: combos/bundles, scheduled pricing, approval workflow, bulk import/export, channel sync, image upload (needs object storage).
 
+## Phase 4 — delivered
+
+- Order engine with state machine, server pricing and modifier validation, daily order numbers, idempotency, row locking, append-only events.
+- Touch POS (`/kassa`): categories, search, size/modifier picker, cart, order types, tables, delivery details, shift gate; payment dialog with split/partial payments, quick cash and change; success screen and 80 mm receipt.
+- Orders page with detail, history, discount, item/order cancellation, refunds, pay remaining, complete.
+- Cashier shift page: open, pay-in/out, close with counted cash and variance, Z-report print, shift history.
+- Sales report with payment methods, top products, cashiers and (finance.view only) gross profit.
+- Evidence: 36 unit, 36 integration (10 new financial tests incl. concurrent double-payment), 16 Playwright tests (POS flow: 130 000 total, 200 000 received, 70 000 change).
+- Deferred: favourites, combos, customer debt (Phase 9), printer adapters and real-time sync (Phase 5), online payment providers and fiscal receipts (Phase 8), attendance clock-in (Phase 10).
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -42,4 +53,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 4 — Admin and cashier POS: orders with server-side pricing, cart, dine-in/takeaway/delivery, cash payments with change, receipts, cashier shifts (open/close, expected vs actual cash), refunds with approval, basic reports.
+Phase 5 — Kitchen and real-time operations: Socket.io with tenant/branch-isolated rooms, kitchen display (KDS) with station routing, statuses Tayyorlanmoqda/Tayyor, timers and priorities, queue/pickup TV screen, printer adapter interface, reconnect and replay.

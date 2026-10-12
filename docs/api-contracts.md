@@ -53,3 +53,22 @@ Money fields are integers in so‘m. Cost fields (`cost`) are omitted unless the
 | `PUT /menu/branch-prices` {branchId, items[{variantId, price                                         | null, isAvailable}]}                                                               | menu.manage, branch scope |
 
 The session's active branch defaults to the user's first accessible branch at login. `priceVariants()` (backend/src/modules/menu/pricing.ts) is the only source of sale prices for orders.
+
+## Phase 4: POS, orders, payments, shifts, reports
+
+Order statuses: DRAFT → PLACED → PREPARING → READY → SERVED → COMPLETED; CANCELLED only from DRAFT/PLACED and only with zero net payment. Prices, modifiers, service charge and totals are computed on the server; client prices are ignored. Create and payment requests carry an `idempotencyKey`; retries return the original result (200).
+
+| Endpoint                                                                                                            | Access                                                |
+| ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `GET /orders?branchId&scope=active                                                                                  | today                                                 | all`, `GET /orders/:id`, `GET /orders/:id/events`, `GET /orders/:id/receipt` | orders.view |
+| `POST /orders` {idempotencyKey, type, tableId?, customer…, items[{variantId, quantity, modifierOptionIds}], place?} | orders.create                                         |
+| `POST /orders/:id/items`, `PATCH /orders/:id/items/:itemId` (DRAFT only), `POST /orders/:id/items/:itemId/cancel`   | orders.create (after placing: orders.cancel + reason) |
+| `PATCH /orders/:id` (table, customer, note), `POST /orders/:id/complete` (fully paid)                               | orders.edit                                           |
+| `POST /orders/:id/place`                                                                                            | orders.create                                         |
+| `POST /orders/:id/discount` {percentBp, fixed, reason}                                                              | discounts.apply                                       |
+| `POST /orders/:id/cancel` {reason}                                                                                  | orders.cancel                                         |
+| `POST /orders/:id/payments` {idempotencyKey, method CASH                                                            | CARD, amount, tendered?, reference?}                  | payments.accept + open shift; online methods rejected until Phase 8          |
+| `POST /orders/:id/refunds` {paymentId, amount, reason}                                                              | payments.refund + step-up; cash needs an open shift   |
+| `GET /shifts/current`, `POST /shifts/open`, `POST /shifts/current/movements`, `POST /shifts/:id/close`              | shifts.manage (close: own register or finance.view)   |
+| `GET /shifts`, `GET /shifts/:id/report` (Z-report)                                                                  | shifts.manage (own) or reports.view                   |
+| `GET /reports/sales?branchId&from&to`                                                                               | reports.view; `profit` only with finance.view         |

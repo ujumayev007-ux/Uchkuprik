@@ -1,0 +1,251 @@
+import type { Tx } from '../../db.js';
+import type { OrderStatus, Prisma } from '../../generated/prisma/client.js';
+import { AppError, errors } from '../../http/errors.js';
+import { priceVariants } from '../menu/pricing.js';
+
+/**
+ * Central order engine shared by every channel (POS, waiter, QR, web, Telegram).
+ * All amounts are integer so‘m and are computed here from server data only.
+ */
+
+export const transitions: Record<OrderStatus, OrderStatus[]> = {
+  DRAFT: ['PLACED', 'CANCELLED'],
+  PLACED: ['PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'],
+  PREPARING: ['READY', 'SERVED', 'COMPLETED'],
+  READY: ['SERVED', 'COMPLETED'],
+  SERVED: ['COMPLETED'],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
+export function assertTransition(from: OrderStatus, to: OrderStatus) {
+  if (!transitions[from].includes(to))
+    throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition', {
+      from,
+      to,
+    });
+}
+
+/** Orders whose content may still change (items, discount, table). */
+export const editableStatuses: OrderStatus[] = [
+  'DRAFT',
+  'PLACED',
+  'PREPARING',
+  'READY',
+  'SERVED',
+];
+
+export type ItemInput = {
+  variantId: string;
+  quantity: number;
+  modifierOptionIds: string[];
+  note?: string | null | undefined;
+};
+
+export type PricedItem = {
+  variantId: string;
+  productName: string;
+  variantName: string;
+  unitPrice: number;
+  unitCost: number | null;
+  modifiers: {
+    optionId: string;
+    groupId: string;
+    name: string;
+    price: number;
+  }[];
+  modifiersTotal: number;
+  quantity: number;
+  lineTotal: number;
+  note: string | null;
+};
+
+/** Prices items for a branch and validates modifier selections against menu rules. */
+export async function priceItems(
+  tx: Tx,
+  tenantId: string,
+  branchId: string,
+  items: ItemInput[],
+): Promise<PricedItem[]> {
+  const variantIds = [...new Set(items.map((item) => item.variantId))];
+  const prices = await priceVariants(tx, tenantId, branchId, variantIds);
+  const productIds = [
+    ...new Set([...prices.values()].map((price) => price.productId)),
+  ];
+  const links = await tx.productModifierGroup.findMany({
+    where: { tenantId, productId: { in: productIds } },
+    include: { group: { include: { options: true } } },
+  });
+  return items.map((item, index) => {
+    const price = prices.get(item.variantId);
+    if (!price || !price.available)
+      throw new AppError(409, 'ITEM_UNAVAILABLE', 'itemUnavailable', { index });
+    const groups = links
+      .filter(
+        (link) => link.productId === price.productId && link.group.isActive,
+      )
+      .map((link) => link.group);
+    const chosen = [...new Set(item.modifierOptionIds)];
+    const modifiers: PricedItem['modifiers'] = [];
+    for (const optionId of chosen) {
+      const group = groups.find((candidate) =>
+        candidate.options.some((option) => option.id === optionId),
+      );
+      const option = group?.options.find(
+        (candidate) => candidate.id === optionId,
+      );
+      if (!group || !option || !option.isActive)
+        throw new AppError(400, 'INVALID_MODIFIERS', 'invalidModifiers', {
+          index,
+        });
+      modifiers.push({
+        optionId,
+        groupId: group.id,
+        name: option.name,
+        price: option.price,
+      });
+    }
+    for (const group of groups) {
+      const count = modifiers.filter(
+        (modifier) => modifier.groupId === group.id,
+      ).length;
+      if (count < group.minSelect || count > group.maxSelect)
+        throw new AppError(400, 'INVALID_MODIFIERS', 'invalidModifiers', {
+          index,
+          groupId: group.id,
+        });
+    }
+    const modifiersTotal = modifiers.reduce(
+      (sum, modifier) => sum + modifier.price,
+      0,
+    );
+    return {
+      variantId: item.variantId,
+      productName: price.productName,
+      variantName: price.variantName,
+      unitPrice: price.price,
+      unitCost: price.cost,
+      modifiers,
+      modifiersTotal,
+      quantity: item.quantity,
+      lineTotal: (price.price + modifiersTotal) * item.quantity,
+      note: item.note?.trim() || null,
+    };
+  });
+}
+
+export function itemCreateData(
+  tenantId: string,
+  orderId: string,
+  actorId: string | null,
+  item: PricedItem,
+) {
+  return {
+    tenantId,
+    orderId,
+    variantId: item.variantId,
+    productName: item.productName,
+    variantName: item.variantName,
+    unitPrice: item.unitPrice,
+    unitCost: item.unitCost,
+    modifiers: item.modifiers as unknown as Prisma.InputJsonValue,
+    modifiersTotal: item.modifiersTotal,
+    quantity: item.quantity,
+    lineTotal: item.lineTotal,
+    note: item.note,
+    createdById: actorId,
+  };
+}
+
+/** Serializes concurrent changes (payments, edits) to one order. */
+export async function lockOrder(tx: Tx, tenantId: string, orderId: string) {
+  await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId}::uuid AND "tenantId" = ${tenantId}::uuid FOR UPDATE`;
+  const order = await tx.order.findFirst({ where: { id: orderId, tenantId } });
+  if (!order) throw errors.notFound();
+  return order;
+}
+
+export function computeTotals(input: {
+  subtotal: number;
+  discountBp: number;
+  discountFixed: number;
+  serviceChargeBp: number;
+}) {
+  const discountTotal = Math.min(
+    input.subtotal,
+    input.discountFixed +
+      Math.round((input.subtotal * input.discountBp) / 10_000),
+  );
+  const serviceCharge = Math.round(
+    ((input.subtotal - discountTotal) * input.serviceChargeBp) / 10_000,
+  );
+  return {
+    discountTotal,
+    serviceCharge,
+    total: input.subtotal - discountTotal + serviceCharge,
+  };
+}
+
+/** Recomputes totals from active items; rejects changes that would leave the order overpaid. */
+export async function recalculate(tx: Tx, orderId: string) {
+  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
+  const aggregate = await tx.orderItem.aggregate({
+    where: { orderId, status: 'ACTIVE' },
+    _sum: { lineTotal: true },
+  });
+  const subtotal = aggregate._sum.lineTotal ?? 0;
+  const totals = computeTotals({ ...order, subtotal });
+  if (order.paidTotal - order.refundedTotal > totals.total)
+    throw new AppError(409, 'OVERPAID', 'overpaid');
+  return tx.order.update({
+    where: { id: orderId },
+    data: { subtotal, ...totals, version: { increment: 1 } },
+  });
+}
+
+export async function addEvent(
+  tx: Tx,
+  tenantId: string,
+  orderId: string,
+  actorId: string | null,
+  type: string,
+  data?: Prisma.InputJsonValue,
+) {
+  await tx.orderEvent.create({
+    data: {
+      tenantId,
+      orderId,
+      actorId,
+      type,
+      ...(data === undefined ? {} : { data }),
+    },
+  });
+}
+
+/** Calendar date in the branch's timezone; order numbers restart daily. */
+export function businessDate(now: Date, timezone: string): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  return new Date(`${parts}T00:00:00.000Z`);
+}
+
+export async function nextOrderNumber(
+  tx: Tx,
+  branchId: string,
+  date: Date,
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ lastNumber: number }[]>`
+    INSERT INTO order_counters ("branchId", "businessDate", "lastNumber")
+    VALUES (${branchId}::uuid, ${date}::date, 1)
+    ON CONFLICT ("branchId", "businessDate")
+    DO UPDATE SET "lastNumber" = order_counters."lastNumber" + 1
+    RETURNING "lastNumber"`;
+  return rows[0]!.lastNumber;
+}
+
+export const netPaid = (order: { paidTotal: number; refundedTotal: number }) =>
+  order.paidTotal - order.refundedTotal;

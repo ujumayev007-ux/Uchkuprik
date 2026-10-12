@@ -24,6 +24,11 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FloorPage } from './pages/FloorPage';
 import { MenuPage } from './pages/MenuPage';
+import { OrdersPage } from './pages/OrdersPage';
+import { PosPage } from './pages/PosPage';
+import { ReceiptPage, ZReportPage } from './pages/PrintPages';
+import { ReportsPage } from './pages/ReportsPage';
+import { ShiftPage } from './pages/ShiftPage';
 import { PlatformTenantsPage } from './pages/PlatformTenantsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { RolesPage } from './pages/RolesPage';
@@ -31,6 +36,7 @@ import { StatusPage } from './pages/StatusPage';
 import { UsersPage } from './pages/UsersPage';
 import './styles.css';
 import './ui.css';
+import './pos.css';
 
 /** The next step a partially authenticated session must complete, if any. */
 function pendingStep(me: Me): string | null {
@@ -69,10 +75,21 @@ function AuthStep({
   return <Navigate to={pending ?? '/'} replace />;
 }
 
+/** Print views render without the application shell but still need a session. */
+function SessionOnly({ children }: { children: React.ReactNode }) {
+  const me = useMe();
+  if (me.isPending) return <LoadingState />;
+  if (!me.data) return <Navigate to="/kirish" replace />;
+  return <>{children}</>;
+}
+
 function Home() {
   const { data: me } = useMe();
   if (me?.tenantKind === 'PLATFORM')
     return <Navigate to="/platforma/bizneslar" replace />;
+  // Terminal staff start on the POS screen.
+  if (me?.authMethod === 'PIN' && can(me, 'pos.access'))
+    return <Navigate to="/kassa" replace />;
   return <DashboardPage />;
 }
 
@@ -139,9 +156,57 @@ const router = createBrowserRouter([
   },
   { path: '/pin', element: <PinPage /> },
   {
+    path: '/chek/:id',
+    element: (
+      <SessionOnly>
+        <ReceiptPage />
+      </SessionOnly>
+    ),
+  },
+  {
+    path: '/z-hisobot/:id',
+    element: (
+      <SessionOnly>
+        <ZReportPage />
+      </SessionOnly>
+    ),
+  },
+  {
     element: <RequireSession />,
     children: [
       { path: '/', element: <Home /> },
+      {
+        path: '/kassa',
+        element: (
+          <Guard allow={(me) => can(me, 'pos.access')}>
+            <PosPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/buyurtmalar',
+        element: (
+          <Guard allow={(me) => can(me, 'orders.view')}>
+            <OrdersPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/smena',
+        element: (
+          <Guard allow={(me) => can(me, 'shifts.manage')}>
+            <ShiftPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/hisobotlar',
+        element: (
+          <Guard allow={(me) => can(me, 'reports.view')}>
+            <ReportsPage />
+          </Guard>
+        ),
+      },
       {
         path: '/menyu',
         element: (

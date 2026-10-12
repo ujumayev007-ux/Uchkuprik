@@ -34,3 +34,7 @@
 ## Pending
 
 In-memory rate limiting is per process (move to Redis when scaling horizontally). `APP_SECRET_KEY` rotation with re-encryption is not automated yet. Backups, encryption at rest, intrusion detection and compliance certification depend on deployment infrastructure. This document does not certify production, payment, fiscal or legal compliance.
+
+## Financial controls (Phase 4)
+
+Server-side pricing only; idempotent order and payment creation; order row locks prevent double charges (tested with concurrent requests); database constraints make overpayment and over-refund impossible; payment, refund, cash-movement and order-event rows are immutable; refunds require `payments.refund` plus password re-authentication; cash refunds leave the refunding register's shift; cancellations of paid orders require a full refund first; discounts, cancellations and refunds are audited. Internal costs appear only for `finance.view`. Receipts are explicitly marked non-fiscal until an authorized fiscal provider is integrated.

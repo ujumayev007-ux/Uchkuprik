@@ -18,6 +18,9 @@ import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
 import { floorRouter } from './modules/floor/floor.routes.js';
 import { menuRouter } from './modules/menu/menu.routes.js';
+import { ordersRouter } from './modules/orders/orders.routes.js';
+import { reportsRouter } from './modules/reports/reports.routes.js';
+import { shiftsRouter } from './modules/shifts/shifts.routes.js';
 import { settingsRouter } from './modules/settings/settings.routes.js';
 import { platformRouter } from './modules/tenants/platform.routes.js';
 import { rolesRouter } from './modules/users/roles.routes.js';
@@ -145,6 +148,9 @@ export function createApp({
       settingsRouter,
       floorRouter,
       menuRouter,
+      shiftsRouter,
+      ordersRouter,
+      reportsRouter,
     ])
       app.use('/api', router(services));
   }

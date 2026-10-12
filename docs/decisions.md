@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-006 — Counter payments and refund approval (2026-10-12)
+
+- **Decision:** The POS records CASH and CARD (external bank terminal, optional slip reference) only. Click, Payme and Uzum are rejected as manual entries and will only be accepted from verified provider callbacks (Phase 8). Refund approval = `payments.refund` permission plus password re-authentication by the approver; cashiers do not hold it by default. Paying a DRAFT order places it.
+- **Reason:** Never simulate or self-declare online payments; a 4-digit PIN session cannot approve money leaving the business.
+- **Reversal:** Add an in-store supervisor-override flow if owners require it, still without PIN-only approval.
+
 ## D-005 — Phase 2 identity architecture (2026-10-12)
 
 - **Decision:** Prisma 7 client (pg adapter) for persistence with hand-reviewed SQL migrations. Platform administrators live in a reserved `PLATFORM` tenant so one `(tenantId, username)` uniqueness rule covers everyone. Opaque server-side sessions in SameSite=Strict httpOnly cookies (no JWT). scrypt via Node crypto (no native deps) for passwords and PINs; PIN input is HMAC-keyed with a secret derived from `APP_SECRET_KEY`. PIN login only on registered devices; PIN sessions can never step up. TOTP implemented in-house (RFC 6238 vectors tested). Branch access = all branches or explicit list.

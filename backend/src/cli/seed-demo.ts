@@ -59,6 +59,41 @@ try {
       await tx.userRole.create({
         data: { tenantId: tenant.id, userId: id, roleId: cashierRole.id },
       });
+      // A small menu so the POS can be used immediately.
+      const burgers = await tx.menuCategory.create({
+        data: { tenantId: tenant.id, name: 'Burgerlar' },
+      });
+      const drinks = await tx.menuCategory.create({
+        data: { tenantId: tenant.id, name: 'Ichimliklar', sortOrder: 1 },
+      });
+      const burger = await tx.product.create({
+        data: {
+          tenantId: tenant.id,
+          categoryId: burgers.id,
+          name: 'Klassik burger',
+        },
+      });
+      await tx.productVariant.create({
+        data: {
+          tenantId: tenant.id,
+          productId: burger.id,
+          name: 'Standart',
+          price: 40000,
+          cost: 16000,
+        },
+      });
+      const cola = await tx.product.create({
+        data: { tenantId: tenant.id, categoryId: drinks.id, name: 'Kola' },
+      });
+      await tx.productVariant.create({
+        data: {
+          tenantId: tenant.id,
+          productId: cola.id,
+          name: 'Standart',
+          price: 10000,
+          cost: 4000,
+        },
+      });
     });
     console.log(JSON.stringify({ slug, created: true }));
   }

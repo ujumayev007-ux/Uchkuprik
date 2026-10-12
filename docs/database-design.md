@@ -31,3 +31,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 3 schema (migrations `restaurant_configuration`, `restaurant_constraints`)
 
 `tenant_profiles` (1:1 tenant), `rooms`, `dining_tables` (unique name per branch, rotatable `qrToken`), `menu_categories` (self-referencing tree, tenant-scoped parent FK), `products` (soft delete, `version`, unique SKU/barcode per tenant), `product_variants` (every product has ≥1; price and internal cost), `branch_variant_prices` (override price and availability per branch), `modifier_groups`, `modifier_options`, `product_modifier_groups`. All child relations use composite `(tenantId, id)` foreign keys; CHECK constraints reject negative amounts, invalid selection bounds, seats outside 1–100 and service charge above 30 %.
+
+## Phase 4 schema (migrations `orders_payments_shifts`, `order_discount_rule`)
+
+`cash_shifts` (one OPEN per register via partial unique index), `cash_movements`, `order_counters` (daily number per branch, atomic upsert), `orders` (totals, discount rule, idempotency key unique per tenant), `order_items` (name/price/cost/modifier snapshots), `order_events`, `payments`, `refunds`. Payments, refunds, cash movements and order events are append-only (triggers reject UPDATE/DELETE). CHECK constraints: positive payment/refund amounts, tendered ≥ amount, discount ≤ subtotal, refunded ≤ paid, net paid ≤ total. Concurrent payments are serialized with `SELECT … FOR UPDATE` on the order row.
