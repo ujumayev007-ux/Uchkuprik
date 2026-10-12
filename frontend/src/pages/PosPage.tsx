@@ -22,6 +22,7 @@ import {
   type Order,
   type OrderType,
 } from '../lib/orders';
+import { useZones } from './DeliveryPage';
 import { useFloor } from './FloorPage';
 import {
   useMenu,
@@ -266,6 +267,8 @@ export function PosPage() {
   const [paying, setPaying] = useState<Order | null>(null);
   // Optional loyalty customer and promo code applied right after the order is created.
   const [extras, setExtras] = useState({ phone: '', promo: '' });
+  const [zoneId, setZoneId] = useState('');
+  const zones = useZones(branchId);
   const [result, setResult] = useState<{
     order: Order;
     change: number | null;
@@ -366,6 +369,8 @@ export function PosPage() {
           await post(`/orders/${order.id}/coupon`, {
             code: extras.promo.trim(),
           });
+        if (type === 'DELIVERY' && zoneId)
+          await post(`/orders/${order.id}/delivery-zone`, { zoneId });
       } catch (caught) {
         // The order exists; the cashier can still take payment without the extra.
         toast(
@@ -373,7 +378,11 @@ export function PosPage() {
           'error',
         );
       }
-      if (loyaltyPhone || extras.promo.trim())
+      if (
+        loyaltyPhone ||
+        extras.promo.trim() ||
+        (type === 'DELIVERY' && zoneId)
+      )
         current = await api<Order>(`/orders/${order.id}`);
       setExtras({ phone: '', promo: '' });
       await client.invalidateQueries({ queryKey: ['orders'] });
@@ -522,6 +531,25 @@ export function PosPage() {
               }
               required
             />
+            {(zones.data ?? []).some((zone) => zone.isActive) && (
+              <label className="field">
+                <span className="field-label">{t.delivery.zone}</span>
+                <select
+                  value={zoneId}
+                  onChange={(e) => setZoneId(e.target.value)}
+                  aria-label={t.delivery.zone}
+                >
+                  <option value="">{t.delivery.noZone}</option>
+                  {(zones.data ?? [])
+                    .filter((zone) => zone.isActive)
+                    .map((zone) => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.name} (+{formatMoney(zone.fee)})
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
           </div>
         )}
         <details className="cart-extras">

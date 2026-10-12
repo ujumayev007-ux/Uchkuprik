@@ -154,3 +154,17 @@ Receipts include `fiscal` status (`NOT_CONFIGURED` until a certified fiscal prov
 | `GET /feedback` (stats: count, average, CSAT %, open complaints), `POST /feedback/:id/resolve` | customers.view / customers.manage |
 
 Payments accept method `LOYALTY` (requires an attached customer; 1 point = 1 so‘m). Points are earned on completion at `loyaltyEarnBp` (settings) of money paid, excluding points; refunds of loyalty payments return points. Tiers by lifetime spend: Standart, Kumush (1 mln), Oltin (5 mln), Platina (20 mln). Web orders attach the customer by phone automatically.
+
+## Phase 9b: delivery and couriers
+
+| Endpoint                                                                                                     | Access                                                   |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `GET /delivery/zones`; `POST`/`PATCH /delivery/zones[/:id]` {name, fee, minOrder, etaMinutes}                | delivery.manage or orders.create (list); delivery.manage |
+| `POST /orders/:id/delivery-zone` {zoneId or null} (fee added to total, zone minimum on subtotal)             | orders.edit                                              |
+| `POST /orders/:id/courier` {courierId or null} (courier roles only, before pickup)                           | delivery.manage                                          |
+| `GET /delivery/board` (active delivery orders, couriers, consented fresh positions)                          | delivery.manage                                          |
+| `GET /courier/orders`; `POST /courier/orders/:id/pickup` (order READY); `/deliver` {proof}; `/fail` {reason} | delivery.courier, own assignments only                   |
+| `PUT /courier/consent` {consent}; `POST /courier/location` {lat, lng, accuracy}                              | delivery.courier; location requires consent              |
+| `GET /delivery/report?from&to` (delivered, failed, fees, average minutes per courier)                        | delivery.manage or reports.view                          |
+
+Delivering a fully paid order completes it (stock deduction, fiscal status, loyalty) through the same completion function as the cashier; unpaid deliveries stay SERVED until the cashier records the collected cash. Website delivery orders must choose a zone when the branch has zones (`zones` in the public menu).

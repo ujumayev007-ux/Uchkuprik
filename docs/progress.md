@@ -4,18 +4,18 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 
 ## Phase status
 
-| Phase                           | Status                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                                       |
-| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                                       |
-| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                                       |
-| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                                       |
-| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                                       |
-| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                                       |
-| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix)                     |
-| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                                       |
-| 9 Delivery, CRM, loyalty        | 9a (CRM, loyalty, coupons, feedback) implemented; 9b (delivery, couriers) next |
-| 10–16                           | Not started                                                                    |
+| Phase                           | Status                                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| 1 Foundation                    | Accepted 2026-10-12 (CI run 38213267724)                                           |
+| 2 Core database and security    | Accepted 2026-10-12 (CI run 38217691786)                                           |
+| 3 Core restaurant configuration | Accepted 2026-10-12 (CI run 38220426823)                                           |
+| 4 Admin and cashier POS         | Accepted 2026-10-12 (CI run 38233375759)                                           |
+| 5 Kitchen and real-time         | Accepted 2026-10-12 (CI run 38236006895)                                           |
+| 6 Warehouse and recipes         | Accepted 2026-10-12 (CI run 38237834743)                                           |
+| 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix)                         |
+| 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                                           |
+| 9 Delivery, CRM, loyalty        | 9a accepted (CI run 38243872772); 9b implemented and validated locally, CI pending |
+| 10–16                           | Not started                                                                        |
 
 ## Phase 2 — delivered
 
@@ -90,6 +90,15 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 61 integration (3 new), 27 Playwright tests.
 - Deferred: referral programme, NPS/CES surveys, churn analytics (Phase 10/14).
 
+## Phase 9b — delivered
+
+- Delivery zones with fee, minimum order and ETA; zone selection at the POS, on the dispatch board and on the website.
+- Dispatch board (`/yetkazish`): assign couriers, zones, live status, consented courier positions; courier report.
+- Courier screen (`/kuryer`): call, route, pickup, delivered with proof, problem with reason; opt-in location sharing.
+- Delivered + paid orders complete through the shared completion function.
+- Evidence: 40 unit, 66 integration (5 new), 29 Playwright (full POS → kitchen → dispatch → courier delivery).
+- Deferred: polygon/geo zones and routing optimisation (map provider integration), courier payroll (Phase 10).
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -104,4 +113,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 9b — Delivery and couriers: delivery zones and fees per branch, courier assignment, courier mobile screen (picked up / delivered with proof / failed), consent-based location sharing, delivery exceptions, courier earnings report.
+Phase 10 — Finance, HR and reporting: attendance (clock in/out), shift scheduling, payroll calculation with bonuses/penalties/advances and configurable rules, expense tracking, profit and loss report, branch comparison, CSV/Excel export, period closing.

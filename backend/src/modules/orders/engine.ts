@@ -180,6 +180,8 @@ export function computeTotals(input: {
   discountBp: number;
   discountFixed: number;
   serviceChargeBp: number;
+  // Delivery fee is added after discounts and is not subject to service charge.
+  deliveryFee?: number;
 }) {
   const discountTotal = Math.min(
     input.subtotal,
@@ -192,7 +194,8 @@ export function computeTotals(input: {
   return {
     discountTotal,
     serviceCharge,
-    total: input.subtotal - discountTotal + serviceCharge,
+    total:
+      input.subtotal - discountTotal + serviceCharge + (input.deliveryFee ?? 0),
   };
 }
 

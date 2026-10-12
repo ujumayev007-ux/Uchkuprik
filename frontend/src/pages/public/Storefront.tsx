@@ -13,6 +13,13 @@ import { formatMoney } from '../../lib/format';
 import { newKey } from '../../lib/orders';
 
 export type PublicMenu = {
+  zones?: {
+    id: string;
+    name: string;
+    fee: number;
+    minOrder: number;
+    etaMinutes: number | null;
+  }[];
   categories: { id: string; name: string; parentId: string | null }[];
   products: {
     id: string;

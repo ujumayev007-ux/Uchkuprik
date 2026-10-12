@@ -15,6 +15,7 @@ import { audit } from '../audit/audit.js';
 import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
 import { upsertCustomer } from '../crm/loyalty.js';
+import { applyDeliveryZone } from '../delivery/delivery.routes.js';
 import {
   addEvent,
   assertTransition,
@@ -195,7 +196,18 @@ export function onlineRouter(services: Services) {
       },
     });
     if (!branch) throw errors.notFound();
-    res.json(await publicMenu(db, tenant.id, branch.id));
+    const zones = await db.deliveryZone.findMany({
+      where: { tenantId: tenant.id, branchId: branch.id, isActive: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        fee: true,
+        minOrder: true,
+        etaMinutes: true,
+      },
+    });
+    res.json({ ...(await publicMenu(db, tenant.id, branch.id)), zones });
   });
 
   router.get('/public/t/:token', async (req, res) => {
@@ -228,6 +240,7 @@ export function onlineRouter(services: Services) {
             slug: z.string().trim().toLowerCase().max(40),
             branchId: z.uuid(),
             type: z.enum(['TAKEAWAY', 'DELIVERY']),
+            zoneId: z.uuid().optional(),
           }),
         ]),
         customerName: z.string().trim().min(2).max(80),
@@ -340,6 +353,17 @@ export function onlineRouter(services: Services) {
             itemCreateData(tenantId, created.id, null, item),
           ),
         });
+        // Website delivery uses the branch zones; the zone fee joins the total.
+        if (type === 'DELIVERY') {
+          const zones = await tx.deliveryZone.count({
+            where: { tenantId, branchId, isActive: true },
+          });
+          const zoneId =
+            input.source.kind === 'web' ? input.source.zoneId : undefined;
+          if (zones > 0 && !zoneId)
+            throw errors.validation([{ path: 'zoneId' }]);
+          if (zoneId) await applyDeliveryZone(tx, tenantId, created.id, zoneId);
+        }
         await addEvent(tx, tenantId, created.id, null, 'created', {
           status: 'PENDING',
           channel,

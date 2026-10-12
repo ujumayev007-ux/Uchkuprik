@@ -18,9 +18,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
-import { onOrderCompleted, postLoyalty } from '../crm/loyalty.js';
-import { consumeOrderIngredients } from '../inventory/ledger.js';
-import { recordFiscalReceipt } from '../payments/fiscal.js';
+import { postLoyalty } from '../crm/loyalty.js';
 import { findOpenShift } from '../shifts/shifts.routes.js';
 import {
   addEvent,
@@ -36,6 +34,7 @@ import {
   recalculate,
   syncKitchenStatus,
 } from './engine.js';
+import { completeOrder } from './complete.js';
 
 const amount = z.number().int().min(1).max(1_000_000_000);
 const itemSchema = z.object({
@@ -626,14 +625,8 @@ export function ordersRouter(services: Services) {
         });
         if (items === 0) throw errors.validation([{ path: 'items' }]);
       }
-      if (to === 'COMPLETED' && netPaid(order) < order.total)
-        throw new AppError(409, 'NOT_FULLY_PAID', 'notFullyPaid');
-      // Sold items consume recipe ingredients in the same transaction.
-      if (to === 'COMPLETED') {
-        await consumeOrderIngredients(tx, id, auth.userId);
-        await recordFiscalReceipt(tx, auth.tenantId, id);
-        await onOrderCompleted(tx, id, auth.userId);
-      }
+      if (to === 'COMPLETED')
+        return completeOrder(tx, order, auth.userId, now());
       await tx.order.update({
         where: { id },
         data: {

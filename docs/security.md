@@ -58,3 +58,7 @@ Payments are recorded only from provider callbacks verified by Payme Basic authe
 ## CRM and loyalty (Phase 9a)
 
 Points move only through a ledger function that locks the customer row and rejects negative balances; manual adjustments need customers.manage plus re-authentication and are audited. Coupon usage limits are enforced atomically in SQL (concurrency tested) and released when orders are cancelled. Marketing exports contain only customers with recorded consent and are audited. Public feedback requires the unguessable tracking token and is accepted once per order.
+
+## Delivery and courier privacy (Phase 9b)
+
+Couriers act only on orders assigned to them (other orders return 404) and never see costs. Location is accepted only after explicit consent, is shown to dispatchers only while fresh (10 minutes), and is erased immediately when consent is withdrawn; consent changes are audited. Owners and administrators are not offered as couriers even though their roles include the courier permission.

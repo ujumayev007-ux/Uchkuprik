@@ -55,3 +55,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 9a schema (migration `crm_loyalty_coupons`)
 
 `customers` (unique normalized phone per tenant, consent with timestamp, points, lifetime stats), `loyalty_entries` (append-only ledger with balance), `coupons` (percent or fixed, min order, max uses enforced by conditional update), `feedback` (one per order, rating CHECK 1-5, resolution), `orders.customerId`/`couponId`, `PaymentMethod.LOYALTY`, `tenant_profiles.loyaltyEarnBp`.
+
+## Phase 9b schema (migration `delivery_couriers`)
+
+`delivery_zones` (per branch fee, minimum order, ETA), `courier_profiles` (consent with timestamp and last position), order delivery fields (`deliveryZoneId`, `deliveryFee` included in totals, `courierId`, `deliveryStatus` UNASSIGNED/ASSIGNED/PICKED_UP/DELIVERED/FAILED, timestamps, proof, failure reason).

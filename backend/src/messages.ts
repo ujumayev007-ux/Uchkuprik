@@ -58,6 +58,9 @@ export const messages = {
   couponExhausted: 'Promokoddan foydalanish limiti tugagan.',
   couponMinOrder: 'Promokod uchun buyurtma summasi yetarli emas.',
   feedbackExists: 'Bu buyurtma uchun fikr allaqachon qoldirilgan.',
+  zoneMinOrder: 'Bu hudud uchun buyurtma summasi yetarli emas.',
+  orderNotReady: 'Buyurtma hali tayyor emas.',
+  consentRequired: 'Avval joylashuvni ulashishga rozilik bering.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

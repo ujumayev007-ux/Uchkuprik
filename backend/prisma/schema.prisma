@@ -569,47 +569,57 @@ model OrderCounter {
 }
 
 model Order {
-  id              String       @id @default(uuid(7)) @db.Uuid
-  tenantId        String       @db.Uuid
-  branchId        String       @db.Uuid
+  id                 String          @id @default(uuid(7)) @db.Uuid
+  tenantId           String          @db.Uuid
+  branchId           String          @db.Uuid
   // Short daily number shown on receipts and queue screens.
-  number          Int
-  businessDate    DateTime     @db.Date
-  type            OrderType
-  channel         OrderChannel @default(POS)
-  status          OrderStatus  @default(DRAFT)
+  number             Int
+  businessDate       DateTime        @db.Date
+  type               OrderType
+  channel            OrderChannel    @default(POS)
+  status             OrderStatus     @default(DRAFT)
   // 0 = normal, 1 = rush. Kitchen screens sort by priority, then age.
-  priority        Int          @default(0)
-  readyAt         DateTime?
-  tableId         String?      @db.Uuid
-  customerName    String?
-  customerPhone   String?
-  deliveryAddress String?
-  note            String?
-  subtotal        Int          @default(0)
+  priority           Int             @default(0)
+  readyAt            DateTime?
+  tableId            String?         @db.Uuid
+  customerName       String?
+  customerPhone      String?
+  deliveryAddress    String?
+  note               String?
+  subtotal           Int             @default(0)
   // Discount rule: percentage (basis points) and/or fixed amount, recomputed on change.
-  discountBp      Int          @default(0)
-  discountFixed   Int          @default(0)
-  discountTotal   Int          @default(0)
-  discountReason  String?
-  serviceChargeBp Int          @default(0)
-  serviceCharge   Int          @default(0)
-  total           Int          @default(0)
-  paidTotal       Int          @default(0)
-  refundedTotal   Int          @default(0)
-  idempotencyKey  String
+  discountBp         Int             @default(0)
+  discountFixed      Int             @default(0)
+  discountTotal      Int             @default(0)
+  discountReason     String?
+  serviceChargeBp    Int             @default(0)
+  serviceCharge      Int             @default(0)
+  total              Int             @default(0)
+  paidTotal          Int             @default(0)
+  refundedTotal      Int             @default(0)
+  idempotencyKey     String
   // Customer-facing tracking link for online orders (random, unguessable).
-  trackingToken   String?      @unique
-  customerId      String?      @db.Uuid
-  couponId        String?      @db.Uuid
-  createdById     String?      @db.Uuid
-  version         Int          @default(1)
-  placedAt        DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  cancelReason    String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  trackingToken      String?         @unique
+  customerId         String?         @db.Uuid
+  couponId           String?         @db.Uuid
+  // Delivery: zone, fee (in so‘m, added to the total), courier and progress.
+  deliveryZoneId     String?         @db.Uuid
+  deliveryFee        Int             @default(0)
+  courierId          String?         @db.Uuid
+  deliveryStatus     DeliveryStatus?
+  assignedAt         DateTime?
+  pickedUpAt         DateTime?
+  deliveredAt        DateTime?
+  deliveryProof      String?
+  deliveryFailReason String?
+  createdById        String?         @db.Uuid
+  version            Int             @default(1)
+  placedAt           DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   branch   Branch       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
   table    DiningTable? @relation(fields: [tableId], references: [id], onDelete: Restrict)
@@ -624,6 +634,7 @@ model Order {
   @@index([tenantId, branchId, status])
   @@index([tenantId, branchId, createdAt])
   @@index([tenantId, customerId])
+  @@index([tenantId, courierId, deliveryStatus])
   @@map("orders")
 }
 
@@ -1210,4 +1221,48 @@ model Feedback {
 
   @@index([tenantId, createdAt])
   @@map("feedback")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9b: delivery zones, couriers and consent-based location.
+
+enum DeliveryStatus {
+  UNASSIGNED
+  ASSIGNED
+  PICKED_UP
+  DELIVERED
+  FAILED
+}
+
+model DeliveryZone {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  tenantId   String   @db.Uuid
+  branchId   String   @db.Uuid
+  name       String
+  // Delivery fee and minimum order subtotal in so‘m.
+  fee        Int
+  minOrder   Int      @default(0)
+  etaMinutes Int?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@unique([branchId, name])
+  @@unique([tenantId, id])
+  @@map("delivery_zones")
+}
+
+// Courier preferences; location is stored only while the courier has consented.
+model CourierProfile {
+  userId          String    @id @db.Uuid
+  tenantId        String    @db.Uuid
+  locationConsent Boolean   @default(false)
+  consentAt       DateTime?
+  lat             Float?
+  lng             Float?
+  accuracy        Float?
+  locationAt      DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("courier_profiles")
 }

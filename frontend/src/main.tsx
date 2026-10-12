@@ -20,7 +20,9 @@ import { MfaSetupPage } from './pages/auth/MfaSetupPage';
 import { MfaVerifyPage } from './pages/auth/MfaVerifyPage';
 import { PinPage } from './pages/auth/PinPage';
 import { BranchesPage } from './pages/BranchesPage';
+import { CourierPage } from './pages/CourierPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { DeliveryPage } from './pages/DeliveryPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FloorPage } from './pages/FloorPage';
@@ -105,6 +107,12 @@ function Home() {
     return <Navigate to="/kassa" replace />;
   if (me?.authMethod === 'PIN' && can(me, 'kitchen.access'))
     return <Navigate to="/oshxona" replace />;
+  if (
+    can(me, 'delivery.courier') &&
+    !can(me, 'delivery.manage') &&
+    !can(me, 'pos.access')
+  )
+    return <Navigate to="/kuryer" replace />;
   return <DashboardPage />;
 }
 
@@ -267,6 +275,22 @@ const router = createBrowserRouter([
             }
           >
             <InventoryPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/yetkazish',
+        element: (
+          <Guard allow={(me) => can(me, 'delivery.manage')}>
+            <DeliveryPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/kuryer',
+        element: (
+          <Guard allow={(me) => can(me, 'delivery.courier')}>
+            <CourierPage />
           </Guard>
         ),
       },

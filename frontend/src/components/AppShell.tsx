@@ -79,6 +79,18 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'inventory.view') || can(me, 'purchasing.manage'),
   },
   {
+    to: '/yetkazish',
+    label: t.delivery.title,
+    icon: '➤',
+    visible: (me) => can(me, 'delivery.manage'),
+  },
+  {
+    to: '/kuryer',
+    label: t.delivery.courierTitle,
+    icon: '➤',
+    visible: (me) => can(me, 'delivery.courier') && !can(me, 'delivery.manage'),
+  },
+  {
     to: '/mijozlar',
     label: t.crm.title,
     icon: '☺',

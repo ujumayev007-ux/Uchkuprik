@@ -59,6 +59,26 @@ try {
       await tx.userRole.create({
         data: { tenantId: tenant.id, userId: id, roleId: cashierRole.id },
       });
+      // A courier who signs in with the demo password.
+      const courierRole = await tx.role.findFirstOrThrow({
+        where: { tenantId: tenant.id, systemKey: 'courier' },
+      });
+      const courier = await tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          username: 'kuryer',
+          displayName: 'Jasur Kuryer',
+          passwordHash: await hashSecret(password),
+          allBranches: true,
+        },
+      });
+      await tx.userRole.create({
+        data: {
+          tenantId: tenant.id,
+          userId: courier.id,
+          roleId: courierRole.id,
+        },
+      });
       // A small menu so the POS can be used immediately.
       const burgers = await tx.menuCategory.create({
         data: { tenantId: tenant.id, name: 'Burgerlar' },

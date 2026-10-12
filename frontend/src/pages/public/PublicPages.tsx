@@ -52,6 +52,7 @@ export function WebsiteMenuPage() {
   });
   const [branchId, setBranchId] = useState<string | null>(null);
   const [type, setType] = useState<'TAKEAWAY' | 'DELIVERY'>('TAKEAWAY');
+  const [zoneId, setZoneId] = useState('');
   const branch = branchId ?? info.data?.branches[0]?.id ?? null;
   const menu = useQuery({
     queryKey: ['public', 'menu', slug, branch],
@@ -68,7 +69,15 @@ export function WebsiteMenuPage() {
       title={info.data.name}
       subtitle={info.data.phone ?? undefined}
       menu={menu.data}
-      source={{ kind: 'web', slug, branchId: branch, type }}
+      source={{
+        kind: 'web',
+        slug,
+        branchId: branch,
+        type,
+        ...(type === 'DELIVERY' && (zoneId || menu.data.zones?.[0]?.id)
+          ? { zoneId: zoneId || menu.data.zones![0]!.id }
+          : {}),
+      }}
       needsContact
       needsAddress={type === 'DELIVERY'}
       header={
@@ -106,6 +115,24 @@ export function WebsiteMenuPage() {
               </button>
             ))}
           </div>
+          {type === 'DELIVERY' && (menu.data.zones?.length ?? 0) > 0 && (
+            <label className="field">
+              <span className="field-label">{t.delivery.zone}</span>
+              <select
+                value={zoneId || menu.data.zones![0]!.id}
+                onChange={(event) => setZoneId(event.target.value)}
+              >
+                {menu.data.zones!.map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zone.name} — {t.delivery.fee}: {formatMoney(zone.fee)}
+                    {zone.minOrder > 0
+                      ? ` · ${t.delivery.zoneMinOrderHint}: ${formatMoney(zone.minOrder)}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       }
     />
