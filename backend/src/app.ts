@@ -13,6 +13,8 @@ import { AppError, sendError } from './http/errors.js';
 import { messages } from './messages.js';
 import { auditRouter } from './modules/audit/audit.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { billingRouter } from './modules/billing/billing.routes.js';
+import { enforcePlanFeatures } from './modules/billing/entitlements.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
@@ -146,6 +148,7 @@ export function createApp({
   if (services) {
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
+    app.use('/api', enforcePlanFeatures());
     for (const router of [
       authRouter,
       usersRouter,
@@ -168,6 +171,7 @@ export function createApp({
       deliveryRouter,
       hrRouter,
       financeRouter,
+      billingRouter,
     ])
       app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));

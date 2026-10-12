@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { assertWithinLimit } from '../billing/entitlements.js';
 import type { Services } from '../../context.js';
 import type { Tx } from '../../db.js';
 import {
@@ -164,6 +165,7 @@ export function usersRouter(services: Services) {
     const pinId = crypto.randomUUID();
     try {
       const user = await db.$transaction(async (tx) => {
+        await assertWithinLimit(tx, auth.tenantId, 'users');
         await loadRoles(tx, auth, input.roleIds);
         if (!input.allBranches) await assertBranches(tx, auth, input.branchIds);
         else if (!auth.allBranches) throw errors.forbidden();
@@ -273,7 +275,9 @@ export function usersRouter(services: Services) {
     );
     if (id === auth.userId) throw errors.forbidden();
     await db.$transaction(async (tx) => {
-      await loadTarget(tx, auth, id);
+      const target = await loadTarget(tx, auth, id);
+      if (status === 'ACTIVE' && target.status !== 'ACTIVE')
+        await assertWithinLimit(tx, auth.tenantId, 'users');
       await tx.user.update({ where: { id }, data: { status } });
       if (status === 'DISABLED') {
         await tx.session.updateMany({

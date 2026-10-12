@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { assertWithinLimit } from '../billing/entitlements.js';
 import type { Services } from '../../context.js';
 import { errors, parse } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
@@ -70,6 +71,7 @@ export function devicesRouter(services: Services) {
     if (!branch || !canAccessBranch(auth, branch.id)) throw errors.forbidden();
     const token = randomToken();
     const device = await db.$transaction(async (tx) => {
+      await assertWithinLimit(tx, auth.tenantId, 'devices');
       const created = await tx.device.create({
         data: {
           tenantId: auth.tenantId,

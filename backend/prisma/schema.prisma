@@ -50,7 +50,11 @@ model Tenant {
   requireMfaForAdmins Boolean      @default(false)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
+  // Set when the owner closes the account (data kept for the retention period).
+  closedAt            DateTime?
 
+  subscription   Subscription?
+  invoices       Invoice[]
   branches       Branch[]
   users          User[]
   roles          Role[]
@@ -1417,4 +1421,96 @@ model ClosedPeriod {
 
   @@id([tenantId, month])
   @@map("closed_periods")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 11: SaaS plans, subscriptions and invoices (platform-level billing).
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+model Plan {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  code         String   @unique
+  name         String
+  // Prices in so‘m.
+  monthlyPrice Int
+  yearlyPrice  Int
+  // Null means unlimited.
+  maxBranches  Int?
+  maxUsers     Int?
+  maxDevices   Int?
+  features     String[]
+  trialDays    Int      @default(14)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                  String             @id @default(uuid(7)) @db.Uuid
+  tenantId            String             @unique @db.Uuid
+  planId              String             @db.Uuid
+  status              SubscriptionStatus
+  billingCycle        BillingCycle       @default(MONTHLY)
+  trialEndsAt         DateTime?
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  // Set when billing suspended the tenant, so payment can reactivate it.
+  suspendedForBilling Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  plan     Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices Invoice[]
+
+  @@index([status, currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  number         BigInt        @default(autoincrement())
+  tenantId       String        @db.Uuid
+  subscriptionId String        @db.Uuid
+  planCode       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  amount         Int
+  status         InvoiceStatus @default(OPEN)
+  dueDate        DateTime
+  paidAt         DateTime?
+  reference      String?
+  createdAt      DateTime      @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@unique([number])
+  @@unique([subscriptionId, periodStart])
+  @@index([tenantId, createdAt])
+  @@index([status, dueDate])
+  @@map("invoices")
 }

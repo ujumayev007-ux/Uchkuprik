@@ -15,8 +15,9 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 7 Customer ordering             | Accepted (CI run 38241814729 after the E2E rate-limit fix) |
 | 8 Payments and fiscal           | Accepted 2026-10-12 (CI run 38241814729)                   |
 | 9 Delivery, CRM, loyalty        | Accepted 2026-10-12 (9a CI 38243872772, 9b CI 38245766364) |
-| 10 Finance, HR, reporting       | Implemented and validated locally; CI pending on push      |
-| 11–16                           | Not started                                                |
+| 10 Finance, HR, reporting       | Accepted 2026-10-12 (CI 38247414281)                       |
+| 11 SaaS commercial platform     | Implemented and validated locally; CI pending on push      |
+| 12–16                           | Not started                                                |
 
 ## Phase 2 — delivered
 
@@ -109,6 +110,17 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 - Evidence: 40 unit, 71 integration (5 new), 30 Playwright tests.
 - Deferred: shift swaps, leave management, performance KPIs (Phase 13 with training), PDF export (browser print covers reports), accounting system exports (1C) once formats are specified.
 
+## Phase 11 — delivered
+
+- Self-service registration with a free trial on the chosen plan (`/royxatdan-otish`), linked from sign-in; platform tenant creation can start a trial too.
+- Plans BASIC/PRO/ENTERPRISE with server-enforced feature gates and branch/user/device limits; navigation and pages show an upgrade notice instead of failing.
+- Subscription lifecycle worker: trial → invoice → PAST_DUE → billing suspension, restored automatically when the invoice is paid.
+- Owner subscription page (`/obuna`): plan, usage bars, plan comparison and change (step-up), invoices, data export (JSON), account closure.
+- Platform billing page (`/platforma/obunalar`): MRR/ARR/ARPA/churn, plan editor, subscriptions, invoices (mark paid with reference, void), manual billing run.
+- In-app payment/trial reminder banner for settings managers.
+- Evidence: 40 unit, 77 integration (6 new), 32 Playwright tests (desktop + mobile billing flow).
+- Deferred: online subscription checkout and proration (no contracted SaaS payment provider), email/SMS reminders (Phase 14 notifications), CAPTCHA/phone verification for public sign-up.
+
 ## Open items
 
 1. **Render needs `APP_SECRET_KEY`** before deploying Phase 2 (see `render-setup.md`), and a first platform admin via `npm run admin:create`.
@@ -123,4 +135,4 @@ No Docker here. A real PostgreSQL 17 runs from `embedded-postgres` binaries star
 
 ## Next step
 
-Phase 11 — SaaS commercial platform: self-service tenant registration with trial, subscription plans (Basic/Pro/Enterprise) with server-enforced entitlements and limits (branches, devices, users, features), subscription lifecycle (trial → active → past due → suspended), invoices, payment reminders, tenant data export and closure, platform analytics.
+Phase 12 — Multi-brand and franchise: brands under one tenant, brand-level menus and branding, franchise contracts and royalty calculation, scoped reporting and delegated administration.

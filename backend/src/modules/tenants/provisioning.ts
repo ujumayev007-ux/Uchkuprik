@@ -31,6 +31,8 @@ export async function createBusinessTenant(
     name: string;
     branchName: string;
     owner: { username: string; displayName: string; password: string };
+    // Self-service owners chose their own password and need not replace it.
+    ownerChosePassword?: boolean;
   },
 ) {
   const tenant = await tx.tenant.create({
@@ -47,8 +49,8 @@ export async function createBusinessTenant(
       displayName: input.owner.displayName,
       passwordHash: await hashSecret(input.owner.password),
       passwordChangedAt: new Date(),
-      // The platform operator chose this password; the owner must replace it.
-      mustChangePassword: true,
+      // A password chosen by the platform operator must be replaced by the owner.
+      mustChangePassword: !input.ownerChosePassword,
       allBranches: true,
     },
   });

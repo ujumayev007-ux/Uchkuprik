@@ -2,6 +2,12 @@
 
 Newest first. Each entry records the decision, its reason, and what would reverse it.
 
+## D-012 — SaaS billing model (2026-10-12)
+
+- **Decision:** Subscriptions are billed in advance per period; invoices are due 7 days after the period starts, the subscription becomes PAST_DUE after the due date and the tenant is suspended 7 days later. Payment is recorded by a platform administrator (bank transfer reference) until a SaaS payment provider is contracted. Plan changes apply immediately to entitlements and to the next invoice (no proration). Tenants created before plans existed stay unrestricted until a plan is assigned. Reminders are shown in-app (banner and subscription page); email/SMS/Telegram delivery waits for the notification service (Phase 14).
+- **Reason:** Matches common B2B practice in Uzbekistan (invoice + bank transfer), keeps the ledger simple and auditable, and avoids simulating an online payment flow that is not contracted.
+- **Reversal:** Add a provider-backed card/Payme subscription checkout and proration when commercial terms are approved.
+
 ## D-011 — Payroll and P&L conventions (2026-10-12)
 
 - **Decision:** Overtime is computed per Tashkent calendar day for hourly staff only; monthly salaries are prorated by days of the starting month. P&L assigns payroll to the range containing the period start date; COGS = recipe-based SALE movements valued at average cost plus manual unit costs for items without recipes. Months are closed explicitly by finance managers and cannot be reopened through the API.

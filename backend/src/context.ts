@@ -15,5 +15,10 @@ export type Services = {
   // Post-commit hook for order changes (kitchen ticket printing).
   afterOrderChange?: (orderId: string) => Promise<void>;
   // Requests per minute. Defaults suit production; tests raise them.
-  limits?: { credentialsPerMinute?: number; apiPerMinute?: number };
+  limits?: {
+    credentialsPerMinute?: number;
+    apiPerMinute?: number;
+    // Per hour; 0 disables self-service registration.
+    signupsPerHour?: number;
+  };
 };

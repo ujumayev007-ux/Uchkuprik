@@ -9,6 +9,7 @@ import {
   FormError,
   LoadingState,
   PageHeader,
+  SelectField,
   TextField,
   useConfirm,
   useToast,
@@ -35,6 +36,14 @@ function TenantForm({ onDone }: { onDone: () => void }) {
     username: '',
     displayName: '',
     password: '',
+    planCode: '',
+  });
+  const plans = useQuery({
+    queryKey: ['platform-plans'],
+    queryFn: () =>
+      api<{ plans: { code: string; name: string; isActive: boolean }[] }>(
+        '/platform/plans',
+      ),
   });
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -58,6 +67,7 @@ function TenantForm({ onDone }: { onDone: () => void }) {
               displayName: form.displayName,
               password: form.password,
             },
+            ...(form.planCode ? { planCode: form.planCode } : {}),
           });
           onDone();
         } catch (caught) {
@@ -93,6 +103,22 @@ function TenantForm({ onDone }: { onDone: () => void }) {
           minLength={2}
           required
         />
+        <SelectField
+          label={t.platformBilling.trialPlan}
+          value={form.planCode}
+          onChange={(event) =>
+            setForm({ ...form, planCode: event.target.value })
+          }
+        >
+          <option value="">{t.platformBilling.noPlan}</option>
+          {plans.data?.plans
+            .filter((plan) => plan.isActive)
+            .map((plan) => (
+              <option key={plan.code} value={plan.code}>
+                {plan.name}
+              </option>
+            ))}
+        </SelectField>
       </div>
       <fieldset>
         <legend>{t.tenants.owner}</legend>

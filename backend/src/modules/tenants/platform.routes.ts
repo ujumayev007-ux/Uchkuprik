@@ -15,6 +15,7 @@ import {
   requirePlatformAdmin,
   requireRecentAuth,
 } from '../auth/session.js';
+import { startTrial } from '../billing/lifecycle.js';
 import { createBusinessTenant, PLATFORM_SLUG } from './provisioning.js';
 
 const slugSchema = z
@@ -68,6 +69,8 @@ export function platformRouter(services: Services) {
             displayName: z.string().trim().min(2).max(80),
             password: z.string(),
           }),
+          // Optional: start a trial on this plan; without it the tenant is unrestricted.
+          planCode: z.string().trim().toUpperCase().max(20).optional(),
         }),
         req.body,
       );
@@ -76,6 +79,16 @@ export function platformRouter(services: Services) {
       try {
         const created = await db.$transaction(async (tx) => {
           const result = await createBusinessTenant(tx, input);
+          if (
+            input.planCode &&
+            !(await startTrial(
+              tx,
+              result.tenant.id,
+              input.planCode,
+              services.now?.() ?? new Date(),
+            ))
+          )
+            throw errors.validation([{ path: 'planCode' }]);
           await audit(tx, req, {
             tenantId: result.tenant.id,
             actorUserId: auth.userId,

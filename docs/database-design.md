@@ -63,3 +63,7 @@ Separate runtime and migration database credentials in deployment. Production ru
 ## Phase 10 schema (migration `hr_finance`)
 
 `employee_profiles`, `attendance_records` (one open record per user via partial unique index, clockOut after clockIn), `scheduled_shifts`, `payroll_periods` (unique per tenant and dates; DRAFT/APPROVED/PAID), `payroll_lines`, `payroll_adjustments` (append-only), `expenses`, `closed_periods` (YYYY-MM), tenant overtime rules.
+
+## Phase 11 schema (migrations `saas_billing`, `saas_billing_tenant_fk`)
+
+`plans` (code unique, monthly/yearly price in so‘m, nullable limits = unlimited, feature keys, trial days; CHECK constraints), `subscriptions` (one per tenant, TRIALING/ACTIVE/PAST_DUE/SUSPENDED/CANCELLED, billing cycle, current period, `suspendedForBilling`), `invoices` (sequential number, unique per subscription and period start, OPEN/PAID/VOID, due date, payment reference), `tenants.closedAt`. Default plans BASIC, PRO and ENTERPRISE are seeded by the migration with placeholder prices editable by the platform administrator. Tenants without a subscription (provisioned before Phase 11) keep unrestricted access.

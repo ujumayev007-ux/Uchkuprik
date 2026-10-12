@@ -7,7 +7,7 @@ import {
   RouterProvider,
   useLocation,
 } from 'react-router';
-import { can, useMe, type Me } from './auth/session';
+import { can, hasFeature, useMe, type Me } from './auth/session';
 import { AppShell } from './components/AppShell';
 import { ErrorState, LoadingState, ToastProvider } from './components/ui';
 import { t } from './i18n';
@@ -43,6 +43,9 @@ import { QueuePage } from './pages/QueuePage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PosPage } from './pages/PosPage';
 import { ReceiptPage, ZReportPage } from './pages/PrintPages';
+import { RegisterPage } from './pages/auth/RegisterPage';
+import { PlatformBillingPage } from './pages/PlatformBillingPage';
+import { SubscriptionPage } from './pages/SubscriptionPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ShiftPage } from './pages/ShiftPage';
 import { PlatformTenantsPage } from './pages/PlatformTenantsPage';
@@ -121,15 +124,30 @@ function Home() {
 
 function Guard({
   allow,
+  feature,
   children,
 }: {
   allow: (me: Me) => boolean;
+  // Optional plan module; tenants without it see an upgrade notice.
+  feature?: string;
   children: React.ReactNode;
 }) {
   const { data: me } = useMe();
   if (!me || !allow(me))
     return (
       <ErrorState error={new ApiError(403, 'FORBIDDEN', t.common.errorTitle)} />
+    );
+  if (feature && !hasFeature(me, feature))
+    return (
+      <div className="state">
+        <h1>{t.billing.upgradeTitle}</h1>
+        <p>{t.billing.upgradeText}</p>
+        {can(me, 'settings.manage') && (
+          <a className="btn btn-primary" href="/obuna">
+            {t.billing.openBilling}
+          </a>
+        )}
+      </div>
     );
   return <>{children}</>;
 }
@@ -153,6 +171,14 @@ const router = createBrowserRouter([
     element: (
       <AuthStep step={null}>
         <LoginPage />
+      </AuthStep>
+    ),
+  },
+  {
+    path: '/royxatdan-otish',
+    element: (
+      <AuthStep step={null}>
+        <RegisterPage />
       </AuthStep>
     ),
   },
@@ -240,7 +266,10 @@ const router = createBrowserRouter([
       {
         path: '/tolovlar',
         element: (
-          <Guard allow={(me) => can(me, 'settings.manage')}>
+          <Guard
+            feature="online_payments"
+            allow={(me) => can(me, 'settings.manage')}
+          >
             <PaymentsPage />
           </Guard>
         ),
@@ -248,7 +277,10 @@ const router = createBrowserRouter([
       {
         path: '/printerlar',
         element: (
-          <Guard allow={(me) => can(me, 'settings.manage')}>
+          <Guard
+            feature="kitchen_printing"
+            allow={(me) => can(me, 'settings.manage')}
+          >
             <PrintersPage />
           </Guard>
         ),
@@ -273,6 +305,7 @@ const router = createBrowserRouter([
         path: '/ombor',
         element: (
           <Guard
+            feature="inventory"
             allow={(me) =>
               can(me, 'inventory.view') || can(me, 'purchasing.manage')
             }
@@ -284,7 +317,7 @@ const router = createBrowserRouter([
       {
         path: '/yetkazish',
         element: (
-          <Guard allow={(me) => can(me, 'delivery.manage')}>
+          <Guard feature="delivery" allow={(me) => can(me, 'delivery.manage')}>
             <DeliveryPage />
           </Guard>
         ),
@@ -292,7 +325,7 @@ const router = createBrowserRouter([
       {
         path: '/kuryer',
         element: (
-          <Guard allow={(me) => can(me, 'delivery.courier')}>
+          <Guard feature="delivery" allow={(me) => can(me, 'delivery.courier')}>
             <CourierPage />
           </Guard>
         ),
@@ -317,6 +350,7 @@ const router = createBrowserRouter([
         path: '/ish-haqi',
         element: (
           <Guard
+            feature="hr"
             allow={(me) => can(me, 'hr.manage') || can(me, 'finance.view')}
           >
             <PayrollPage />
@@ -326,7 +360,7 @@ const router = createBrowserRouter([
       {
         path: '/moliya',
         element: (
-          <Guard allow={(me) => can(me, 'finance.view')}>
+          <Guard feature="finance" allow={(me) => can(me, 'finance.view')}>
             <FinancePage />
           </Guard>
         ),
@@ -410,6 +444,22 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => me.isPlatformAdmin}>
             <PlatformTenantsPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/obuna',
+        element: (
+          <Guard allow={(me) => can(me, 'settings.manage')}>
+            <SubscriptionPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/platforma/obunalar',
+        element: (
+          <Guard allow={(me) => me.isPlatformAdmin}>
+            <PlatformBillingPage />
           </Guard>
         ),
       },

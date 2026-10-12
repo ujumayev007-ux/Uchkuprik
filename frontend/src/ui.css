@@ -1187,3 +1187,102 @@ legend {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Billing: plans, usage and reminders (Phase 11). */
+.billing-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--accent-soft);
+}
+.billing-banner.warning {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+}
+.billing-banner.danger {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.usage-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.usage-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.usage-bar span {
+  display: block;
+  height: 100%;
+  background: var(--green);
+}
+.usage-bar.full span {
+  background: var(--danger);
+}
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.plan-card.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.plan-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plan-card h3 {
+  margin: 0;
+}
+.plan-price {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.plan-price small {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.plan-limits,
+.plan-features {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.plan-features {
+  flex: 1;
+  color: var(--muted);
+}
+.danger-zone {
+  border-color: var(--danger);
+}

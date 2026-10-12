@@ -20,6 +20,23 @@ export type Me = {
   mfaSetupRequired: boolean;
   mustChangePassword: boolean;
   tenant: { name: string; slug: string };
+  entitlements: {
+    planCode: string | null;
+    status: string | null;
+    // Null means unrestricted.
+    features: string[] | null;
+    limits: {
+      branches: number | null;
+      users: number | null;
+      devices: number | null;
+    };
+  };
+  billing: {
+    status: string;
+    trialEndsAt: string | null;
+    trialDaysLeft: number | null;
+    openInvoice: { amount: number; dueDate: string } | null;
+  } | null;
 };
 
 export const meKey = ['auth', 'me'] as const;
@@ -55,4 +72,11 @@ export function can(me: Me | null | undefined, permission: string) {
   return (
     !!me && me.tenantKind === 'BUSINESS' && me.permissions.includes(permission)
   );
+}
+
+/** Whether the tenant's plan includes an optional module (the server enforces it too). */
+export function hasFeature(me: Me | null | undefined, feature: string) {
+  if (!me || me.tenantKind !== 'BUSINESS') return false;
+  const features = me.entitlements?.features ?? null;
+  return features === null || features.includes(feature);
 }

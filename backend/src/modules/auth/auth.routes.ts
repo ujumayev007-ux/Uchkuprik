@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
+import { billingNotice } from '../billing/notice.js';
 import type { Services } from '../../context.js';
 import { AppError, errors, parse } from '../../http/errors.js';
 import {
@@ -57,6 +58,7 @@ export function publicAuth(auth: AuthContext) {
     mfaVerified: auth.mfaVerified,
     mfaSetupRequired: auth.mfaPolicyRequired && !auth.mfaEnabled,
     mustChangePassword: auth.mustChangePassword,
+    entitlements: auth.entitlements,
   };
 }
 
@@ -297,7 +299,8 @@ export function authRouter(services: Services) {
         where: { id: auth.tenantId },
         select: { name: true, slug: true },
       });
-      res.json({ ...publicAuth(auth), tenant });
+      const billing = await billingNotice(db, auth, now());
+      res.json({ ...publicAuth(auth), tenant, billing });
     },
   );
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
+import { entitlementsOf } from '../billing/entitlements.js';
 import type { Services } from '../../context.js';
 import type { Db, Tx } from '../../db.js';
 import {
@@ -38,17 +39,26 @@ const publicItem = z.object({
   note: z.string().trim().max(150).nullable().optional(),
 });
 
+function planAllowsOnline(subscription: Parameters<typeof entitlementsOf>[0]) {
+  const { features } = entitlementsOf(subscription);
+  return features === null || features.includes('online_ordering');
+}
+
 /** Public storefront for a tenant: only when online ordering is enabled and the tenant is active. */
 async function storefront(db: Db, slug: string) {
   const tenant = await db.tenant.findUnique({
     where: { slug },
-    include: { profile: true },
+    include: {
+      profile: true,
+      subscription: { include: { plan: true } },
+    },
   });
   if (
     !tenant ||
     tenant.kind !== 'BUSINESS' ||
     tenant.status !== 'ACTIVE' ||
-    !tenant.profile?.publicOrdering
+    !tenant.profile?.publicOrdering ||
+    !planAllowsOnline(tenant.subscription)
   )
     throw errors.notFound();
   return tenant;
@@ -69,9 +79,17 @@ async function tableByToken(db: Db, token: string) {
     throw errors.notFound();
   const tenant = await db.tenant.findUnique({
     where: { id: table.tenantId },
-    include: { profile: true },
+    include: {
+      profile: true,
+      subscription: { include: { plan: true } },
+    },
   });
-  if (!tenant || tenant.status !== 'ACTIVE' || !tenant.profile?.publicOrdering)
+  if (
+    !tenant ||
+    tenant.status !== 'ACTIVE' ||
+    !tenant.profile?.publicOrdering ||
+    !planAllowsOnline(tenant.subscription)
+  )
     throw errors.notFound();
   return { table, tenant };
 }

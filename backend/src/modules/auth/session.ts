@@ -4,6 +4,7 @@ import type { Tx } from '../../db.js';
 import type { AuthMethod } from '../../generated/prisma/client.js';
 import { AppError, errors } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
+import { entitlementsOf, type Entitlements } from '../billing/entitlements.js';
 import {
   allPermissions,
   isPermission,
@@ -39,6 +40,8 @@ export type AuthContext = {
   mfaPolicyRequired: boolean;
   mustChangePassword: boolean;
   reauthAt: Date | null;
+  // Plan features and limits; enforced server-side for business tenants.
+  entitlements: Entitlements;
 };
 
 export function cookieNames(secure: boolean) {
@@ -151,7 +154,7 @@ export async function authenticate(
   const session = await services.db.session.findUnique({
     where: { tokenHash: sha256(token) },
     include: {
-      tenant: true,
+      tenant: { include: { subscription: { include: { plan: true } } } },
       user: {
         include: {
           roles: { include: { role: true } },
@@ -211,6 +214,7 @@ export async function authenticate(
     mustChangePassword:
       session.authMethod === 'PASSWORD' && user.mustChangePassword,
     reauthAt: session.reauthAt,
+    entitlements: entitlementsOf(session.tenant.subscription),
   };
   // Sliding idle expiry; written at most once a minute to limit database load.
   if (

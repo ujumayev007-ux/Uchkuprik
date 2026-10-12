@@ -9,6 +9,7 @@ import { createSecretBox } from './lib/crypto.js';
 import { createEventBus } from './realtime/bus.js';
 import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
+import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { createLogger } from './logger.js';
 
 async function main(): Promise<void> {
@@ -36,11 +37,15 @@ async function main(): Promise<void> {
     logger,
     secureCookies: config.NODE_ENV === 'production',
     events,
-    limits: { credentialsPerMinute: config.CREDENTIAL_RATE_LIMIT },
+    limits: {
+      credentialsPerMinute: config.CREDENTIAL_RATE_LIMIT,
+      signupsPerHour: config.SIGNUP_RATE_LIMIT,
+    },
   } as Services;
   services.afterOrderChange = (orderId) =>
     enqueueKitchenTickets(services, orderId);
   const stopPrinting = startPrintWorker(services);
+  const stopBilling = startBillingWorker(services);
   let shuttingDown = false;
   const app = createApp({
     config,
@@ -75,6 +80,7 @@ async function main(): Promise<void> {
     deadline.unref();
     void realtime.close();
     stopPrinting();
+    stopBilling();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

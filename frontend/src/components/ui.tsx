@@ -94,7 +94,7 @@ export function TextField({ label, hint, error, ...input }: InputFieldProps) {
 
 type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
   label: string;
-  hint?: string;
+  hint?: string | undefined;
   children: ReactNode;
 };
 

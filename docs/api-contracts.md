@@ -187,3 +187,22 @@ Delivering a fully paid order completes it (stock deduction, fiscal status, loya
 | `GET /reports/branches` (costs only with finance.view), `GET /reports/kitchen` (average prep minutes, on-time %), `GET /reports/sales.csv` | reports.view                                      |
 
 Payroll: HOURLY = regular minutes × rate/60 + daily overtime beyond `overtimeAfterMinutes` × `overtimeMultiplierBp`; MONTHLY = salary prorated by calendar days of the starting month; bonuses add, penalties and advances deduct. CSV files use a UTF-8 BOM and semicolons for Excel.
+
+## Phase 11: SaaS plans, subscriptions and billing
+
+| Endpoint                                                                                                                                     | Access                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `GET /public/plans` (active plans, `signupEnabled`)                                                                                          | public                                                                 |
+| `POST /public/register` {businessName, slug, branchName, ownerName, username, password, planCode, acceptTerms: true} → 201 {slug}            | public, rate-limited per IP per hour (`SIGNUP_RATE_LIMIT`, 0 disables) |
+| `GET /billing` (subscription, plan, usage vs limits, plans, last 24 invoices, isOwner)                                                       | settings.manage                                                        |
+| `POST /billing/plan` {planCode, billingCycle MONTHLY/YEARLY}; 409 `PLAN_USAGE_EXCEEDS` when current usage is above the new limits            | owner + step-up                                                        |
+| `GET /tenant/export` (streamed JSON of all tenant tables, no credentials)                                                                    | owner + step-up, audited                                               |
+| `POST /tenant/close` {confirm: slug} (tenant CLOSED, subscription CANCELLED, sessions revoked, future invoices void)                         | owner + step-up, audited                                               |
+| `GET /platform/plans`; `POST /platform/plans`; `PUT /platform/plans/:id`                                                                     | platform admin (+ step-up for writes)                                  |
+| `GET /platform/subscriptions`; `POST /platform/tenants/:id/subscription` {planCode, billingCycle}                                            | platform admin (+ step-up)                                             |
+| `GET /platform/invoices?status`; `POST /platform/invoices/:id/pay` {reference}; `POST /platform/invoices/:id/void`                           | platform admin (+ step-up)                                             |
+| `POST /platform/billing/run`; `GET /platform/analytics` (MRR, ARR, ARPA, paying tenants, open/overdue amounts, 30-day collections and churn) | platform admin                                                         |
+| `POST /platform/tenants` accepts optional `planCode` to start a trial                                                                        | platform admin + step-up                                               |
+
+`GET /auth/me` now returns `entitlements` {planCode, status, features (null = unrestricted), limits} and `billing` (trial days left, oldest open invoice) for settings managers.
+Errors: `403 FEATURE_NOT_IN_PLAN` {feature} for modules outside the plan, `403 PLAN_LIMIT_REACHED` {limit, max} when creating or re-enabling branches, users or devices beyond the plan.

@@ -28,7 +28,11 @@ export function createTestContext() {
     logger: createLogger('silent'),
     secureCookies: false,
     now: () => new Date(Date.now() + clock.offsetMs),
-    limits: { credentialsPerMinute: 10_000, apiPerMinute: 10_000 },
+    limits: {
+      credentialsPerMinute: 10_000,
+      apiPerMinute: 10_000,
+      signupsPerHour: 10_000,
+    },
   };
   const app = createApp({
     config: { APP_ORIGIN: ORIGIN },

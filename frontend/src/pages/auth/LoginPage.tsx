@@ -86,6 +86,9 @@ export function LoginPage() {
         <Link className="text-link center" to="/pin">
           {t.auth.pinLogin}
         </Link>
+        <Link className="text-link center" to="/royxatdan-otish">
+          {t.register.noAccount}
+        </Link>
       </form>
     </AuthLayout>
   );

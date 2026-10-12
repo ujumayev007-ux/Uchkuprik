@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
-import { can, meKey, useMe, type Me } from '../auth/session';
+import { can, hasFeature, meKey, useMe, type Me } from '../auth/session';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
+import { formatDateTime, formatMoney } from '../lib/format';
 import { useRealtime } from '../lib/realtime';
 import { PendingOrders } from './PendingOrders';
 import { ReauthDialog } from './ReauthDialog';
@@ -76,19 +77,24 @@ export const navItems: NavItem[] = [
     to: '/ombor',
     label: t.nav.warehouse,
     icon: '▥',
-    visible: (me) => can(me, 'inventory.view') || can(me, 'purchasing.manage'),
+    visible: (me) =>
+      hasFeature(me, 'inventory') &&
+      (can(me, 'inventory.view') || can(me, 'purchasing.manage')),
   },
   {
     to: '/yetkazish',
     label: t.delivery.title,
     icon: '➤',
-    visible: (me) => can(me, 'delivery.manage'),
+    visible: (me) => hasFeature(me, 'delivery') && can(me, 'delivery.manage'),
   },
   {
     to: '/kuryer',
     label: t.delivery.courierTitle,
     icon: '➤',
-    visible: (me) => can(me, 'delivery.courier') && !can(me, 'delivery.manage'),
+    visible: (me) =>
+      hasFeature(me, 'delivery') &&
+      can(me, 'delivery.courier') &&
+      !can(me, 'delivery.manage'),
   },
   {
     to: '/mijozlar',
@@ -106,13 +112,14 @@ export const navItems: NavItem[] = [
     to: '/ish-haqi',
     label: t.hr.payrollTitle,
     icon: '₴',
-    visible: (me) => can(me, 'hr.manage') || can(me, 'finance.view'),
+    visible: (me) =>
+      hasFeature(me, 'hr') && (can(me, 'hr.manage') || can(me, 'finance.view')),
   },
   {
     to: '/moliya',
     label: t.finance.title,
     icon: '∑',
-    visible: (me) => can(me, 'finance.view'),
+    visible: (me) => hasFeature(me, 'finance') && can(me, 'finance.view'),
   },
   {
     to: '/menyu',
@@ -160,12 +167,20 @@ export const navItems: NavItem[] = [
     to: '/printerlar',
     label: t.nav.printers,
     icon: '⎙',
-    visible: (me) => can(me, 'settings.manage'),
+    visible: (me) =>
+      hasFeature(me, 'kitchen_printing') && can(me, 'settings.manage'),
   },
   {
     to: '/tolovlar',
     label: t.nav.payments,
     icon: '₪',
+    visible: (me) =>
+      hasFeature(me, 'online_payments') && can(me, 'settings.manage'),
+  },
+  {
+    to: '/obuna',
+    label: t.nav.billing,
+    icon: '◇',
     visible: (me) => can(me, 'settings.manage'),
   },
   {
@@ -178,6 +193,12 @@ export const navItems: NavItem[] = [
     to: '/platforma/bizneslar',
     label: t.nav.tenants,
     icon: '◈',
+    visible: (me) => me.isPlatformAdmin,
+  },
+  {
+    to: '/platforma/obunalar',
+    label: t.nav.platformBilling,
+    icon: '◇',
     visible: (me) => me.isPlatformAdmin,
   },
   {
@@ -235,6 +256,36 @@ function BranchSwitcher({ me }: { me: Me }) {
         ))}
       </select>
     </label>
+  );
+}
+
+/** Trial and payment reminders for tenant managers. */
+function BillingBanner({ me }: { me: Me }) {
+  const billing = me.billing;
+  if (!billing) return null;
+  let text: string | null = null;
+  let tone = 'info';
+  if (billing.status === 'PAST_DUE' || billing.status === 'SUSPENDED') {
+    text = t.billing.pastDueBanner;
+    tone = 'danger';
+  } else if (billing.openInvoice) {
+    text = t.billing.dueBanner
+      .replace('{amount}', formatMoney(billing.openInvoice.amount))
+      .replace('{date}', formatDateTime(billing.openInvoice.dueDate));
+    tone = 'warning';
+  } else if (billing.trialDaysLeft !== null && billing.trialDaysLeft <= 7)
+    text = t.billing.trialBanner.replace(
+      '{days}',
+      String(billing.trialDaysLeft),
+    );
+  if (!text) return null;
+  return (
+    <div className={`billing-banner ${tone}`} role="status">
+      <span>{text}</span>
+      <NavLink to="/obuna" className="btn btn-sm btn-secondary">
+        {t.billing.openBilling}
+      </NavLink>
+    </div>
   );
 }
 
@@ -334,6 +385,7 @@ export function AppShell() {
           {can(me, 'orders.approve') && me.activeBranchId && (
             <PendingOrders branchId={me.activeBranchId} />
           )}
+          <BillingBanner me={me} />
           <Outlet />
         </main>
       </div>

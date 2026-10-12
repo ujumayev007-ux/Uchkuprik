@@ -65,6 +65,13 @@ export const messages = {
   alreadyClockedIn: 'Siz allaqachon ishga kelganingizni belgilagansiz.',
   notClockedIn: 'Avval ishga kelganingizni belgilang.',
   payrollLocked: 'Ish haqi davri tasdiqlangan, o‘zgartirib bo‘lmaydi.',
+  featureNotInPlan:
+    'Bu imkoniyat joriy tarifingizga kirmaydi. Tarifni yangilang.',
+  planLimitReached:
+    'Tarif limitiga yetildi. Ko‘proq qo‘shish uchun tarifni yangilang.',
+  planUsageExceeds: 'Joriy foydalanish tanlangan tarif limitlaridan oshadi.',
+  signupDisabled: 'Ro‘yxatdan o‘tish vaqtincha yopiq.',
+  confirmMismatch: 'Tasdiqlash matni mos kelmadi.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

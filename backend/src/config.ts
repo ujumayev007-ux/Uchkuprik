@@ -67,6 +67,8 @@ const schema = z
       .min(1)
       .max(10_000)
       .default(20),
+    // Self-service sign-ups per IP per hour; 0 disables public registration.
+    SIGNUP_RATE_LIMIT: z.coerce.number().int().min(0).max(10_000).default(5),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

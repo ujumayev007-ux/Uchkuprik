@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { assertWithinLimit } from '../billing/entitlements.js';
 import type { Services } from '../../context.js';
 import { errors, isUniqueViolation, parse } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
@@ -69,6 +70,8 @@ export function branchesRouter(services: Services) {
       const input = parse(branchInput, req.body);
       try {
         const branch = await db.$transaction(async (tx) => {
+          if (input.isActive)
+            await assertWithinLimit(tx, auth.tenantId, 'branches');
           const created = await tx.branch.create({
             data: {
               tenantId: auth.tenantId,
@@ -112,6 +115,8 @@ export function branchesRouter(services: Services) {
             where: { id, tenantId: auth.tenantId, deletedAt: null },
           });
           if (!found) throw errors.notFound();
+          if (input.isActive && !found.isActive)
+            await assertWithinLimit(tx, auth.tenantId, 'branches');
           await tx.branch.update({
             where: { id },
             data: {
