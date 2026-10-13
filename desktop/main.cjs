@@ -455,6 +455,85 @@ ipcMain.handle('vendor:sign', (_event, input) => {
   return key;
 });
 
+/**
+ * The vendor's own computer (it holds the private key) never needs a licence from
+ * anyone: it signs itself a long-term licence with every feature enabled.
+ */
+async function ensureVendorLicense(keys) {
+  if (!fs.existsSync(VENDOR_KEY)) return;
+  const { Client } = require('pg');
+  const db = new Client({
+    host: '127.0.0.1',
+    port: PG_PORT,
+    user: 'fastfood',
+    password: keys.dbPassword,
+    database: 'fastfood',
+  });
+  await db.connect();
+  try {
+    const row = (await db.query('SELECT key FROM app_license WHERE id = 1'))
+      .rows[0];
+    if (row) {
+      try {
+        const current = JSON.parse(
+          Buffer.from(row.key.split('.')[0], 'base64url').toString('utf8'),
+        );
+        const yearAhead = new Date(Date.now() + 365 * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+        if (
+          current.installId === keys.installId &&
+          current.expiresAt > yearAhead
+        )
+          return;
+      } catch {
+        // Unreadable key: replace it below.
+      }
+    }
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 10);
+    const payload = {
+      v: 1,
+      customer: 'Sotuvchi (shaxsiy nusxa)',
+      installId: keys.installId,
+      issuedAt: new Date().toISOString(),
+      expiresAt: expires.toISOString().slice(0, 10),
+      features: [
+        'inventory',
+        'delivery',
+        'online_ordering',
+        'loyalty',
+        'kitchen_printing',
+        'online_payments',
+        'hr',
+        'finance',
+        'multi_brand',
+        'franchise',
+        'operations',
+        'developer_api',
+      ],
+      maxBranches: null,
+      maxUsers: null,
+      maxDevices: null,
+    };
+    const body = Buffer.from(JSON.stringify(payload));
+    const signature = crypto.sign(
+      null,
+      body,
+      crypto.createPrivateKey(fs.readFileSync(VENDOR_KEY)),
+    );
+    const key = `${body.toString('base64url')}.${signature.toString('base64url')}`;
+    await db.query(
+      `INSERT INTO app_license (id, key, "lastSeenAt", "updatedAt") VALUES (1, $1, now(), now())
+       ON CONFLICT (id) DO UPDATE SET key = EXCLUDED.key, "updatedAt" = now()`,
+      [key],
+    );
+    log('vendor licence issued for this computer');
+  } finally {
+    await db.end();
+  }
+}
+
 function openVendorPanel() {
   const panel = new BrowserWindow({
     width: 920,
@@ -504,6 +583,7 @@ async function boot() {
   await backupIfUpgrading();
   await startPostgres();
   await migrate(keys.dbPassword);
+  await ensureVendorLicense(keys);
   startServer(keys);
   if (!(await waitFor(`http://127.0.0.1:${APP_PORT}/api/health/ready`, 60)))
     throw new Error('Server ishga tushmadi. Jurnallarni tekshiring.');
