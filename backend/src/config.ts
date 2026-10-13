@@ -67,6 +67,17 @@ const schema = z
       .min(1)
       .max(10_000)
       .default(20),
+    // Desktop/LAN mode: also accept requests whose Origin is this server itself
+    // (terminals reach it by IP address), still rejecting foreign origins.
+    ALLOW_SAME_HOST_ORIGIN: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    // Desktop install on the restaurant computer: no SaaS billing or plan limits.
+    SELF_HOSTED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Bearer token for the Prometheus /api/metrics endpoint; unset disables it.
     METRICS_TOKEN: z.string().min(32).max(200).optional(),
     // Self-service sign-ups per IP per hour; 0 disables public registration.

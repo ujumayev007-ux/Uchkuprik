@@ -286,13 +286,16 @@ export function billingRouter(services: Services) {
           },
           ownerChosePassword: true,
         });
-        const subscription = await startTrial(
-          tx,
-          result.tenant.id,
-          input.planCode,
-          now(),
-        );
-        if (!subscription) throw errors.validation([{ path: 'planCode' }]);
+        // Self-hosted installs (desktop) have no SaaS plans: the business is unrestricted.
+        if (!services.selfHosted) {
+          const subscription = await startTrial(
+            tx,
+            result.tenant.id,
+            input.planCode,
+            now(),
+          );
+          if (!subscription) throw errors.validation([{ path: 'planCode' }]);
+        }
         await audit(tx, req, {
           tenantId: result.tenant.id,
           actorUserId: result.owner.id,

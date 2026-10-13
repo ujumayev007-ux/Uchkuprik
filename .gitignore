@@ -12,3 +12,14 @@ backend/src/generated/
 .DS_Store
 .idea/
 .vscode/
+
+# Desktop/Android build output
+desktop/stage/
+desktop/release/
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/release/
+desktop/build.log
+android/build.log

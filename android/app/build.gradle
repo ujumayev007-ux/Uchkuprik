@@ -1,0 +1,48 @@
+plugins {
+    id "com.android.application"
+}
+
+// One version number for EXE and APK (taken from desktop/package.json by build-apk.mjs).
+def appVersion = (project.findProperty("appVersion") ?: "1.0.0").toString()
+def parts = appVersion.tokenize(".").collect { it as int }
+def versionSlug = appVersion.replace(".", "_")
+
+android {
+    namespace "uz.fastfood.app"
+    compileSdk 37
+
+    defaultConfig {
+        // A distinct package per version: versions install side by side on the phone.
+        applicationId "uz.fastfood.app.v" + versionSlug
+        minSdk 24
+        targetSdk 36
+        versionCode parts[0] * 10000 + parts[1] * 100 + parts[2]
+        versionName appVersion
+        resValue "string", "app_name", "FastFood " + appVersion
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("FASTFOOD_KEYSTORE") ?: "missing.jks")
+            storePassword System.getenv("FASTFOOD_KEYSTORE_PASSWORD") ?: ""
+            keyAlias "fastfood"
+            keyPassword System.getenv("FASTFOOD_KEYSTORE_PASSWORD") ?: ""
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    buildFeatures {
+        resValues true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

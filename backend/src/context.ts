@@ -20,6 +20,8 @@ export type Services = {
   telegram?: TelegramTransport;
   // Outgoing webhook HTTP client; tests inject a recorder.
   webhookSender?: WebhookSender;
+  // Desktop/self-hosted install: no SaaS subscriptions or billing.
+  selfHosted?: boolean;
   // Requests per minute. Defaults suit production; tests raise them.
   limits?: {
     credentialsPerMinute?: number;

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <title>FastFood</title>
+    <style>
+      body {
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, sans-serif;
+        background: #f7f6f2;
+        color: #24272c;
+      }
+      .box {
+        text-align: center;
+      }
+      .logo {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        margin: 0 auto 16px;
+        background: #e95324;
+        color: #fff;
+        font-size: 44px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+      }
+      .spin {
+        width: 28px;
+        height: 28px;
+        margin: 18px auto 0;
+        border-radius: 50%;
+        border: 3px solid #e8e8e2;
+        border-top-color: #e95324;
+        animation: s 0.9s linear infinite;
+      }
+      @keyframes s {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="logo">F</div>
+      <strong>FAST FOOD</strong>
+      <p>Ma’lumotlar bazasi va server ishga tushirilmoqda…</p>
+      <div class="spin"></div>
+    </div>
+  </body>
+</html>

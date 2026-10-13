@@ -16,15 +16,17 @@ export function attachRealtime(
   services: Services,
   bus: EventBus,
   appOrigin: string,
+  allowSameHost = false,
 ) {
   const io = new Server(httpServer, {
     path: '/api/realtime',
     serveClient: false,
-    cors: { origin: appOrigin, credentials: true },
+    cors: { origin: allowSameHost ? true : appOrigin, credentials: true },
     // Browsers send Origin on WebSocket upgrades; reject foreign pages outright.
     allowRequest: (req, callback) => {
       const origin = req.headers.origin;
-      callback(null, !origin || origin === appOrigin);
+      const sameHost = allowSameHost && origin === `http://${req.headers.host}`;
+      callback(null, !origin || origin === appOrigin || sameHost);
     },
     maxHttpBufferSize: 10_000,
   });

@@ -51,7 +51,12 @@ import { usersRouter } from './modules/users/users.routes.js';
 
 type Dependencies = {
   config: Pick<AppConfig, 'APP_ORIGIN'> &
-    Partial<Pick<AppConfig, 'TRUST_PROXY' | 'METRICS_TOKEN'>>;
+    Partial<
+      Pick<
+        AppConfig,
+        'TRUST_PROXY' | 'METRICS_TOKEN' | 'ALLOW_SAME_HOST_ORIGIN'
+      >
+    >;
   // Business APIs are mounted only when persistence services are provided.
   services?: Services;
   database: DatabaseProbe;
@@ -111,7 +116,10 @@ export function createApp({
   });
   app.use((req, res, next) => {
     const origin = req.get('origin');
-    if (origin && origin !== config.APP_ORIGIN) {
+    const sameHost =
+      config.ALLOW_SAME_HOST_ORIGIN &&
+      origin === `${req.protocol}://${req.get('host')}`;
+    if (origin && origin !== config.APP_ORIGIN && !sameHost) {
       res
         .status(403)
         .json({ code: 'ORIGIN_FORBIDDEN', message: messages.forbiddenOrigin });

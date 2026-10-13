@@ -9,3 +9,10 @@ backend/src/generated
 
 # Unreviewed parallel scaffold; excluded until ownership is decided (see docs/decisions.md).
 fastfood-saas
+desktop/stage
+desktop/release
+desktop/build.log
+android/release
+android/app/build
+android/.gradle
+android/build.log

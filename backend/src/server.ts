@@ -59,6 +59,7 @@ async function main(): Promise<void> {
     logger,
     secureCookies: config.NODE_ENV === 'production',
     events,
+    selfHosted: config.SELF_HOSTED,
     limits: {
       credentialsPerMinute: config.CREDENTIAL_RATE_LIMIT,
       signupsPerHour: config.SIGNUP_RATE_LIMIT,
@@ -67,7 +68,9 @@ async function main(): Promise<void> {
   services.afterOrderChange = (orderId) =>
     enqueueKitchenTickets(services, orderId);
   const stopPrinting = startPrintWorker(services);
-  const stopBilling = startBillingWorker(services);
+  const stopBilling = config.SELF_HOSTED
+    ? () => undefined
+    : startBillingWorker(services);
   const stopMaintenance = startMaintenanceWorker(services);
   const stopNotifications = startNotificationWorker(services);
   const stopWebhooks = startWebhookWorker(services);
@@ -84,7 +87,13 @@ async function main(): Promise<void> {
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info({ port: config.PORT }, 'API listening');
   });
-  const realtime = attachRealtime(server, services, events, config.APP_ORIGIN);
+  const realtime = attachRealtime(
+    server,
+    services,
+    events,
+    config.APP_ORIGIN,
+    config.ALLOW_SAME_HOST_ORIGIN,
+  );
   server.requestTimeout = 10000;
   server.headersTimeout = 10000;
   server.on('error', () => {
