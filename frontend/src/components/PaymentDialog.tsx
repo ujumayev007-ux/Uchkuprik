@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import { newKey, type Order, type PaymentMethod } from '../lib/orders';
+import { QrPayPanel, useQrPayment } from './QrPayPanel';
 import { Button, Dialog, FormError, MoneyField, TextField } from './ui';
 
 const QUICK_CASH = [50_000, 100_000, 200_000];
@@ -46,6 +47,9 @@ export function PaymentDialog({
     enabled: !!current.customerId,
   });
   const points = customer.data?.customer.points ?? 0;
+  // Merchant QR (Paynet etc.), when the owner enabled it.
+  const qr = useQrPayment();
+  const qrEnabled = !!qr.data?.enabled;
   // Each method starts from what it can cover: points up to the balance, else the full due.
   useEffect(() => {
     setAmount(
@@ -69,7 +73,7 @@ export function PaymentDialog({
           method,
           amount,
           ...(method === 'CASH' ? { tendered: tendered ?? 0 } : {}),
-          ...(method === 'CARD' && reference.trim()
+          ...((method === 'CARD' || method === 'QR') && reference.trim()
             ? { reference: reference.trim() }
             : {}),
         },
@@ -122,9 +126,13 @@ export function PaymentDialog({
           role="radiogroup"
           aria-label={t.payment.title}
         >
-          {(current.customerId
-            ? (['CASH', 'CARD', 'LOYALTY'] as const)
-            : (['CASH', 'CARD'] as const)
+          {(
+            [
+              'CASH',
+              'CARD',
+              ...(qrEnabled ? (['QR'] as const) : []),
+              ...(current.customerId ? (['LOYALTY'] as const) : []),
+            ] as const
           ).map((value) => (
             <button
               key={value}
@@ -133,7 +141,9 @@ export function PaymentDialog({
               className={method === value ? 'active' : ''}
               onClick={() => setMethod(value)}
             >
-              {t.payment.methods[value]}
+              {value === 'QR' && qr.data?.label
+                ? qr.data.label
+                : t.payment.methods[value]}
             </button>
           ))}
         </div>
@@ -157,12 +167,19 @@ export function PaymentDialog({
             </p>
           ) : (
             <TextField
-              label={`${t.payment.reference} (${t.common.optional})`}
+              label={
+                method === 'QR'
+                  ? `${t.qrPay.reference}${qr.data?.requireReference ? '' : ` (${t.common.optional})`}`
+                  : `${t.payment.reference} (${t.common.optional})`
+              }
               value={reference}
               onChange={(e) => setReference(e.target.value)}
             />
           )}
         </div>
+        {method === 'QR' && qr.data && (
+          <QrPayPanel qr={qr.data} amount={amount ?? 0} />
+        )}
         {method === 'CASH' && (
           <>
             <div className="quick-cash">
@@ -197,7 +214,10 @@ export function PaymentDialog({
             !amount ||
             amount > current.due ||
             (method === 'CASH' && change < 0) ||
-            (method === 'LOYALTY' && amount > points)
+            (method === 'LOYALTY' && amount > points) ||
+            (method === 'QR' &&
+              !!qr.data?.requireReference &&
+              !reference.trim())
           }
           onClick={() => void submit()}
         >

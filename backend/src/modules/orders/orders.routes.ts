@@ -10,7 +10,7 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
-import { receiptSettingsOf } from '../settings/settings.routes.js';
+import { qrPaymentOf, receiptSettingsOf } from '../settings/settings.routes.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import {
   getAuth,
@@ -53,7 +53,8 @@ const idempotencyKey = z.string().trim().min(8).max(80);
 
 // Methods accepted at the counter. Online providers (Click, Payme, Uzum) are only
 // accepted through verified provider callbacks (Phase 8), never as manual entries.
-const counterMethods = ['CASH', 'CARD', 'LOYALTY'] as const;
+// QR is a merchant QR (e.g. Paynet) confirmed by the cashier; it must be enabled by the owner.
+const counterMethods = ['CASH', 'CARD', 'LOYALTY', 'QR'] as const;
 
 type OrderWithRelations = Prisma.OrderGetPayload<{
   include: { items: true; payments: true; refunds: true; table: true };
@@ -740,6 +741,7 @@ export function ordersRouter(services: Services) {
               'CLICK',
               'PAYME',
               'UZUM',
+              'QR',
               'OTHER',
             ]),
             amount,
@@ -795,6 +797,20 @@ export function ordersRouter(services: Services) {
             throw new AppError(409, 'AMOUNT_EXCEEDS_DUE', 'amountExceedsDue', {
               due,
             });
+          if (input.method === 'QR') {
+            const profile = await tx.tenantProfile.findUnique({
+              where: { tenantId: auth.tenantId },
+            });
+            const qr = qrPaymentOf(profile?.qrPayment);
+            if (!qr.enabled)
+              throw new AppError(
+                400,
+                'PROVIDER_NOT_CONFIGURED',
+                'providerNotConfigured',
+              );
+            if (qr.requireReference && !input.reference?.trim())
+              throw errors.validation([{ path: 'reference' }]);
+          }
           if (input.method === 'CASH' && input.tendered! < input.amount)
             throw new AppError(400, 'INSUFFICIENT_CASH', 'insufficientCash');
           if (input.method === 'LOYALTY' && !order.customerId)

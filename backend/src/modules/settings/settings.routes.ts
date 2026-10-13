@@ -70,9 +70,79 @@ export function receiptSettingsOf(value: unknown): ReceiptSettings {
   return parsed.success ? parsed.data : receiptSettingsSchema.parse({});
 }
 
+/**
+ * Merchant QR payment (Paynet, Click, Payme, Uzum…): the customer scans the shop's
+ * QR in the provider app and the cashier confirms after seeing the money arrive.
+ * Either the QR text (rendered by the app) or a picture of the QR is stored.
+ */
+export const qrPaymentSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z
+    .enum(['PAYNET', 'CLICK', 'PAYME', 'UZUM', 'OTHER'])
+    .default('PAYNET'),
+  label: z.string().trim().max(40).default('Paynet QR'),
+  payload: z.string().trim().max(2000).default(''),
+  // data:image/png|jpeg|webp;base64,... up to ~400 KB.
+  image: z
+    .string()
+    .max(560_000)
+    .regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)
+    .or(z.literal(''))
+    .default(''),
+  instructions: z
+    .string()
+    .trim()
+    .max(300)
+    .default(
+      'Paynet ilovasida QR kodni skanerlang va ko‘rsatilgan summani to‘lang.',
+    ),
+  requireReference: z.boolean().default(false),
+});
+export type QrPayment = z.infer<typeof qrPaymentSchema>;
+
+export function qrPaymentOf(value: unknown): QrPayment {
+  const parsed = qrPaymentSchema.safeParse(value ?? {});
+  return parsed.success ? parsed.data : qrPaymentSchema.parse({});
+}
+
 export function settingsRouter(services: Services) {
   const { db } = services;
   const router = Router();
+
+  router.get('/settings/qr-payment', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    if (auth.tenantKind !== 'BUSINESS') throw errors.forbidden();
+    const profile = await db.tenantProfile.findUnique({
+      where: { tenantId: auth.tenantId },
+    });
+    res.json(qrPaymentOf(profile?.qrPayment));
+  });
+
+  router.put(
+    '/settings/qr-payment',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(qrPaymentSchema, req.body);
+      if (input.enabled && !input.payload && !input.image)
+        throw errors.validation([{ path: 'payload' }]);
+      await db.$transaction(async (tx) => {
+        await tx.tenantProfile.upsert({
+          where: { tenantId: auth.tenantId },
+          update: { qrPayment: input },
+          create: { tenantId: auth.tenantId, qrPayment: input },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'settings.qr_payment.update',
+          data: { enabled: input.enabled, provider: input.provider },
+        });
+      });
+      res.json({ ok: true });
+    },
+  );
 
   router.get('/settings/receipt', requireAuth(), async (_req, res) => {
     const auth = getAuth(res);

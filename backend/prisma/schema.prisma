@@ -299,6 +299,8 @@ model TenantProfile {
   repairApprovalThreshold Int      @default(1000000)
   // Receipt layout options (see settings.routes.ts receiptSettings).
   receiptSettings         Json     @default("{}")
+  // Merchant QR payment (Paynet etc.): see settings.routes.ts qrPaymentSchema.
+  qrPayment               Json     @default("{}")
   updatedAt               DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -539,6 +541,8 @@ enum PaymentMethod {
   CLICK
   PAYME
   UZUM
+  // Merchant QR (e.g. Paynet) confirmed by the cashier after the payment arrives.
+  QR
   OTHER
 }
 

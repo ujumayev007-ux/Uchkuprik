@@ -295,6 +295,12 @@ export const navItems: NavItem[] = [
       hasFeature(me, 'developer_api') && can(me, 'developer.manage'),
   },
   {
+    to: '/qr-tolov',
+    label: t.nav.qrPay,
+    icon: '▩',
+    visible: (me) => can(me, 'settings.manage'),
+  },
+  {
     to: '/chek-dizayni',
     label: t.nav.receiptDesign,
     icon: '🧾',

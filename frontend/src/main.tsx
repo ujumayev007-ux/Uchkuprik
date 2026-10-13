@@ -56,6 +56,7 @@ import { InsightsPage } from './pages/InsightsPage';
 import { LicensePage } from './pages/LicensePage';
 import { WaiterPage } from './pages/WaiterPage';
 import { ReceiptDesignPage } from './pages/ReceiptDesignPage';
+import { QrPaymentPage } from './pages/QrPaymentPage';
 import { ApprovalsPage, TrainingPage } from './pages/TrainingPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -576,6 +577,14 @@ const router = createBrowserRouter([
         element: (
           <Guard allow={(me) => can(me, 'orders.create')}>
             <WaiterPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/qr-tolov',
+        element: (
+          <Guard allow={(me) => can(me, 'settings.manage')}>
+            <QrPaymentPage />
           </Guard>
         ),
       },

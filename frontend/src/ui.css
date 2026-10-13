@@ -1493,3 +1493,27 @@ textarea {
     display: none;
   }
 }
+
+/* Merchant QR payment (Paynet etc.). */
+.qr-pay {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: #fff;
+  color: #111;
+  text-align: center;
+}
+.qr-pay-code {
+  width: min(280px, 70vw);
+  height: auto;
+}
+.qr-pay-code svg {
+  width: 100%;
+  height: auto;
+}
+.qr-pay-amount {
+  font-size: 28px;
+}

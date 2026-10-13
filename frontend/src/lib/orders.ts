@@ -12,7 +12,7 @@ export type OrderStatus =
   | 'CANCELLED';
 export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 export type PaymentMethod =
-  'CASH' | 'CARD' | 'LOYALTY' | 'CLICK' | 'PAYME' | 'UZUM' | 'OTHER';
+  'CASH' | 'CARD' | 'LOYALTY' | 'CLICK' | 'PAYME' | 'UZUM' | 'QR' | 'OTHER';
 
 export type OrderItem = {
   id: string;

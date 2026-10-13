@@ -23,6 +23,23 @@ export function useRealtimeEvent(listener: Listener) {
  * the affected queries are refetched over REST. After a reconnect everything live is
  * refetched, so missed events cannot leave screens stale.
  */
+// Query groups refreshed when orders change (and after a reconnect).
+const LIVE_KEYS = [
+  'orders',
+  'kitchen',
+  'queue',
+  'shift',
+  'floor',
+  'reports',
+  'dashboard',
+  'customers',
+  'delivery',
+  'inventory',
+  'operations',
+  'insights',
+  'finance',
+];
+
 export function useRealtime(branchId: string | null | undefined) {
   const client = useQueryClient();
   const [online, setOnline] = useState(true);
@@ -35,7 +52,7 @@ export function useRealtime(branchId: string | null | undefined) {
     });
     let connectedOnce = false;
     const refreshLive = () => {
-      for (const key of ['orders', 'kitchen', 'queue', 'shift'])
+      for (const key of LIVE_KEYS)
         void client.invalidateQueries({ queryKey: [key] });
     };
     socket.on('connect', () => {
@@ -46,8 +63,8 @@ export function useRealtime(branchId: string | null | undefined) {
     socket.on('disconnect', () => setOnline(false));
     socket.on('connect_error', () => setOnline(false));
     socket.on('order.changed', (payload: Record<string, unknown>) => {
-      // New or changed orders also change kitchen tickets and the queue screen.
-      for (const key of ['orders', 'kitchen', 'queue', 'shift'])
+      // An order change affects tickets, queue, tables, shift cash, stock and reports.
+      for (const key of LIVE_KEYS)
         void client.invalidateQueries({ queryKey: [key] });
       for (const listener of listeners) listener('order.changed', payload);
     });

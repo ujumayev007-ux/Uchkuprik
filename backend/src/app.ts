@@ -186,6 +186,8 @@ export function createApp({
         limit: '2mb',
       }),
     );
+    // The merchant QR picture may be larger than ordinary JSON requests.
+    app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
     app.use('/api', enforceLicense(services));
