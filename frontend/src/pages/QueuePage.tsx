@@ -43,6 +43,19 @@ export function QueuePage() {
     <div className="queue-screen">
       <header>
         <h1>{queue.data?.branch.name ?? t.queue.title}</h1>
+        <button
+          className="btn btn-ghost btn-sm queue-close"
+          onClick={() => {
+            // Opened as its own window from the menu: close it; otherwise go back.
+            if (window.opener) window.close();
+            else
+              window.history.length > 1
+                ? window.history.back()
+                : window.location.assign('/');
+          }}
+        >
+          ✕ {t.common.close}
+        </button>
         {!sound ? (
           <button
             className="btn btn-secondary btn-md"

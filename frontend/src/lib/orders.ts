@@ -22,6 +22,7 @@ export type OrderItem = {
   unitPrice: number;
   modifiers: { optionId: string; name: string; price: number }[];
   modifiersTotal: number;
+  components?: { name: string; quantity: number }[];
   quantity: number;
   lineTotal: number;
   note: string | null;

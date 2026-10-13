@@ -274,6 +274,11 @@ export function menuRouter(services: Services) {
         ? categories
         : categories.filter((category) => categoryVisible(category, branch));
       const shownIds = new Set(shown.map((category) => category.id));
+      const comboRows = await db.comboComponent.findMany({
+        where: { tenantId: auth.tenantId },
+        orderBy: { sortOrder: 'asc' },
+        select: { variantId: true, componentVariantId: true, quantity: true },
+      });
       res.json({
         branchId: branch.id,
         brandId: branch.brandId,
@@ -314,6 +319,13 @@ export function menuRouter(services: Services) {
                 price: override?.price ?? variant.price,
                 available: variant.isActive && (override?.isAvailable ?? true),
                 isActive: variant.isActive,
+                // Set (combo) contents: other variants included at this price.
+                components: comboRows
+                  .filter((row) => row.variantId === variant.id)
+                  .map((row) => ({
+                    variantId: row.componentVariantId,
+                    quantity: row.quantity,
+                  })),
                 ...(costs ? { cost: variant.cost } : {}),
               };
             }),
@@ -631,6 +643,64 @@ export function menuRouter(services: Services) {
   });
 
   // Branch-specific prices and availability ("stop list"). A null price keeps the base price.
+  /** Defines a set: the variant is sold at its own price and contains these items. */
+  router.put('/menu/variants/:id/components', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const { components } = parse(
+      z.object({
+        components: z
+          .array(
+            z.object({
+              variantId: z.uuid(),
+              quantity: z.number().int().min(1).max(50),
+            }),
+          )
+          .max(30),
+      }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      const variant = await tx.productVariant.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!variant) throw errors.notFound();
+      const ids = [...new Set(components.map((part) => part.variantId))];
+      if (ids.includes(id)) throw errors.validation([{ path: 'components' }]);
+      const found = await tx.productVariant.count({
+        where: { tenantId: auth.tenantId, id: { in: ids } },
+      });
+      // Sets cannot contain other sets.
+      const nested = await tx.comboComponent.count({
+        where: { tenantId: auth.tenantId, variantId: { in: ids } },
+      });
+      if (found !== ids.length || nested > 0)
+        throw errors.validation([{ path: 'components' }]);
+      await tx.comboComponent.deleteMany({
+        where: { tenantId: auth.tenantId, variantId: id },
+      });
+      await tx.comboComponent.createMany({
+        data: components.map((part, index) => ({
+          tenantId: auth.tenantId,
+          variantId: id,
+          componentVariantId: part.variantId,
+          quantity: part.quantity,
+          sortOrder: index,
+        })),
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'menu.combo.update',
+        entityType: 'product_variant',
+        entityId: id,
+        data: { components: components.length },
+      });
+    });
+    services.events?.publish({ type: 'menu.changed', tenantId: auth.tenantId });
+    res.json({ ok: true });
+  });
+
   router.put('/menu/branch-prices', ...manage, async (req, res) => {
     const auth = getAuth(res);
     const input = parse(

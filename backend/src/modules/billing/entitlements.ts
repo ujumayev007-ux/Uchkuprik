@@ -122,7 +122,19 @@ export function enforcePlanFeatures() {
   };
 }
 
+// Self-hosted installs take entitlements from their licence instead of a subscription.
+let override: (() => Promise<Entitlements>) | null = null;
+export function setEntitlementsOverride(
+  source: (() => Promise<Entitlements>) | null,
+) {
+  override = source;
+}
+export function entitlementsOverride() {
+  return override;
+}
+
 export async function tenantEntitlements(tx: Tx, tenantId: string) {
+  if (override) return override();
   const subscription = await tx.subscription.findUnique({
     where: { tenantId },
     include: { plan: true },

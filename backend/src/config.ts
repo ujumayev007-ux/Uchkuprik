@@ -78,6 +78,9 @@ const schema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Desktop install identity, provided by the desktop launcher.
+    INSTALL_ID: z.string().max(100).optional(),
+    INSTALLED_AT: z.coerce.date().optional(),
     // Bearer token for the Prometheus /api/metrics endpoint; unset disables it.
     METRICS_TOKEN: z.string().min(32).max(200).optional(),
     // Self-service sign-ups per IP per hour; 0 disables public registration.

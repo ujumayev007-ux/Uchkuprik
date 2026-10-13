@@ -10,6 +10,7 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { receiptSettingsOf } from '../settings/settings.routes.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import {
   getAuth,
@@ -102,6 +103,7 @@ function serialize(order: OrderWithRelations, auth: AuthContext) {
         unitPrice: item.unitPrice,
         modifiers: item.modifiers,
         modifiersTotal: item.modifiersTotal,
+        components: item.components,
         quantity: item.quantity,
         lineTotal: item.lineTotal,
         note: item.note,
@@ -1054,6 +1056,7 @@ export function ordersRouter(services: Services) {
           phone: branch.phone,
         },
         cashier: cashier?.displayName ?? null,
+        layout: receiptSettingsOf(tenant.profile?.receiptSettings),
         // Fiscal sign/QR exist only after a certified fiscal provider registers the receipt.
         fiscal: (await db.fiscalReceipt.findUnique({
           where: { orderId: order.id },

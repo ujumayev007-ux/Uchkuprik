@@ -189,9 +189,15 @@ export function kitchenRouter(services: Services) {
               id: item.id,
               productName: item.productName,
               variantName: item.variantName,
-              modifiers: (item.modifiers as { name: string }[]).map(
-                (modifier) => modifier.name,
-              ),
+              modifiers: [
+                ...(item.modifiers as { name: string }[]).map(
+                  (modifier) => modifier.name,
+                ),
+                // Set contents are listed for the cook.
+                ...(
+                  item.components as { name: string; quantity: number }[]
+                ).map((part) => `${part.quantity}× ${part.name}`),
+              ],
               quantity: item.quantity,
               note: item.note,
               stationId: item.stationId,

@@ -27,6 +27,10 @@ import {
   publicApiRouter,
 } from './modules/developer/developer.routes.js';
 import { enforcePlanFeatures } from './modules/billing/entitlements.js';
+import {
+  enforceLicense,
+  licenseRouter,
+} from './modules/license/license.routes.js';
 import { loadSession } from './modules/auth/session.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
@@ -184,6 +188,7 @@ export function createApp({
     );
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
+    app.use('/api', enforceLicense(services));
     app.use('/api', enforcePlanFeatures());
     for (const router of [
       authRouter,
@@ -208,6 +213,7 @@ export function createApp({
       hrRouter,
       financeRouter,
       billingRouter,
+      licenseRouter,
       brandsRouter,
       franchiseRouter,
       operationsRouter,

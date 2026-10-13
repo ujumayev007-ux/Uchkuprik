@@ -22,6 +22,9 @@ export type Services = {
   webhookSender?: WebhookSender;
   // Desktop/self-hosted install: no SaaS subscriptions or billing.
   selfHosted?: boolean;
+  // Identity of this desktop install (licences are bound to it) and first install time.
+  installId?: string;
+  installedAt?: Date;
   // Requests per minute. Defaults suit production; tests raise them.
   limits?: {
     credentialsPerMinute?: number;

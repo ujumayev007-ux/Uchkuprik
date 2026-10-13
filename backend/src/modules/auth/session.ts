@@ -4,7 +4,11 @@ import type { Tx } from '../../db.js';
 import type { AuthMethod } from '../../generated/prisma/client.js';
 import { AppError, errors } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
-import { entitlementsOf, type Entitlements } from '../billing/entitlements.js';
+import {
+  entitlementsOf,
+  entitlementsOverride,
+  type Entitlements,
+} from '../billing/entitlements.js';
 import {
   allPermissions,
   isPermission,
@@ -214,7 +218,9 @@ export async function authenticate(
     mustChangePassword:
       session.authMethod === 'PASSWORD' && user.mustChangePassword,
     reauthAt: session.reauthAt,
-    entitlements: entitlementsOf(session.tenant.subscription),
+    entitlements: entitlementsOverride()
+      ? await entitlementsOverride()!()
+      : entitlementsOf(session.tenant.subscription),
   };
   // Sliding idle expiry; written at most once a minute to limit database load.
   if (

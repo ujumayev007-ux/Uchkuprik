@@ -53,6 +53,9 @@ import { AssetsPage } from './pages/AssetsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { DeveloperPage } from './pages/DeveloperPage';
 import { InsightsPage } from './pages/InsightsPage';
+import { LicensePage } from './pages/LicensePage';
+import { WaiterPage } from './pages/WaiterPage';
+import { ReceiptDesignPage } from './pages/ReceiptDesignPage';
 import { ApprovalsPage, TrainingPage } from './pages/TrainingPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -118,6 +121,8 @@ function Home() {
   if (me?.tenantKind === 'PLATFORM')
     return <Navigate to="/platforma/bizneslar" replace />;
   // Terminal staff start on the POS screen.
+  if (me?.roleKeys.includes('waiter') && !can(me, 'reports.view'))
+    return <Navigate to="/ofitsiant" replace />;
   if (me?.authMethod === 'PIN' && can(me, 'pos.access'))
     return <Navigate to="/kassa" replace />;
   if (me?.authMethod === 'PIN' && can(me, 'kitchen.access'))
@@ -566,6 +571,23 @@ const router = createBrowserRouter([
           </Guard>
         ),
       },
+      {
+        path: '/ofitsiant',
+        element: (
+          <Guard allow={(me) => can(me, 'orders.create')}>
+            <WaiterPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/chek-dizayni',
+        element: (
+          <Guard allow={(me) => can(me, 'settings.manage')}>
+            <ReceiptDesignPage />
+          </Guard>
+        ),
+      },
+      { path: '/litsenziya', element: <LicensePage /> },
       {
         path: '/obuna',
         element: (

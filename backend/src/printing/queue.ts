@@ -92,9 +92,15 @@ export async function enqueueKitchenTickets(
             items: items.map((item) => ({
               quantity: item.quantity,
               name: `${item.productName}${item.variantName === 'Standart' ? '' : ` (${item.variantName})`}`,
-              modifiers: (item.modifiers as { name: string }[]).map(
-                (modifier) => modifier.name,
-              ),
+              modifiers: [
+                ...(item.modifiers as { name: string }[]).map(
+                  (modifier) => modifier.name,
+                ),
+                // Set contents are listed for the cook.
+                ...(
+                  item.components as { name: string; quantity: number }[]
+                ).map((part) => `${part.quantity}× ${part.name}`),
+              ],
               note: item.note,
             })),
           }),

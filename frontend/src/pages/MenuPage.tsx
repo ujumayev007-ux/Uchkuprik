@@ -18,6 +18,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { CombosTab } from './CombosTab';
 import { BrandSelect } from '../lib/brands';
 import { api, del, patch, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
@@ -754,7 +755,7 @@ function BranchPrices({ menu, branchId }: { menu: Menu; branchId: string }) {
   );
 }
 
-type Tab = 'products' | 'modifiers' | 'prices' | 'stations';
+type Tab = 'products' | 'combos' | 'modifiers' | 'prices' | 'stations';
 
 function StationsTab() {
   const stations = useStations();
@@ -916,6 +917,7 @@ export function MenuPage() {
           {(
             [
               ['products', t.menu.products],
+              ['combos', t.combos.tab],
               ['modifiers', t.menu.modifierGroups],
               ['prices', t.menu.branchPrices],
               ['stations', t.kitchen.stations],
@@ -939,6 +941,11 @@ export function MenuPage() {
         <LoadingState />
       ) : menu.error ? (
         <ErrorState error={menu.error} onRetry={() => void menu.refetch()} />
+      ) : tab === 'combos' ? (
+        <CombosTab
+          products={menu.data.products}
+          categories={menu.data.categories}
+        />
       ) : tab === 'stations' ? (
         <StationsTab />
       ) : tab === 'prices' ? (

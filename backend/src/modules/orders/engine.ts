@@ -61,6 +61,8 @@ export type PricedItem = {
     price: number;
   }[];
   modifiersTotal: number;
+  // Set (combo) contents, shown to the kitchen and used for stock.
+  components: { name: string; quantity: number }[];
   quantity: number;
   lineTotal: number;
   note: string | null;
@@ -78,6 +80,7 @@ export async function priceItems(
   const productIds = [
     ...new Set([...prices.values()].map((price) => price.productId)),
   ];
+  const combos = await comboContents(tx, tenantId, variantIds);
   const links = await tx.productModifierGroup.findMany({
     where: { tenantId, productId: { in: productIds } },
     include: { group: { include: { options: true } } },
@@ -135,11 +138,43 @@ export async function priceItems(
       prepTimeMinutes: price.prepTimeMinutes,
       modifiers,
       modifiersTotal,
+      components: combos.get(item.variantId) ?? [],
       quantity: item.quantity,
       lineTotal: (price.price + modifiersTotal) * item.quantity,
       note: item.note?.trim() || null,
     };
   });
+}
+
+/** Set (combo) contents per variant: display names and quantities. */
+export async function comboContents(
+  tx: Tx,
+  tenantId: string,
+  variantIds: string[],
+) {
+  const rows = await tx.comboComponent.findMany({
+    where: { tenantId, variantId: { in: variantIds } },
+    orderBy: { sortOrder: 'asc' },
+  });
+  const result = new Map<string, { name: string; quantity: number }[]>();
+  if (rows.length === 0) return result;
+  const parts = await tx.productVariant.findMany({
+    where: { tenantId, id: { in: rows.map((row) => row.componentVariantId) } },
+    include: { product: { select: { name: true } } },
+  });
+  for (const row of rows) {
+    const part = parts.find((variant) => variant.id === row.componentVariantId);
+    if (!part) continue;
+    const name = part.product.name;
+    const list = result.get(row.variantId) ?? [];
+    list.push({
+      name:
+        part.name && part.name !== 'Standart' ? `${name} (${part.name})` : name,
+      quantity: row.quantity,
+    });
+    result.set(row.variantId, list);
+  }
+  return result;
 }
 
 export function itemCreateData(
@@ -160,6 +195,7 @@ export function itemCreateData(
     prepTimeMinutes: item.prepTimeMinutes,
     modifiers: item.modifiers as unknown as Prisma.InputJsonValue,
     modifiersTotal: item.modifiersTotal,
+    components: item.components as unknown as Prisma.InputJsonValue,
     quantity: item.quantity,
     lineTotal: item.lineTotal,
     note: item.note,

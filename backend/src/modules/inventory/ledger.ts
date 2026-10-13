@@ -151,7 +151,8 @@ export async function consumeOrderIngredients(
     where: { id: orderId },
     include: { items: { where: { status: 'ACTIVE' } } },
   });
-  const recipes = await tx.recipeLine.findMany({
+  // Sets consume the recipes of their components.
+  const combos = await tx.comboComponent.findMany({
     where: {
       tenantId: order.tenantId,
       variantId: {
@@ -159,9 +160,27 @@ export async function consumeOrderIngredients(
       },
     },
   });
+  const sold: { variantId: string; quantity: number }[] = [];
+  for (const item of order.items) {
+    const parts = combos.filter((combo) => combo.variantId === item.variantId);
+    if (parts.length === 0)
+      sold.push({ variantId: item.variantId, quantity: item.quantity });
+    else
+      for (const part of parts)
+        sold.push({
+          variantId: part.componentVariantId,
+          quantity: part.quantity * item.quantity,
+        });
+  }
+  const recipes = await tx.recipeLine.findMany({
+    where: {
+      tenantId: order.tenantId,
+      variantId: { in: [...new Set(sold.map((line) => line.variantId))] },
+    },
+  });
   if (recipes.length === 0) return;
   const usage = new Map<string, Decimal>();
-  for (const item of order.items)
+  for (const item of sold)
     for (const line of recipes.filter(
       (recipe) => recipe.variantId === item.variantId,
     ))

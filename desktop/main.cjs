@@ -10,6 +10,7 @@ const {
   dialog,
   shell,
   clipboard,
+  ipcMain,
 } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const crypto = require('node:crypto');
@@ -62,12 +63,25 @@ function run(file, args, options = {}) {
 /** Secrets are generated once per computer and shared by every version. */
 function secrets() {
   const file = path.join(DATA, 'secrets.json');
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  const value = {
-    appSecretKey: crypto.randomBytes(32).toString('base64'),
-    dbPassword: crypto.randomBytes(18).toString('base64url'),
-  };
-  fs.writeFileSync(file, JSON.stringify(value, null, 2), { mode: 0o600 });
+  const value = fs.existsSync(file)
+    ? JSON.parse(fs.readFileSync(file, 'utf8'))
+    : {
+        appSecretKey: crypto.randomBytes(32).toString('base64'),
+        dbPassword: crypto.randomBytes(18).toString('base64url'),
+      };
+  let changed = !fs.existsSync(file);
+  // Licences are bound to this ID; it survives upgrades because it lives in DATA.
+  if (!value.installId) {
+    const hex = crypto.randomBytes(6).toString('hex').toUpperCase();
+    value.installId = `FF-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+    changed = true;
+  }
+  if (!value.installedAt) {
+    value.installedAt = new Date().toISOString();
+    changed = true;
+  }
+  if (changed)
+    fs.writeFileSync(file, JSON.stringify(value, null, 2), { mode: 0o600 });
   return value;
 }
 
@@ -289,6 +303,8 @@ function startServer(keys) {
         APP_ORIGIN: `http://localhost:${APP_PORT}`,
         ALLOW_SAME_HOST_ORIGIN: 'true',
         SELF_HOSTED: 'true',
+        INSTALL_ID: keys.installId,
+        INSTALLED_AT: keys.installedAt,
         SERVE_FRONTEND: 'true',
         APP_SECRET_KEY: keys.appSecretKey,
         DATABASE_URL: `postgresql://fastfood:${encodeURIComponent(keys.dbPassword)}@127.0.0.1:${PG_PORT}/fastfood?schema=public`,
@@ -338,6 +354,14 @@ function buildMenu() {
         submenu: [
           { label: 'Telefonlar uchun manzil', click: showPhoneAddress },
           { label: 'Ma’lumotlar papkasi', click: () => shell.openPath(DATA) },
+          ...(fs.existsSync(VENDOR_KEY)
+            ? [
+                {
+                  label: 'Sotuvchi paneli (litsenziyalar)',
+                  click: openVendorPanel,
+                },
+              ]
+            : []),
           { type: 'separator' },
           { label: 'Yangilash (F5)', role: 'reload' },
           { label: 'To‘liq ekran', role: 'togglefullscreen' },
@@ -356,13 +380,107 @@ function buildMenu() {
   );
 }
 
+// ------------------------------------------------------------ AnyDesk
+
+const ANYDESK_PATHS = [
+  'C:\\Program Files (x86)\\AnyDesk\\AnyDesk.exe',
+  'C:\\Program Files\\AnyDesk\\AnyDesk.exe',
+  path.join(os.homedir(), 'Downloads', 'AnyDesk.exe'),
+  path.join(os.homedir(), 'Desktop', 'AnyDesk.exe'),
+];
+
+ipcMain.handle('anydesk:open', async () => {
+  const exe = ANYDESK_PATHS.find((candidate) => fs.existsSync(candidate));
+  if (!exe) {
+    shell.openExternal('https://anydesk.com/download');
+    return { installed: false, id: null };
+  }
+  spawn(exe, [], { detached: true, stdio: 'ignore' }).unref();
+  // Installed AnyDesk can report this computer's ID for the vendor.
+  const id = await run(exe, ['--get-id'], { timeout: 8000 })
+    .then((output) => output.trim().match(/\d{6,12}/)?.[0] ?? null)
+    .catch(() => null);
+  return { installed: true, id };
+});
+
+// --------------------------------------------------- vendor licence panel
+
+// Present only on the vendor's computer; customers' installs never have it.
+const VENDOR_KEY = path.join(
+  os.homedir(),
+  '.fastfood',
+  'vendor-license-private.pem',
+);
+const VENDOR_HISTORY = path.join(
+  os.homedir(),
+  '.fastfood',
+  'licenses-issued.json',
+);
+
+function vendorHistory() {
+  return fs.existsSync(VENDOR_HISTORY)
+    ? JSON.parse(fs.readFileSync(VENDOR_HISTORY, 'utf8'))
+    : [];
+}
+
+ipcMain.handle('vendor:history', () => vendorHistory());
+ipcMain.handle('vendor:sign', (_event, input) => {
+  if (!fs.existsSync(VENDOR_KEY)) throw new Error('Sotuvchi kaliti topilmadi');
+  if (!/^FF-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(input.installId || ''))
+    throw new Error('O‘rnatish ID noto‘g‘ri (FF-XXXX-XXXX-XXXX)');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.expiresAt || ''))
+    throw new Error('Sana noto‘g‘ri');
+  if (!input.customer) throw new Error('Mijoz nomini kiriting');
+  const payload = {
+    v: 1,
+    customer: String(input.customer).slice(0, 120),
+    installId: input.installId,
+    issuedAt: new Date().toISOString(),
+    expiresAt: input.expiresAt,
+    features: Array.isArray(input.features) ? input.features.map(String) : [],
+    maxBranches: input.maxBranches ?? null,
+    maxUsers: input.maxUsers ?? null,
+    maxDevices: input.maxDevices ?? null,
+  };
+  const body = Buffer.from(JSON.stringify(payload));
+  const signature = crypto.sign(
+    null,
+    body,
+    crypto.createPrivateKey(fs.readFileSync(VENDOR_KEY)),
+  );
+  const key = `${body.toString('base64url')}.${signature.toString('base64url')}`;
+  const history = vendorHistory();
+  history.push({ ...payload, key });
+  fs.writeFileSync(VENDOR_HISTORY, JSON.stringify(history, null, 2));
+  return key;
+});
+
+function openVendorPanel() {
+  const panel = new BrowserWindow({
+    width: 920,
+    height: 860,
+    title: 'Sotuvchi paneli',
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
+  });
+  panel.setMenuBarVisibility(false);
+  panel.loadFile(path.join(__dirname, 'vendor.html'));
+}
+
 async function boot() {
   win = new BrowserWindow({
     width: 1366,
     height: 860,
     title: `FastFood ${VERSION}`,
     autoHideMenuBar: false,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
   });
   buildMenu();
   win.loadFile(path.join(__dirname, 'loading.html'));

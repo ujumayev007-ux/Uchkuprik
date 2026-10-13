@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useParams } from 'react-router';
 import { ErrorState, LoadingState } from '../components/ui';
 import { t } from '../i18n';
+import type { ReceiptLayout } from './ReceiptDesignPage';
 import { api } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 import type { Order, ShiftSummary } from '../lib/orders';
@@ -54,27 +55,62 @@ export function ReceiptPage() {
         business: Business;
         branch: { name: string; address: string | null };
         cashier: string | null;
-        order: Order;
+        layout?: ReceiptLayout;
+        order: Order & {
+          items: (Order['items'][number] & {
+            components?: { name: string; quantity: number }[];
+          })[];
+        };
       }>(`/orders/${id}/receipt`),
   });
   useAutoPrint(receipt.isSuccess);
   if (receipt.isPending) return <LoadingState />;
   if (receipt.error) return <ErrorState error={receipt.error} />;
   const { business, branch, cashier, order } = receipt.data;
+  const layout: ReceiptLayout = receipt.data.layout ?? {
+    paperWidth: '80',
+    fontSize: 'normal',
+    showBusinessName: true,
+    showLegalName: true,
+    showTaxId: true,
+    showBranch: true,
+    showPhone: true,
+    showCashier: true,
+    showOrderType: true,
+    showModifiers: true,
+    showPayments: true,
+    title: '',
+    extraLines: '',
+    thankYou: '',
+  };
   return (
-    <div className="receipt">
-      <Header business={business} branch={branch} />
+    <div
+      className={`receipt paper-${layout.paperWidth} font-${layout.fontSize}`}
+    >
+      {layout.title && <strong className="center block">{layout.title}</strong>}
+      <Header
+        business={{
+          ...business,
+          name: layout.showBusinessName ? business.name : '',
+          legalName: layout.showLegalName ? business.legalName : null,
+          taxId: layout.showTaxId ? business.taxId : null,
+          phone: layout.showPhone ? (business.phone ?? null) : null,
+        }}
+        branch={layout.showBranch ? branch : { name: '', address: null }}
+      />
       <div className="receipt-meta">
         <span>
           {t.receipt.order} {t.orders.number}
           {order.number}
         </span>
         <span>{formatDateTime(order.createdAt)}</span>
-        <span>
-          {t.pos.types[order.type]}
-          {order.table ? ` · ${order.table.name}` : ''}
-        </span>
-        {cashier && (
+        {layout.showOrderType && (
+          <span>
+            {t.pos.types[order.type]}
+            {order.table ? ` · ${order.table.name}` : ''}
+          </span>
+        )}
+        {layout.showCashier && cashier && (
           <span>
             {t.receipt.cashier}: {cashier}
           </span>
@@ -87,9 +123,16 @@ export function ReceiptPage() {
               <td>
                 {item.productName}{' '}
                 {item.variantName !== 'Standart' && `(${item.variantName})`}
-                {item.modifiers.length > 0 && (
+                {layout.showModifiers && item.modifiers.length > 0 && (
                   <div className="small">
                     + {item.modifiers.map((m) => m.name).join(', ')}
+                  </div>
+                )}
+                {layout.showModifiers && (item.components ?? []).length > 0 && (
+                  <div className="small">
+                    {(item.components ?? [])
+                      .map((part) => `${part.quantity}× ${part.name}`)
+                      .join(', ')}
                   </div>
                 )}
                 <div className="small">
@@ -117,18 +160,19 @@ export function ReceiptPage() {
         )}
         <dt className="strong">{t.pos.total}</dt>
         <dd className="strong">{formatMoney(order.total)}</dd>
-        {order.payments.map((payment) => (
-          <div key={payment.id} className="totals-row">
-            <dt>{t.payment.methods[payment.method]}</dt>
-            <dd>{formatMoney(payment.tendered ?? payment.amount)}</dd>
-            {payment.change ? (
-              <>
-                <dt>{t.payment.change}</dt>
-                <dd>{formatMoney(payment.change)}</dd>
-              </>
-            ) : null}
-          </div>
-        ))}
+        {layout.showPayments &&
+          order.payments.map((payment) => (
+            <div key={payment.id} className="totals-row">
+              <dt>{t.payment.methods[payment.method]}</dt>
+              <dd>{formatMoney(payment.tendered ?? payment.amount)}</dd>
+              {payment.change ? (
+                <>
+                  <dt>{t.payment.change}</dt>
+                  <dd>{formatMoney(payment.change)}</dd>
+                </>
+              ) : null}
+            </div>
+          ))}
         {order.due > 0 && (
           <>
             <dt className="strong">{t.pos.due}</dt>
@@ -137,7 +181,9 @@ export function ReceiptPage() {
         )}
       </dl>
       <footer className="receipt-footer">
-        <div>{business.footer ?? t.receipt.thanks}</div>
+        {layout.extraLines && <div className="pre">{layout.extraLines}</div>}
+        {business.footer && <div>{business.footer}</div>}
+        <div>{layout.thankYou || t.receipt.thanks}</div>
         {/* Fiscal QR and receipt numbers require an authorized fiscal provider (Phase 8). */}
         <div className="small">{t.receipt.notFiscal}</div>
       </footer>

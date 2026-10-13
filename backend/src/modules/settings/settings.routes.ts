@@ -46,9 +46,65 @@ const settingsInput = z.object({
     .default(1_000_000),
 });
 
+/** Customer receipt layout. Unknown or missing fields fall back to these defaults. */
+export const receiptSettingsSchema = z.object({
+  paperWidth: z.enum(['58', '80']).default('80'),
+  fontSize: z.enum(['small', 'normal', 'large']).default('normal'),
+  showBusinessName: z.boolean().default(true),
+  showLegalName: z.boolean().default(true),
+  showTaxId: z.boolean().default(true),
+  showBranch: z.boolean().default(true),
+  showPhone: z.boolean().default(true),
+  showCashier: z.boolean().default(true),
+  showOrderType: z.boolean().default(true),
+  showModifiers: z.boolean().default(true),
+  showPayments: z.boolean().default(true),
+  title: z.string().trim().max(60).default(''),
+  extraLines: z.string().trim().max(500).default(''),
+  thankYou: z.string().trim().max(120).default('Xaridingiz uchun rahmat!'),
+});
+export type ReceiptSettings = z.infer<typeof receiptSettingsSchema>;
+
+export function receiptSettingsOf(value: unknown): ReceiptSettings {
+  const parsed = receiptSettingsSchema.safeParse(value ?? {});
+  return parsed.success ? parsed.data : receiptSettingsSchema.parse({});
+}
+
 export function settingsRouter(services: Services) {
   const { db } = services;
   const router = Router();
+
+  router.get('/settings/receipt', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    if (auth.tenantKind !== 'BUSINESS') throw errors.forbidden();
+    const profile = await db.tenantProfile.findUnique({
+      where: { tenantId: auth.tenantId },
+    });
+    res.json(receiptSettingsOf(profile?.receiptSettings));
+  });
+
+  router.put(
+    '/settings/receipt',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(receiptSettingsSchema, req.body);
+      await db.$transaction(async (tx) => {
+        await tx.tenantProfile.upsert({
+          where: { tenantId: auth.tenantId },
+          update: { receiptSettings: input },
+          create: { tenantId: auth.tenantId, receiptSettings: input },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'settings.receipt.update',
+        });
+      });
+      res.json(input);
+    },
+  );
 
   router.get('/settings', requireAuth(), async (_req, res) => {
     const auth = getAuth(res);

@@ -13,6 +13,12 @@ import {
   usePwa,
 } from '../lib/pwa';
 import { useRealtime } from '../lib/realtime';
+import {
+  LicenseLock,
+  licenseBlocks,
+  useLicense,
+  type License,
+} from '../pages/LicensePage';
 import { PendingOrders } from './PendingOrders';
 import { ReauthDialog } from './ReauthDialog';
 import { useTheme, useToast } from './ui';
@@ -34,7 +40,24 @@ type NavItem = {
   label: string;
   icon: string;
   visible: (me: Me) => boolean;
+  // Opens in its own window (e.g. the queue TV screen).
+  popup?: boolean;
 };
+
+/** Bridge exposed by the desktop (EXE) app; absent in browsers and the APK. */
+type DesktopBridge = {
+  openAnyDesk: () => Promise<{ installed: boolean; id: string | null }>;
+};
+export const desktop = (
+  window as unknown as { fastfoodDesktop?: DesktopBridge }
+).fastfoodDesktop;
+
+/** Front-line staff (cashier, waiter, kitchen) get a compact panel without the admin sidebar. */
+export const isFrontLine = (me: Me) =>
+  me.tenantKind === 'BUSINESS' &&
+  !can(me, 'reports.view') &&
+  !can(me, 'settings.manage') &&
+  !can(me, 'users.view');
 
 // Items appear only when the server-issued permissions allow them. Hiding a link is a
 // convenience; every endpoint still enforces authorization on the server.
@@ -68,6 +91,13 @@ export const navItems: NavItem[] = [
     label: t.nav.queue,
     icon: '▣',
     visible: (me) => can(me, 'orders.view') || can(me, 'kitchen.access'),
+    popup: true,
+  },
+  {
+    to: '/ofitsiant',
+    label: t.nav.waiter,
+    icon: '▦',
+    visible: (me) => can(me, 'orders.create'),
   },
   {
     to: '/smena',
@@ -265,6 +295,18 @@ export const navItems: NavItem[] = [
       hasFeature(me, 'developer_api') && can(me, 'developer.manage'),
   },
   {
+    to: '/chek-dizayni',
+    label: t.nav.receiptDesign,
+    icon: '🧾',
+    visible: (me) => can(me, 'settings.manage'),
+  },
+  {
+    to: '/litsenziya',
+    label: t.nav.license,
+    icon: '🔑',
+    visible: (me) => me.tenantKind === 'BUSINESS' && !!desktop,
+  },
+  {
     to: '/audit',
     label: t.nav.audit,
     icon: '☰',
@@ -383,6 +425,27 @@ function useDeviceHeartbeat() {
   }, []);
 }
 
+/** Queue/TV screens open in their own window so the main app stays usable. */
+function openPopup(path: string) {
+  window.open(path, 'fastfood-tv', 'popup,width=1280,height=760');
+}
+
+function LicenseBanner({ license }: { license: License | undefined }) {
+  if (!license?.selfHosted) return null;
+  if (license.status !== 'EXPIRING' && license.status !== 'TRIAL') return null;
+  const text = (
+    license.status === 'TRIAL' ? t.license.trialBanner : t.license.banner
+  ).replace('{days}', String(license.daysLeft ?? 0));
+  return (
+    <div className="billing-banner warning" role="status">
+      <span>{text}</span>
+      <NavLink to="/litsenziya" className="btn btn-sm btn-secondary">
+        {t.license.title}
+      </NavLink>
+    </div>
+  );
+}
+
 function UpdateBanner() {
   const pwa = usePwa();
   if (!pwa.updateReady) return null;
@@ -403,12 +466,15 @@ export function AppShell() {
   const client = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const pwa = usePwa();
+  const toast = useToast();
+  const license = useLicense(me?.tenantKind === 'BUSINESS');
   useDeviceHeartbeat();
   const online = useRealtime(
     me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
   );
   if (!me) return null;
   const items = navItems.filter((item) => item.visible(me));
+  const compact = isFrontLine(me);
 
   const logout = async () => {
     await post('/auth/logout').catch(() => undefined);
@@ -418,7 +484,9 @@ export function AppShell() {
   };
 
   return (
-    <div className={`shell ${menuOpen ? 'menu-open' : ''}`}>
+    <div
+      className={`shell ${menuOpen ? 'menu-open' : ''} ${compact ? 'compact' : ''}`}
+    >
       <aside className="sidebar" aria-label={t.nav.openMenu}>
         <div className="sidebar-brand">
           <span className="brand-mark" aria-hidden="true">
@@ -430,20 +498,36 @@ export function AppShell() {
           </span>
         </div>
         <nav>
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                `nav-link ${isActive ? 'active' : ''}`
-              }
-            >
-              <span aria-hidden="true">{item.icon}</span>
-              {item.label}
-            </NavLink>
-          ))}
+          {items.map((item) =>
+            item.popup ? (
+              <a
+                key={item.to}
+                href={item.to}
+                className="nav-link"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setMenuOpen(false);
+                  openPopup(item.to);
+                }}
+              >
+                <span aria-hidden="true">{item.icon}</span>
+                {item.label} ↗
+              </a>
+            ) : (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                onClick={() => setMenuOpen(false)}
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <span aria-hidden="true">{item.icon}</span>
+                {item.label}
+              </NavLink>
+            ),
+          )}
         </nav>
         <div className="sidebar-footer">
           <NavLink to="/holat" className="nav-link subtle">
@@ -471,6 +555,25 @@ export function AppShell() {
               title={online ? t.live.online : t.live.offline}
               aria-label={online ? t.live.online : t.live.offline}
             />
+          )}
+          {desktop && (
+            <button
+              className="icon-button"
+              aria-label={t.remote.anydesk}
+              title={t.remote.anydesk}
+              onClick={async () => {
+                const result = await desktop!.openAnyDesk();
+                toast(
+                  !result.installed
+                    ? t.remote.notInstalled
+                    : result.id
+                      ? t.remote.yourId.replace('{id}', result.id)
+                      : t.remote.opened,
+                );
+              }}
+            >
+              🖥
+            </button>
           )}
           {pwa.installable && (
             <button
@@ -512,9 +615,44 @@ export function AppShell() {
           {can(me, 'orders.approve') && me.activeBranchId && (
             <PendingOrders branchId={me.activeBranchId} />
           )}
+          {compact && (
+            <nav className="compact-nav" aria-label={t.nav.openMenu}>
+              {items.map((item) =>
+                item.popup ? (
+                  <a
+                    key={item.to}
+                    href={item.to}
+                    className="compact-link"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openPopup(item.to);
+                    }}
+                  >
+                    {item.icon} {item.label}
+                  </a>
+                ) : (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) =>
+                      `compact-link ${isActive ? 'active' : ''}`
+                    }
+                  >
+                    {item.icon} {item.label}
+                  </NavLink>
+                ),
+              )}
+            </nav>
+          )}
           <UpdateBanner />
+          <LicenseBanner license={license.data} />
           <BillingBanner me={me} />
-          <Outlet />
+          {licenseBlocks(license.data) ? (
+            <LicenseLock license={license.data!} />
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
       {menuOpen && (

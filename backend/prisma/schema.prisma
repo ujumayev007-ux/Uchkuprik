@@ -297,6 +297,8 @@ model TenantProfile {
   overtimeMultiplierBp    Int      @default(15000)
   // Repairs at or above this cost (so‘m) need an approval before closing.
   repairApprovalThreshold Int      @default(1000000)
+  // Receipt layout options (see settings.routes.ts receiptSettings).
+  receiptSettings         Json     @default("{}")
   updatedAt               DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -680,6 +682,8 @@ model OrderItem {
   unitCost         Int?
   modifiers        Json            @default("[]")
   modifiersTotal   Int             @default(0)
+  // Set (combo) contents snapshot: [{ name, quantity }].
+  components       Json            @default("[]")
   quantity         Int
   lineTotal        Int
   note             String?
@@ -2331,4 +2335,31 @@ model WebhookDelivery {
   @@index([status, nextTryAt])
   @@index([endpointId, createdAt])
   @@map("webhook_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// Sets (combos): one product sold at one price, made of other menu items.
+
+model ComboComponent {
+  id                 String @id @default(uuid(7)) @db.Uuid
+  tenantId           String @db.Uuid
+  // The set's own variant (its price is the set price).
+  variantId          String @db.Uuid
+  componentVariantId String @db.Uuid
+  quantity           Int    @default(1)
+  sortOrder          Int    @default(0)
+
+  @@index([tenantId, variantId])
+  @@map("combo_components")
+}
+
+// Licence of a self-hosted (desktop) install, signed by the vendor.
+model AppLicense {
+  id         Int      @id @default(1)
+  key        String
+  // Highest time ever observed; moving the clock back does not extend a licence.
+  lastSeenAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("app_license")
 }

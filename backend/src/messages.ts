@@ -91,6 +91,10 @@ export const messages = {
   apiKeyInvalid: 'API kaliti noto‘g‘ri yoki bekor qilingan.',
   apiScopeMissing: 'API kalitida bu amal uchun ruxsat yo‘q.',
   webhookUrlInvalid: 'Webhook manzili ochiq HTTPS manzil bo‘lishi kerak.',
+  licenseExpired:
+    'Litsenziya muddati tugagan. Dastur egasi yangi kalit kiritishi kerak.',
+  licenseInvalid:
+    'Litsenziya kaliti noto‘g‘ri yoki boshqa kompyuter uchun berilgan.',
   approvalRequired: 'Bu xarajat uchun tasdiq kerak. So‘rov yuborildi.',
   monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
 } as const;

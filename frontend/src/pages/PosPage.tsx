@@ -259,6 +259,14 @@ export function PosPage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [type, setType] = useState<OrderType>('TAKEAWAY');
   const [tableId, setTableId] = useState('');
+  // Waiter panel opens the POS for a table: /kassa?stol=<tableId>.
+  useEffect(() => {
+    const table = new URLSearchParams(window.location.search).get('stol');
+    if (table) {
+      setType('DINE_IN');
+      setTableId(table);
+    }
+  }, []);
   const [customer, setCustomer] = useState({
     name: '',
     phone: '',
