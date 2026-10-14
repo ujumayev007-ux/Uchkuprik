@@ -12,6 +12,7 @@ import {
   PageHeader,
   SelectField,
   TextField,
+  Checkbox,
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
@@ -23,8 +24,11 @@ type Employee = {
   name: string;
   status: string;
   position: string | null;
-  payType: 'NONE' | 'HOURLY' | 'MONTHLY';
+  payType: 'NONE' | 'HOURLY' | 'DAILY' | 'SHIFT' | 'MONTHLY';
   rate: number;
+  perOrder?: number;
+  perCustomer?: number;
+  salesPercentBp?: number;
 };
 type Period = {
   id: string;
@@ -45,6 +49,7 @@ type Line = {
   bonuses: number;
   penalties: number;
   advances: number;
+  commission?: number;
   total: number;
 };
 const statusTone = {
@@ -70,6 +75,9 @@ function EmployeeRate({ employee }: { employee: Employee }) {
     position: employee.position ?? '',
     payType: employee.payType,
     rate: employee.rate as number | null,
+    perOrder: (employee.perOrder ?? 0) as number | null,
+    perCustomer: (employee.perCustomer ?? 0) as number | null,
+    percent: String((employee.salesPercentBp ?? 0) / 100),
   });
   return (
     <tr>
@@ -89,11 +97,13 @@ function EmployeeRate({ employee }: { employee: Employee }) {
             setForm({ ...form, payType: e.target.value as Employee['payType'] })
           }
         >
-          {(['NONE', 'HOURLY', 'MONTHLY'] as const).map((type) => (
-            <option key={type} value={type}>
-              {t.hr.payTypes[type]}
-            </option>
-          ))}
+          {(['NONE', 'HOURLY', 'DAILY', 'SHIFT', 'MONTHLY'] as const).map(
+            (type) => (
+              <option key={type} value={type}>
+                {t.hr.payTypes[type]}
+              </option>
+            ),
+          )}
         </select>
       </td>
       <td>
@@ -101,6 +111,26 @@ function EmployeeRate({ employee }: { employee: Employee }) {
           label={t.hr.rate}
           value={form.rate}
           onChange={(rate) => setForm({ ...form, rate })}
+        />
+      </td>
+      <td>
+        <MoneyField
+          label={t.hr.perOrder}
+          value={form.perOrder}
+          onChange={(perOrder) => setForm({ ...form, perOrder })}
+        />
+        <MoneyField
+          label={t.hr.perCustomer}
+          value={form.perCustomer}
+          onChange={(perCustomer) => setForm({ ...form, perCustomer })}
+        />
+        <TextField
+          label={t.hr.salesPercent}
+          inputMode="decimal"
+          value={form.percent}
+          onChange={(e) =>
+            setForm({ ...form, percent: e.target.value.replace(',', '.') })
+          }
         />
       </td>
       <td className="right">
@@ -114,6 +144,11 @@ function EmployeeRate({ employee }: { employee: Employee }) {
                   position: form.position || null,
                   payType: form.payType,
                   rate: form.rate ?? 0,
+                  perOrder: form.perOrder ?? 0,
+                  perCustomer: form.perCustomer ?? 0,
+                  salesPercentBp: Math.round(
+                    Math.min(50, Math.max(0, Number(form.percent) || 0)) * 100,
+                  ),
                 },
               });
               toast(t.common.saved);
@@ -179,6 +214,7 @@ function PeriodDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   <th className="right">{t.hr.bonuses}</th>
                   <th className="right">{t.hr.penalties}</th>
                   <th className="right">{t.hr.advances}</th>
+                  <th className="right">{t.hr.commission}</th>
                   <th className="right">{t.hr.total}</th>
                 </tr>
               </thead>
@@ -207,6 +243,9 @@ function PeriodDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     </td>
                     <td className="right nowrap">
                       −{formatMoney(line.advances)}
+                    </td>
+                    <td className="right nowrap">
+                      {formatMoney(line.commission ?? 0)}
                     </td>
                     <td className="right nowrap">
                       <strong>{formatMoney(line.total)}</strong>
@@ -277,6 +316,7 @@ export function PayrollPage() {
     amount: null as number | null,
     date: new Date().toISOString().slice(0, 10),
     reason: '',
+    fromCash: false,
   });
   const [error, setError] = useState<unknown>(null);
   const periods = useQuery({
@@ -397,7 +437,8 @@ export function PayrollPage() {
                 <tr>
                   <th>{t.hr.employee}</th>
                   <th>{t.hr.position}</th>
-                  <th>{t.hr.payType}</th>
+                  <th>{t.hr.rate}</th>
+                  <th>{t.hr.commission}</th>
                   <th>{t.hr.rate}</th>
                   <th />
                 </tr>
@@ -450,7 +491,9 @@ export function PayrollPage() {
               setAdjustment({ ...adjustment, type: e.target.value })
             }
           >
-            {(['BONUS', 'PENALTY', 'ADVANCE'] as const).map((type) => (
+            {(
+              ['BONUS', 'PENALTY', 'ADVANCE', 'LOAN', 'REPAYMENT'] as const
+            ).map((type) => (
               <option key={type} value={type}>
                 {t.hr.adjustmentTypes[type]}
               </option>
@@ -479,6 +522,15 @@ export function PayrollPage() {
             minLength={3}
             required
           />
+          {(adjustment.type === 'ADVANCE' || adjustment.type === 'LOAN') && (
+            <Checkbox
+              label={t.hr.fromCash}
+              checked={!!adjustment.fromCash}
+              onChange={(fromCash) =>
+                setAdjustment({ ...adjustment, fromCash })
+              }
+            />
+          )}
           <FormError error={error} />
           <Button type="submit" variant="primary">
             {t.hr.addAdjustment}

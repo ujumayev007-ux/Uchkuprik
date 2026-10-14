@@ -38,7 +38,30 @@ export async function computePayroll(
   const start = period.startDate;
   const endExclusive = new Date(period.endDate.getTime() + DAY);
   const employees = await tx.employeeProfile.findMany({
-    where: { tenantId, payType: { not: 'NONE' } },
+    where: {
+      tenantId,
+      OR: [
+        { payType: { not: 'NONE' } },
+        { perOrder: { gt: 0 } },
+        { perCustomer: { gt: 0 } },
+        { salesPercentBp: { gt: 0 } },
+      ],
+    },
+  });
+  // Completed orders per employee in the period (commissions; refunds excluded).
+  const orders = await tx.order.findMany({
+    where: {
+      tenantId,
+      status: 'COMPLETED',
+      completedAt: { gte: start, lt: endExclusive },
+      createdById: { in: employees.map((e) => e.userId) },
+    },
+    select: {
+      createdById: true,
+      customerId: true,
+      total: true,
+      refundedTotal: true,
+    },
   });
   const [records, adjustments] = await Promise.all([
     tx.attendanceRecord.findMany({
@@ -84,12 +107,34 @@ export async function computePayroll(
       overtimeAmount = Math.round(
         (overtime * employee.rate * multiplierBp) / 60 / 10_000,
       );
-    } else {
+    } else if (employee.payType === 'DAILY') {
+      base = employee.rate * perDay.size;
+      overtime = 0;
+    } else if (employee.payType === 'SHIFT') {
+      base =
+        employee.rate *
+        records.filter((row) => row.userId === employee.userId).length;
+      overtime = 0;
+    } else if (employee.payType === 'MONTHLY') {
       base = Math.round(
         (employee.rate * Math.min(periodDays, monthDays)) / monthDays,
       );
       overtime = 0;
-    }
+    } else overtime = 0;
+    const sold = orders.filter(
+      (order) => order.createdById === employee.userId,
+    );
+    const customers = new Set(
+      sold.map((order) => order.customerId).filter((id) => id !== null),
+    ).size;
+    const netSales = sold.reduce(
+      (total, order) => total + order.total - order.refundedTotal,
+      0,
+    );
+    const commission =
+      employee.perOrder * sold.length +
+      employee.perCustomer * customers +
+      Math.round((netSales * employee.salesPercentBp) / 10_000);
     const mine = adjustments.filter((row) => row.userId === employee.userId);
     const sum = (type: string) =>
       mine
@@ -97,7 +142,8 @@ export async function computePayroll(
         .reduce((total, row) => total + row.amount, 0);
     const bonuses = sum('BONUS');
     const penalties = sum('PENALTY');
-    const advances = sum('ADVANCE');
+    // Loan repayments are deducted like advances; loans themselves are not.
+    const advances = sum('ADVANCE') + sum('REPAYMENT');
     await tx.payrollLine.create({
       data: {
         tenantId,
@@ -112,7 +158,9 @@ export async function computePayroll(
         bonuses,
         penalties,
         advances,
-        total: base + overtimeAmount + bonuses - penalties - advances,
+        commission,
+        total:
+          base + overtimeAmount + commission + bonuses - penalties - advances,
       },
     });
   }

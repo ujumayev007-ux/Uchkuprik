@@ -16,6 +16,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { findOpenShift } from '../shifts/shifts.routes.js';
 import { assertOpenPeriod, computePayroll } from './payroll.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -52,6 +53,9 @@ export function hrRouter(services: Services) {
           position: profile?.position ?? null,
           payType: profile?.payType ?? 'NONE',
           rate: profile?.rate ?? 0,
+          perOrder: profile?.perOrder ?? 0,
+          perCustomer: profile?.perCustomer ?? 0,
+          salesPercentBp: profile?.salesPercentBp ?? 0,
           hireDate: profile?.hireDate ?? null,
         };
       }),
@@ -69,8 +73,12 @@ export function hrRouter(services: Services) {
       const input = parse(
         z.object({
           position: z.string().trim().max(60).nullable().optional(),
-          payType: z.enum(['NONE', 'HOURLY', 'MONTHLY']),
+          payType: z.enum(['NONE', 'HOURLY', 'DAILY', 'SHIFT', 'MONTHLY']),
           rate: z.number().int().min(0).max(1_000_000_000),
+          perOrder: z.number().int().min(0).max(10_000_000).default(0),
+          perCustomer: z.number().int().min(0).max(10_000_000).default(0),
+          // Share of net sales in basis points (500 = 5%).
+          salesPercentBp: z.number().int().min(0).max(5000).default(0),
           hireDate: isoDate.nullable().optional(),
         }),
         req.body,
@@ -83,6 +91,9 @@ export function hrRouter(services: Services) {
         position: input.position ?? null,
         payType: input.payType,
         rate: input.rate,
+        perOrder: input.perOrder,
+        perCustomer: input.perCustomer,
+        salesPercentBp: input.salesPercentBp,
         hireDate: input.hireDate ? dayStart(input.hireDate) : null,
       };
       await db.employeeProfile.upsert({
@@ -96,7 +107,13 @@ export function hrRouter(services: Services) {
         action: 'hr.employee.update',
         entityType: 'user',
         entityId: userId,
-        data: { payType: input.payType, rate: input.rate },
+        data: {
+          payType: input.payType,
+          rate: input.rate,
+          perOrder: input.perOrder,
+          perCustomer: input.perCustomer,
+          salesPercentBp: input.salesPercentBp,
+        },
       });
       res.json({ ok: true });
     },
@@ -340,10 +357,12 @@ export function hrRouter(services: Services) {
       const input = parse(
         z.object({
           userId: z.uuid(),
-          type: z.enum(['BONUS', 'PENALTY', 'ADVANCE']),
+          type: z.enum(['BONUS', 'PENALTY', 'ADVANCE', 'LOAN', 'REPAYMENT']),
           amount: z.number().int().min(1).max(1_000_000_000),
           date: isoDate,
           reason: z.string().trim().min(3).max(200),
+          // Advance/loan handed out from the open cash register.
+          fromCash: z.boolean().default(false),
         }),
         req.body,
       );
@@ -353,6 +372,27 @@ export function hrRouter(services: Services) {
         });
         if (!user) throw errors.validation([{ path: 'userId' }]);
         await assertOpenPeriod(tx, auth.tenantId, dayStart(input.date));
+        const cash = input.fromCash && ['ADVANCE', 'LOAN'].includes(input.type);
+        if (cash) {
+          const shift = auth.activeBranchId
+            ? await findOpenShift(tx, auth, auth.activeBranchId)
+            : null;
+          if (!shift)
+            throw new AppError(409, 'SHIFT_REQUIRED', 'shiftRequired');
+          await tx.cashMovement.create({
+            data: {
+              tenantId: auth.tenantId,
+              shiftId: shift.id,
+              amount: -input.amount,
+              reason:
+                `${input.type === 'LOAN' ? 'Qarz' : 'Avans'}: ${user.displayName} — ${input.reason}`.slice(
+                  0,
+                  200,
+                ),
+              createdById: auth.userId,
+            },
+          });
+        }
         const created = await tx.payrollAdjustment.create({
           data: {
             tenantId: auth.tenantId,
@@ -361,6 +401,7 @@ export function hrRouter(services: Services) {
             amount: input.amount,
             date: dayStart(input.date),
             reason: input.reason,
+            fromCash: cash,
             createdById: auth.userId,
           },
         });
@@ -370,12 +411,39 @@ export function hrRouter(services: Services) {
           action: 'payroll.adjustment',
           entityType: 'user',
           entityId: input.userId,
-          data: { id: created.id, type: input.type, amount: input.amount },
+          data: {
+            id: created.id,
+            type: input.type,
+            amount: input.amount,
+            fromCash: cash,
+          },
         });
       });
       res.status(201).json({ ok: true });
     },
   );
+
+  // Outstanding employee loans (loans minus repayments).
+  router.get('/payroll/loans', ...hr, async (_req, res) => {
+    const auth = getAuth(res);
+    const rows = await db.payrollAdjustment.groupBy({
+      by: ['userId', 'type'],
+      where: { tenantId: auth.tenantId, type: { in: ['LOAN', 'REPAYMENT'] } },
+      _sum: { amount: true },
+    });
+    const balance = new Map<string, number>();
+    for (const row of rows)
+      balance.set(
+        row.userId,
+        (balance.get(row.userId) ?? 0) +
+          (row.type === 'LOAN' ? 1 : -1) * (row._sum.amount ?? 0),
+      );
+    res.json({
+      loans: [...balance.entries()]
+        .filter(([, amount]) => amount > 0)
+        .map(([userId, amount]) => ({ userId, balance: amount })),
+    });
+  });
 
   const canSeePayroll = (auth: AuthContext) =>
     auth.permissions.has('hr.manage') || auth.permissions.has('finance.view');

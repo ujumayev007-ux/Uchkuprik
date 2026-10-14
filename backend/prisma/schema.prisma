@@ -1392,6 +1392,9 @@ enum PayType {
   NONE
   HOURLY
   MONTHLY
+  // Rate per worked day / per attendance shift.
+  DAILY
+  SHIFT
 }
 
 enum PayrollStatus {
@@ -1404,17 +1407,25 @@ enum AdjustmentType {
   BONUS
   PENALTY
   ADVANCE
+  // Employee loan (not deducted) and its repayments (deducted from pay).
+  LOAN
+  REPAYMENT
 }
 
 model EmployeeProfile {
-  userId    String    @id @db.Uuid
-  tenantId  String    @db.Uuid
-  position  String?
-  payType   PayType   @default(NONE)
+  userId         String    @id @db.Uuid
+  tenantId       String    @db.Uuid
+  position       String?
+  payType        PayType   @default(NONE)
   // so‘m per hour (HOURLY) or per month (MONTHLY).
-  rate      Int       @default(0)
-  hireDate  DateTime? @db.Date
-  updatedAt DateTime  @updatedAt
+  rate           Int       @default(0)
+  // Commissions on top of the base pay (waiters): per completed order, per distinct
+  // customer and a share of net sales (basis points).
+  perOrder       Int       @default(0)
+  perCustomer    Int       @default(0)
+  salesPercentBp Int       @default(0)
+  hireDate       DateTime? @db.Date
+  updatedAt      DateTime  @updatedAt
 
   @@index([tenantId])
   @@map("employee_profiles")
@@ -1484,6 +1495,7 @@ model PayrollLine {
   bonuses         Int     @default(0)
   penalties       Int     @default(0)
   advances        Int     @default(0)
+  commission      Int     @default(0)
   total           Int     @default(0)
 
   period PayrollPeriod @relation(fields: [tenantId, periodId], references: [tenantId, id], onDelete: Cascade)
@@ -1501,6 +1513,8 @@ model PayrollAdjustment {
   amount      Int
   date        DateTime       @db.Date
   reason      String
+  // Paid out of the open cash shift (a cash movement was recorded).
+  fromCash    Boolean        @default(false)
   createdById String         @db.Uuid
   createdAt   DateTime       @default(now())
 
