@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useMe } from '../auth/session';
 import { t } from '../i18n';
 import { api } from '../lib/api';
-import { announce, useRealtime } from '../lib/realtime';
+import { useRealtime } from '../lib/realtime';
+import { speak } from '../lib/voice';
+import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
 
 type Queue = {
   branch: { name: string };
@@ -25,6 +27,7 @@ export function QueuePage() {
   // Browsers only allow audio after a user gesture, so sound is enabled with one tap.
   const [sound, setSound] = useState(false);
   const announced = useRef<Set<number> | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = 'dark';
@@ -36,7 +39,7 @@ export function QueuePage() {
     if (announced.current && sound)
       for (const number of ready)
         if (!announced.current.has(number))
-          announce(t.queue.announce.replace('{n}', String(number)));
+          speak(t.queue.announce.replace('{n}', String(number)));
     announced.current = ready;
   }, [queue.data, sound]);
 
@@ -68,13 +71,20 @@ export function QueuePage() {
         ) : (
           <span className="muted">🔊 {t.queue.soundOn}</span>
         )}
+        <button
+          className="btn btn-ghost btn-sm"
+          aria-label={t.voice.title}
+          onClick={() => setVoiceOpen(true)}
+        >
+          ⚙ 🔊
+        </button>
         <span
           className={`live-dot ${online ? 'on' : 'off'}`}
           title={online ? t.live.online : t.live.offline}
         />
       </header>
       <div className="queue-columns">
-        <section>
+        <section className="preparing">
           <h2>{t.queue.preparing}</h2>
           <div className="queue-numbers">
             {(queue.data?.preparing ?? []).map((number) => (
@@ -91,6 +101,7 @@ export function QueuePage() {
           </div>
         </section>
       </div>
+      {voiceOpen && <VoiceSettingsDialog onClose={() => setVoiceOpen(false)} />}
     </div>
   );
 }

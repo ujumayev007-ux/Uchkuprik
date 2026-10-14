@@ -131,6 +131,13 @@ describe('order routing and kitchen tickets', () => {
     expect(update.text).toContain('1 x Burger');
     expect(update.text).toContain('! Achchiq');
     expect(update.text).not.toContain('2 x Burger');
+    const kds = await s.owner.get('/api/kitchen/tickets').expect(200);
+    const ticket = kds.body.tickets.find(
+      (item: { orderId: string }) => item.orderId === order.body.id,
+    );
+    expect(ticket.waiter).toBeTruthy();
+    expect(ticket.version).toBeGreaterThan(1);
+    expect(JSON.stringify(ticket)).not.toContain('40000');
   });
 
   it('holds waiter orders for cashier confirmation when required', async () => {

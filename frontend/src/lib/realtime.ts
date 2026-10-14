@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
+import { speak } from './voice';
 
 type Listener = (event: string, payload: Record<string, unknown>) => void;
 const listeners = new Set<Listener>();
@@ -68,6 +69,12 @@ export function useRealtime(branchId: string | null | undefined) {
         void client.invalidateQueries({ queryKey: [key] });
       for (const listener of listeners) listener('order.changed', payload);
     });
+    // Someone edited an order (new version): refresh and let panels announce it.
+    socket.on('order.updated', (payload: Record<string, unknown>) => {
+      for (const key of LIVE_KEYS)
+        void client.invalidateQueries({ queryKey: [key] });
+      for (const listener of listeners) listener('order.updated', payload);
+    });
     socket.on('kitchen.changed', (payload: Record<string, unknown>) => {
       void client.invalidateQueries({ queryKey: ['kitchen'] });
       void client.invalidateQueries({ queryKey: ['queue'] });
@@ -112,19 +119,5 @@ export function chime() {
 
 /** Speaks Uzbek text with an uz-UZ voice when the device has one, otherwise chimes. */
 export function announce(text: string) {
-  chime();
-  try {
-    const voices = window.speechSynthesis?.getVoices() ?? [];
-    const voice = voices.find((item) =>
-      item.lang.toLowerCase().startsWith('uz'),
-    );
-    if (!voice) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
-    utterance.rate = 0.95;
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    /* Speech synthesis unavailable. */
-  }
+  speak(text);
 }

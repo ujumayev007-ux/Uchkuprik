@@ -12,6 +12,7 @@ import {
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { chime } from '../lib/realtime';
+import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
 
 type KitchenStatus = 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
 type Ticket = {
@@ -20,6 +21,9 @@ type Ticket = {
   type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
   status: string;
   priority: number;
+  channel?: string;
+  waiter?: string | null;
+  version?: number;
   table: string | null;
   note: string | null;
   placedAt: string;
@@ -53,10 +57,11 @@ export function useStations(enabled = true) {
   });
 }
 
+// One tap: preparing (yellow) -> ready (green); a second tap undoes it.
 const nextStatus: Record<KitchenStatus, KitchenStatus> = {
-  QUEUED: 'PREPARING',
+  QUEUED: 'READY',
   PREPARING: 'READY',
-  READY: 'QUEUED',
+  READY: 'PREPARING',
   SERVED: 'SERVED',
 };
 
@@ -99,6 +104,7 @@ export function KitchenPage() {
     refetchInterval: 20_000,
   });
   const known = useRef<Set<string> | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const now = useNow();
   // Correct for device clock drift using the server time of the last response.
   const skew = tickets.data
@@ -129,6 +135,14 @@ export function KitchenPage() {
     <div className="kds">
       <div className="kds-header">
         <h1>{t.kitchen.title}</h1>
+        <button
+          className="icon-button"
+          aria-label={t.voice.title}
+          title={t.voice.title}
+          onClick={() => setVoiceOpen(true)}
+        >
+          🔊
+        </button>
         <div className="chip-row">
           <button
             className={`chip ${!stationId ? 'active' : ''}`}
@@ -166,21 +180,25 @@ export function KitchenPage() {
       ) : tickets.data.tickets.length === 0 ? (
         <EmptyState title={t.kitchen.noTickets} />
       ) : (
-        <div className="kds-grid">
+        <div
+          className={`kds-grid kds-n-${Math.min(tickets.data.tickets.length, 5)}`}
+        >
           {tickets.data.tickets.map((ticket) => {
             const limit =
               Math.max(
                 ...ticket.items.map((item) => item.prepTimeMinutes ?? 15),
               ) * 60_000;
             const age = now + skew - new Date(ticket.placedAt).getTime();
-            const tone =
-              ticket.status === 'READY'
-                ? 'ready'
-                : age > limit
-                  ? 'late'
-                  : age > limit * 0.7
-                    ? 'warn'
-                    : 'ok';
+            const allReady =
+              ticket.status === 'READY' ||
+              ticket.items.every((item) => item.kitchenStatus === 'READY');
+            const tone = allReady
+              ? 'ready'
+              : age > limit
+                ? 'late'
+                : age > limit * 0.7
+                  ? 'warn'
+                  : 'ok';
             return (
               <article
                 key={ticket.orderId}
@@ -200,6 +218,22 @@ export function KitchenPage() {
                     {elapsed(ticket.placedAt, now + skew)}
                   </time>
                 </header>
+                <p className="ticket-source">
+                  {ticket.waiter
+                    ? `👤 ${ticket.waiter}`
+                    : ticket.channel && ticket.channel !== 'POS'
+                      ? `📱 ${ticket.channel}`
+                      : ''}
+                  {ticket.version && ticket.version > 1
+                    ? ` · v${ticket.version}`
+                    : ''}
+                  {' · '}
+                  <strong>
+                    {allReady
+                      ? t.kitchen.items.READY
+                      : t.kitchen.items.PREPARING}
+                  </strong>
+                </p>
                 {ticket.priority > 0 && (
                   <Badge tone="danger">{t.kitchen.rush}</Badge>
                 )}
@@ -290,6 +324,7 @@ export function KitchenPage() {
         </div>
       )}
       <p className="muted small center">{t.kitchen.tapHint}</p>
+      {voiceOpen && <VoiceSettingsDialog onClose={() => setVoiceOpen(false)} />}
     </div>
   );
 }

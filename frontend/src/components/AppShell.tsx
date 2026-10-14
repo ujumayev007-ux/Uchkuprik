@@ -23,6 +23,7 @@ import {
 } from '../pages/LicensePage';
 import { isVendorComputer } from '../pages/VendorPage';
 import { PendingOrders } from './PendingOrders';
+import { StaffAnnouncer, VoiceButton } from './StaffAnnouncer';
 import { ReauthDialog } from './ReauthDialog';
 import { useTheme, useToast } from './ui';
 
@@ -573,6 +574,12 @@ export function AppShell() {
           <BranchSwitcher me={me} />
           <div className="topbar-spacer" />
           <LiveClock />
+          {me.tenantKind === 'BUSINESS' && can(me, 'orders.view') && (
+            <>
+              <VoiceButton />
+              <StaffAnnouncer />
+            </>
+          )}
           {me.tenantKind === 'BUSINESS' && (
             <span
               className={`live-dot ${online ? 'on' : 'off'}`}

@@ -172,6 +172,20 @@ export function kitchenRouter(services: Services) {
           },
         },
       });
+      // Waiter/source shown on each ticket (names only, no prices).
+      const staff = await db.user.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          id: {
+            in: orders
+              .map((order) => order.createdById)
+              .filter((id): id is string => !!id),
+          },
+        },
+        select: { id: true, displayName: true },
+      });
+      const nameOf = (id: string | null) =>
+        staff.find((person) => person.id === id)?.displayName ?? null;
       res.json({
         serverTime: now(),
         tickets: orders
@@ -182,6 +196,9 @@ export function kitchenRouter(services: Services) {
             type: order.type,
             status: order.status,
             priority: order.priority,
+            channel: order.channel,
+            waiter: nameOf(order.createdById),
+            version: order.version,
             table: order.table?.name ?? null,
             note: order.note,
             placedAt: order.placedAt,

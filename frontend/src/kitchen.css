@@ -233,3 +233,95 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Touchscreen layout: 1 order full screen, 2 side by side, 3-4 as 2x2. --- */
+.kds-grid.kds-n-1 {
+  grid-template-columns: 1fr;
+}
+.kds-grid.kds-n-1 .ticket {
+  min-height: calc(100svh - 200px);
+}
+.kds-grid.kds-n-1 .ticket-number {
+  font-size: 56px;
+}
+.kds-grid.kds-n-1 .ticket-item {
+  font-size: 26px;
+  padding: 18px;
+}
+.kds-grid.kds-n-2,
+.kds-grid.kds-n-3,
+.kds-grid.kds-n-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.kds-grid.kds-n-2 .ticket {
+  min-height: calc(100svh - 200px);
+}
+.kds-grid.kds-n-3 .ticket,
+.kds-grid.kds-n-4 .ticket {
+  min-height: calc(50svh - 110px);
+}
+.kds-grid.kds-n-2 .ticket-item,
+.kds-grid.kds-n-3 .ticket-item,
+.kds-grid.kds-n-4 .ticket-item {
+  font-size: 20px;
+  padding: 14px;
+}
+@media (max-width: 700px) {
+  .kds-grid.kds-n-2,
+  .kds-grid.kds-n-3,
+  .kds-grid.kds-n-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Yellow = preparing, green = ready. */
+.ticket-ok,
+.ticket-warn,
+.ticket-late {
+  background: color-mix(in srgb, #ffd23f 22%, var(--surface));
+}
+.ticket-ok {
+  border-top-color: #e0b100;
+}
+.ticket.ticket-ready {
+  border-top-color: #18a957;
+  background: color-mix(in srgb, #18a957 22%, var(--surface));
+  opacity: 1;
+}
+.ticket-source {
+  margin: 4px 0 8px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.item-queued {
+  border-color: #e0b100;
+  background: color-mix(in srgb, #ffd23f 35%, var(--surface));
+}
+.item-preparing {
+  border-color: #e0b100;
+  background: color-mix(in srgb, #ffd23f 35%, var(--surface));
+}
+.item-ready {
+  border-color: #18a957;
+  background: color-mix(in srgb, #18a957 30%, var(--surface));
+}
+.ticket-item {
+  min-height: 56px;
+  touch-action: manipulation;
+}
+
+/* --- Customer TV: yellow "preparing" with black numbers, green "ready". --- */
+.queue-columns section.preparing {
+  background: #ffd23f;
+}
+.queue-columns section.preparing h2,
+.queue-columns section.preparing .queue-numbers span {
+  color: #111;
+}
+.queue-columns section.ready {
+  background: #18a957;
+}
+.queue-columns .ready h2,
+.queue-columns .ready .queue-numbers span {
+  color: #fff;
+}

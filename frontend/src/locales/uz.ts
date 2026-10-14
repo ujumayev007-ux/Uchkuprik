@@ -617,7 +617,7 @@ export const uz = {
     serve: 'Berildi',
     rush: 'Shoshilinch',
     items: {
-      QUEUED: 'Navbatda',
+      QUEUED: 'Tayyorlanmoqda',
       PREPARING: 'Tayyorlanmoqda',
       READY: 'Tayyor',
       SERVED: 'Berildi',
@@ -629,13 +629,14 @@ export const uz = {
     station: 'Oshxona bo‘limi',
     noStation: 'Barcha bo‘limlar',
     newTicket: 'Yangi buyurtma',
-    tapHint: 'Taomni bosib holatini o‘zgartiring',
+    tapHint:
+      'Taomni bir marta bosing — yashil “Tayyor” bo‘ladi. Yana bossangiz, qaytadi.',
   },
   queue: {
     title: 'Buyurtmalar navbati',
     preparing: 'Tayyorlanmoqda',
     ready: 'Tayyor — olib keting',
-    announce: '{n} raqamli buyurtma tayyor',
+    announce: '{n}-raqamli buyurtmangiz tayyor!',
     enableSound: 'Ovozli xabarni yoqish',
     soundOn: 'Ovoz yoqilgan',
   },
@@ -663,6 +664,25 @@ export const uz = {
     fallbackCopy: 'Zaxira printerga nusxa',
     agentNote:
       'Printerlar API serveri ulana oladigan mahalliy tarmoqda bo‘lishi kerak. Bulutli o‘rnatishda mahalliy chop etish agenti keyingi bosqichda qo‘shiladi.',
+  },
+  voice: {
+    title: 'Ovoz sozlamalari',
+    enabled: 'Ovozli e’lon yoqilgan',
+    gender: 'Ovoz',
+    female: 'Ayol ovozi',
+    male: 'Erkak ovozi',
+    voice: 'Aniq ovoz (ixtiyoriy)',
+    auto: 'Avtomatik tanlash',
+    using: 'Hozir ishlatilmoqda: {voice}',
+    noVoice: 'Bu qurilmada o‘zbekcha ovoz topilmadi — faqat signal chalinadi.',
+    installHint:
+      'Windows: Sozlamalar → Vaqt va til → Nutq → “O‘zbek” ovozini qo‘shing (Madina — ayol, Sardor — erkak).',
+    volume: 'Ovoz balandligi',
+    repeat: 'Takrorlash',
+    times: '{n} marta',
+    test: 'Sinab ko‘rish',
+    staffReady: '{n}-raqamli buyurtma tayyor',
+    staffUpdated: '{n}-sonli buyurtma yangilandi!',
   },
   payStatus: {
     column: 'To‘lov',
