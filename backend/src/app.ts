@@ -186,6 +186,14 @@ export function createApp({
         limit: '2mb',
       }),
     );
+    // Expense receipts: photo or PDF as a raw body.
+    app.use(
+      '/api/finance/attachments',
+      express.raw({
+        type: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+        limit: '2mb',
+      }),
+    );
     // The merchant QR picture may be larger than ordinary JSON requests.
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
     app.use('/api', express.json({ limit: '100kb' }));

@@ -294,6 +294,15 @@ export function peopleRouter(services: Services) {
         if (approval.status !== 'PENDING') throw errors.conflict();
         if (approval.requestedById === auth.userId)
           throw new AppError(409, 'SELF_APPROVAL', 'selfApproval');
+        if (approval.entityType === 'expense')
+          await tx.expense.updateMany({
+            where: {
+              id: approval.entityId,
+              tenantId: auth.tenantId,
+              approvalStatus: 'PENDING',
+            },
+            data: { approvalStatus: input.decision },
+          });
         await tx.approvalRequest.update({
           where: { id },
           data: {

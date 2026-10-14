@@ -299,6 +299,8 @@ model TenantProfile {
   loyaltyEarnBp           Int      @default(0)
   // Tiers, every-Nth-purchase reward and birthday gift (see crm/loyalty-rules.ts).
   loyaltyRules            Json     @default("{}")
+  // Expenses above this amount need approval (null = no limit).
+  expenseApprovalLimit    Int?
   // Configurable labour rules (review for the applicable jurisdiction).
   overtimeAfterMinutes    Int      @default(480)
   overtimeMultiplierBp    Int      @default(15000)
@@ -1527,15 +1529,23 @@ model PayrollAdjustment {
 }
 
 model Expense {
-  id          String   @id @default(uuid(7)) @db.Uuid
-  tenantId    String   @db.Uuid
-  branchId    String   @db.Uuid
-  category    String
-  amount      Int
-  date        DateTime @db.Date
-  note        String?
-  createdById String   @db.Uuid
-  createdAt   DateTime @default(now())
+  id             String   @id @default(uuid(7)) @db.Uuid
+  tenantId       String   @db.Uuid
+  branchId       String   @db.Uuid
+  category       String
+  amount         Int
+  date           DateTime @db.Date
+  note           String?
+  // Who received the money (supplier, employee, utility).
+  recipient      String?
+  // Receipt photo/PDF (evidence_files).
+  attachmentId   String?  @db.Uuid
+  // Paid out of the open cash shift (a cash movement was recorded).
+  fromCash       Boolean  @default(false)
+  // APPROVED, PENDING (above the approval limit) or REJECTED; only approved count.
+  approvalStatus String   @default("APPROVED")
+  createdById    String   @db.Uuid
+  createdAt      DateTime @default(now())
 
   @@index([tenantId, branchId, date])
   @@map("expenses")

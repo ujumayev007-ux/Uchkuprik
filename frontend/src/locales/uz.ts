@@ -796,6 +796,22 @@ export const uz = {
     online: 'Jonli ulanish',
     offline: 'Jonli ulanish uzildi — qayta ulanmoqda',
   },
+  expenseExtra: {
+    recipient: 'Kimga berildi',
+    note: 'Izoh / sabab',
+    attachment: 'Chek yoki hujjat (rasm yoki PDF)',
+    fromCash: 'Kassadan naqd to‘landi',
+    cash: 'Kassadan',
+    open: 'Hujjatni ochish',
+    limit: 'Tasdiqlash limiti (so‘m)',
+    limitHint:
+      'Bundan katta xarajat menejer tasdig‘idan o‘tadi (Tasdiqlashlar bo‘limi). Bo‘sh — limit yo‘q.',
+    sentForApproval: 'Xarajat limitdan katta — tasdiqlashga yuborildi.',
+    statuses: {
+      PENDING: 'Tasdiq kutilmoqda',
+      REJECTED: 'Rad etildi',
+    } as Record<string, string>,
+  },
   loyaltyRules: {
     title: 'Sodiqlik dasturi',
     hint: 'Asosiy keshbek foizi yuqoridagi sozlamada. Bu yerda: darajalar (qo‘shimcha foiz), har N-xarid sovg‘asi va tug‘ilgan kun sovg‘asi (ball, 1 ball = 1 so‘m).',

@@ -84,10 +84,13 @@ export function errorMessage(error: unknown): string {
 }
 
 /** Uploads a photo as evidence; the server checks the real image type and size. */
-export async function uploadEvidence(file: File): Promise<string> {
+export async function uploadEvidence(
+  file: File,
+  path = '/api/operations/evidence',
+): Promise<string> {
   let response: Response;
   try {
-    response = await fetch('/api/operations/evidence', {
+    response = await fetch(path, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': file.type || 'application/octet-stream' },

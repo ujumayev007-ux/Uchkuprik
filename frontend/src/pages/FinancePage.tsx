@@ -8,12 +8,14 @@ import {
   FormError,
   LoadingState,
   MoneyField,
+  Badge,
+  Checkbox,
   PageHeader,
   TextField,
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
-import { api, del, post } from '../lib/api';
+import { api, del, post, uploadEvidence } from '../lib/api';
 import { formatMoney } from '../lib/format';
 
 type Pnl = {
@@ -177,6 +179,10 @@ function ExpensesTab() {
           amount: number;
           date: string;
           note: string | null;
+          recipient?: string | null;
+          attachmentId?: string | null;
+          fromCash?: boolean;
+          approvalStatus?: string;
         }[];
       }>(`/expenses?from=${from}&to=${to}`).then((d) => d.expenses),
   });
@@ -185,9 +191,17 @@ function ExpensesTab() {
     amount: null as number | null,
     date: new Date().toISOString().slice(0, 10),
     note: '',
+    recipient: '',
+    fromCash: false,
   });
+  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<unknown>(null);
   const manage = can(me, 'finance.manage');
+  const limit = useQuery({
+    queryKey: ['finance', 'settings'],
+    queryFn: () =>
+      api<{ expenseApprovalLimit: number | null }>('/finance/settings'),
+  });
   return (
     <div className="stack">
       {manage && (
@@ -197,12 +211,29 @@ function ExpensesTab() {
             event.preventDefault();
             setError(null);
             try {
-              await post('/expenses', {
+              const attachmentId = file
+                ? await uploadEvidence(file, '/api/finance/attachments')
+                : null;
+              const created = await post<{ approvalStatus: string }>(
+                '/expenses',
+                {
+                  ...form,
+                  amount: form.amount ?? 0,
+                  note: form.note || null,
+                  recipient: form.recipient || null,
+                  attachmentId,
+                },
+              );
+              if (created.approvalStatus === 'PENDING')
+                toast(t.expenseExtra.sentForApproval);
+              setForm({
                 ...form,
-                amount: form.amount ?? 0,
-                note: form.note || null,
+                category: '',
+                amount: null,
+                note: '',
+                recipient: '',
               });
-              setForm({ ...form, category: '', amount: null, note: '' });
+              setFile(null);
               await client.invalidateQueries({ queryKey: ['finance'] });
             } catch (caught) {
               setError(caught);
@@ -229,12 +260,50 @@ function ExpensesTab() {
             value={form.date}
             onChange={(e) => setForm({ ...form, date: e.target.value })}
           />
+          <TextField
+            label={t.expenseExtra.recipient}
+            value={form.recipient}
+            onChange={(e) => setForm({ ...form, recipient: e.target.value })}
+          />
+          <TextField
+            label={t.expenseExtra.note}
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+          <label className="field">
+            <span className="field-label">{t.expenseExtra.attachment}</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <Checkbox
+            label={t.expenseExtra.fromCash}
+            checked={form.fromCash}
+            onChange={(fromCash) => setForm({ ...form, fromCash })}
+          />
           <Button type="submit" variant="primary">
             + {t.finance.addExpense}
           </Button>
         </form>
       )}
       <FormError error={error} />
+      {manage && limit.data && (
+        <MoneyField
+          label={t.expenseExtra.limit}
+          hint={t.expenseExtra.limitHint}
+          value={limit.data.expenseApprovalLimit}
+          onChange={(value) =>
+            void api('/finance/settings', {
+              method: 'PUT',
+              body: { expenseApprovalLimit: value },
+            }).then(() =>
+              client.invalidateQueries({ queryKey: ['finance', 'settings'] }),
+            )
+          }
+        />
+      )}
       {picker}
       {expenses.data && expenses.data.length > 0 ? (
         <div className="table-wrap">
@@ -251,7 +320,41 @@ function ExpensesTab() {
               {expenses.data.map((expense) => (
                 <tr key={expense.id}>
                   <td>{expense.date.slice(0, 10)}</td>
-                  <td>{expense.category}</td>
+                  <td>
+                    {expense.category}
+                    {expense.recipient && (
+                      <small className="muted block">
+                        → {expense.recipient}
+                      </small>
+                    )}
+                    {expense.approvalStatus &&
+                      expense.approvalStatus !== 'APPROVED' && (
+                        <Badge
+                          tone={
+                            expense.approvalStatus === 'PENDING'
+                              ? 'warning'
+                              : 'danger'
+                          }
+                        >
+                          {t.expenseExtra.statuses[expense.approvalStatus]}
+                        </Badge>
+                      )}
+                    {expense.fromCash && (
+                      <small className="muted block">
+                        💵 {t.expenseExtra.cash}
+                      </small>
+                    )}
+                    {expense.attachmentId && (
+                      <a
+                        className="text-link block"
+                        href={`/api/finance/attachments/${expense.attachmentId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        📎 {t.expenseExtra.open}
+                      </a>
+                    )}
+                  </td>
                   <td className="right nowrap">
                     {formatMoney(expense.amount)}
                   </td>

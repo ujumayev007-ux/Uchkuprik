@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { sniffImage } from '../operations/operations.routes.js';
+import { findOpenShift } from '../shifts/shifts.routes.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -77,12 +80,35 @@ export function financeRouter(services: Services) {
         amount: z.number().int().min(1).max(10_000_000_000),
         date: isoDate,
         note: z.string().trim().max(300).nullable().optional(),
+        recipient: z.string().trim().max(120).nullable().optional(),
+        attachmentId: z.uuid().nullable().optional(),
+        // Paid from the open cash register (recorded as a cash movement).
+        fromCash: z.boolean().default(false),
       }),
       req.body,
     );
     const branch = await resolveBranch(db, auth, input.branchId);
     const expense = await db.$transaction(async (tx) => {
       await assertOpenPeriod(tx, auth.tenantId, day(input.date));
+      if (input.attachmentId) {
+        const file = await tx.evidenceFile.findFirst({
+          where: { id: input.attachmentId, tenantId: auth.tenantId },
+          select: { id: true },
+        });
+        if (!file) throw errors.validation([{ path: 'attachmentId' }]);
+      }
+      // Above the approval limit the expense waits for a manager's decision.
+      const limit = (
+        await tx.tenantProfile.findUnique({
+          where: { tenantId: auth.tenantId },
+          select: { expenseApprovalLimit: true },
+        })
+      )?.expenseApprovalLimit;
+      const pending =
+        limit !== null &&
+        limit !== undefined &&
+        input.amount > limit &&
+        !auth.permissions.has('approvals.decide');
       const created = await tx.expense.create({
         data: {
           tenantId: auth.tenantId,
@@ -91,9 +117,47 @@ export function financeRouter(services: Services) {
           amount: input.amount,
           date: day(input.date),
           note: input.note ?? null,
+          recipient: input.recipient ?? null,
+          attachmentId: input.attachmentId ?? null,
+          fromCash: input.fromCash && !pending,
+          approvalStatus: pending ? 'PENDING' : 'APPROVED',
           createdById: auth.userId,
         },
       });
+      if (pending)
+        await tx.approvalRequest.create({
+          data: {
+            tenantId: auth.tenantId,
+            branchId: branch.id,
+            type: 'expense',
+            entityType: 'expense',
+            entityId: created.id,
+            amount: input.amount,
+            reason:
+              `${input.category}${input.recipient ? ` — ${input.recipient}` : ''}${input.note ? `: ${input.note}` : ''}`.slice(
+                0,
+                300,
+              ),
+            requestedById: auth.userId,
+          },
+        });
+      if (input.fromCash && !pending) {
+        const shift = await findOpenShift(tx, auth, branch.id);
+        if (!shift) throw new AppError(409, 'SHIFT_REQUIRED', 'shiftRequired');
+        await tx.cashMovement.create({
+          data: {
+            tenantId: auth.tenantId,
+            shiftId: shift.id,
+            amount: -input.amount,
+            reason:
+              `Xarajat: ${input.category}${input.recipient ? ` — ${input.recipient}` : ''}`.slice(
+                0,
+                200,
+              ),
+            createdById: auth.userId,
+          },
+        });
+      }
       await audit(tx, req, {
         tenantId: auth.tenantId,
         branchId: branch.id,
@@ -101,11 +165,95 @@ export function financeRouter(services: Services) {
         action: 'expense.create',
         entityType: 'expense',
         entityId: created.id,
-        data: { category: input.category, amount: input.amount },
+        data: {
+          category: input.category,
+          amount: input.amount,
+          pending,
+          fromCash: input.fromCash,
+        },
       });
       return created;
     });
-    res.status(201).json({ id: expense.id });
+    res
+      .status(201)
+      .json({ id: expense.id, approvalStatus: expense.approvalStatus });
+  });
+
+  // Receipt photo or PDF for an expense (raw body, max 2 MB).
+  router.post('/finance/attachments', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const data = Buffer.isBuffer(req.body) ? req.body : null;
+    const type = data
+      ? (sniffImage(data) ??
+        (data.subarray(0, 5).toString('latin1') === '%PDF-'
+          ? 'application/pdf'
+          : null))
+      : null;
+    if (!data || data.length === 0 || data.length > 2 * 1024 * 1024 || !type)
+      throw new AppError(400, 'EVIDENCE_INVALID', 'evidenceInvalid');
+    const file = await db.evidenceFile.create({
+      data: {
+        tenantId: auth.tenantId,
+        branchId: auth.activeBranchId,
+        uploadedById: auth.userId,
+        contentType: type,
+        size: data.length,
+        sha256: createHash('sha256').update(data).digest('hex'),
+        data: new Uint8Array(data),
+      },
+      select: { id: true },
+    });
+    res.status(201).json({ id: file.id });
+  });
+
+  router.get('/finance/attachments/:id', ...view, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const file = await db.evidenceFile.findFirst({
+      where: { id, tenantId: auth.tenantId },
+    });
+    if (!file) throw errors.notFound();
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(Buffer.from(file.data));
+  });
+
+  router.get('/finance/settings', ...view, async (_req, res) => {
+    const auth = getAuth(res);
+    const profile = await db.tenantProfile.findUnique({
+      where: { tenantId: auth.tenantId },
+    });
+    res.json({ expenseApprovalLimit: profile?.expenseApprovalLimit ?? null });
+  });
+
+  router.put('/finance/settings', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(
+      z.object({
+        expenseApprovalLimit: z
+          .number()
+          .int()
+          .min(0)
+          .max(10_000_000_000)
+          .nullable(),
+      }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      await tx.tenantProfile.upsert({
+        where: { tenantId: auth.tenantId },
+        update: input,
+        create: { tenantId: auth.tenantId, ...input },
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'finance.settings.update',
+        data: input,
+      });
+    });
+    res.json(input);
   });
 
   router.delete('/expenses/:id', ...manage, async (req, res) => {
@@ -225,6 +373,8 @@ export function financeRouter(services: Services) {
             tenantId: auth.tenantId,
             branchId,
             date: { gte: start, lte: end },
+            // Pending/rejected expenses are not costs yet.
+            approvalStatus: 'APPROVED',
           },
           _sum: { amount: true },
         }),
