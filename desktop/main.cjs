@@ -22,8 +22,10 @@ const { registerUpdates } = require('./updates.cjs');
 const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
 
-const APP_PORT = 8787;
-const PG_PORT = 54330;
+// FASTFOOD_PORT / FASTFOOD_PG_PORT let a second copy run next to the installed one
+// (support and release checks) without touching it.
+const APP_PORT = Number(process.env.FASTFOOD_PORT) || 8787;
+const PG_PORT = Number(process.env.FASTFOOD_PG_PORT) || 54330;
 const VERSION = app.getVersion();
 // FASTFOOD_DATA_DIR / FASTFOOD_VENDOR_DIR point a run at other folders (support, testing).
 const DATA =
