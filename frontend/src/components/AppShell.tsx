@@ -19,6 +19,7 @@ import {
   useLicense,
   type License,
 } from '../pages/LicensePage';
+import { isVendorComputer } from '../pages/VendorPage';
 import { PendingOrders } from './PendingOrders';
 import { ReauthDialog } from './ReauthDialog';
 import { useTheme, useToast } from './ui';
@@ -305,6 +306,12 @@ export const navItems: NavItem[] = [
     label: t.nav.receiptDesign,
     icon: '🧾',
     visible: (me) => can(me, 'settings.manage'),
+  },
+  {
+    to: '/sotuvchi',
+    label: t.nav.vendor,
+    icon: '★',
+    visible: () => isVendorComputer(),
   },
   {
     to: '/litsenziya',

@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,6 +71,14 @@ if (existsSync(apk)) {
 } else
   console.warn('APK not found; build it first: node android/build-apk.mjs');
 
+// Remote licence control: customers' apps poll the vendor's signed status document.
+const vendorState = join(homedir(), '.fastfood', 'vendor.json');
+if (existsSync(vendorState)) {
+  const { statusUrl } = JSON.parse(readFileSync(vendorState, 'utf8'));
+  if (statusUrl)
+    writeFileSync(join(server, 'license-status-url.txt'), statusUrl);
+}
+
 // PostgreSQL 17 binaries for Windows (bin, lib, share).
 const native = join(
   here,
@@ -94,13 +103,7 @@ await build({
       output: join(here, 'release'),
       buildResources: join(here, 'build'),
     },
-    files: [
-      'main.cjs',
-      'preload.cjs',
-      'loading.html',
-      'vendor.html',
-      'package.json',
-    ],
+    files: ['main.cjs', 'preload.cjs', 'loading.html', 'package.json'],
     extraResources: [
       { from: join(stage, 'app-server'), to: 'app-server' },
       { from: join(stage, 'postgres'), to: 'postgres' },

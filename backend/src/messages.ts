@@ -93,6 +93,8 @@ export const messages = {
   webhookUrlInvalid: 'Webhook manzili ochiq HTTPS manzil bo‘lishi kerak.',
   licenseExpired:
     'Litsenziya muddati tugagan. Dastur egasi yangi kalit kiritishi kerak.',
+  licenseBlocked:
+    'Dastur sotuvchi tomonidan vaqtincha bloklangan. Iltimos, sotuvchiga murojaat qiling.',
   licenseInvalid:
     'Litsenziya kaliti noto‘g‘ri yoki boshqa kompyuter uchun berilgan.',
   approvalRequired: 'Bu xarajat uchun tasdiq kerak. So‘rov yuborildi.',

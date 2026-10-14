@@ -13,6 +13,7 @@ import {
   clearLicenseCache,
   licenseAllowsUse,
   licenseStatus,
+  syncLicense,
   verifyLicense,
 } from './license.js';
 
@@ -48,6 +49,13 @@ export function licenseRouter(services: Services) {
       return;
     }
     res.json({ selfHosted: true, ...(await licenseStatus(services)) });
+  });
+
+  // Fetches the vendor's latest renewals/blocking now (e.g. right after paying).
+  router.post('/license/sync', requireAuth(), async (_req, res) => {
+    if (!services.selfHosted) throw errors.notFound();
+    const result = await syncLicense(services);
+    res.json({ result, ...(await licenseStatus(services)) });
   });
 
   // Only the business owner enters licence keys received from the vendor.

@@ -2359,11 +2359,14 @@ model ComboComponent {
 
 // Licence of a self-hosted (desktop) install, signed by the vendor.
 model AppLicense {
-  id         Int      @id @default(1)
-  key        String
+  id             Int       @id @default(1)
+  key            String
   // Highest time ever observed; moving the clock back does not extend a licence.
-  lastSeenAt DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  lastSeenAt     DateTime  @default(now())
+  // Remote control by the vendor (signed status document fetched over the internet).
+  remoteBlocked  Boolean   @default(false)
+  statusIssuedAt DateTime?
+  updatedAt      DateTime  @updatedAt
 
   @@map("app_license")
 }

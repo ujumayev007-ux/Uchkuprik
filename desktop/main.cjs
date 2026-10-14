@@ -285,6 +285,13 @@ async function migrate(password) {
   }
 }
 
+/** Status document URL baked into this build by the vendor (remote renewals/blocking). */
+function licenseStatusUrl() {
+  const file = path.join(SERVER, 'license-status-url.txt');
+  const url = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '';
+  return url.startsWith('https://') ? { LICENSE_STATUS_URL: url } : {};
+}
+
 function startServer(keys) {
   const out = fs.openSync(path.join(LOGS, 'server.log'), 'a');
   api = spawn(
@@ -305,6 +312,7 @@ function startServer(keys) {
         SELF_HOSTED: 'true',
         INSTALL_ID: keys.installId,
         INSTALLED_AT: keys.installedAt,
+        ...licenseStatusUrl(),
         SERVE_FRONTEND: 'true',
         APP_SECRET_KEY: keys.appSecretKey,
         DATABASE_URL: `postgresql://fastfood:${encodeURIComponent(keys.dbPassword)}@127.0.0.1:${PG_PORT}/fastfood?schema=public`,
@@ -406,16 +414,24 @@ ipcMain.handle('anydesk:open', async () => {
 // --------------------------------------------------- vendor licence panel
 
 // Present only on the vendor's computer; customers' installs never have it.
-const VENDOR_KEY = path.join(
-  os.homedir(),
-  '.fastfood',
-  'vendor-license-private.pem',
-);
-const VENDOR_HISTORY = path.join(
-  os.homedir(),
-  '.fastfood',
-  'licenses-issued.json',
-);
+const VENDOR_DIR = path.join(os.homedir(), '.fastfood');
+const VENDOR_KEY = path.join(VENDOR_DIR, 'vendor-license-private.pem');
+const VENDOR_HISTORY = path.join(VENDOR_DIR, 'licenses-issued.json');
+const VENDOR_STATE = path.join(VENDOR_DIR, 'vendor.json');
+const ALL_FEATURES = [
+  'inventory',
+  'delivery',
+  'online_ordering',
+  'loyalty',
+  'kitchen_printing',
+  'online_payments',
+  'hr',
+  'finance',
+  'multi_brand',
+  'franchise',
+  'operations',
+  'developer_api',
+];
 
 function vendorHistory() {
   return fs.existsSync(VENDOR_HISTORY)
@@ -423,8 +439,32 @@ function vendorHistory() {
     : [];
 }
 
-ipcMain.handle('vendor:history', () => vendorHistory());
-ipcMain.handle('vendor:sign', (_event, input) => {
+/** Vendor state: GitHub gist for remote control and one entry per customer install. */
+function vendorState() {
+  const state = fs.existsSync(VENDOR_STATE)
+    ? JSON.parse(fs.readFileSync(VENDOR_STATE, 'utf8'))
+    : { customers: {} };
+  state.customers ??= {};
+  // Customers from licences issued before the customer list existed.
+  for (const row of vendorHistory())
+    if (
+      !state.customers[row.installId] ||
+      state.customers[row.installId].issuedAt < row.issuedAt
+    )
+      state.customers[row.installId] = {
+        ...(state.customers[row.installId] ?? { blocked: false }),
+        ...row,
+      };
+  return state;
+}
+
+function saveVendorState(state) {
+  fs.writeFileSync(VENDOR_STATE, JSON.stringify(state, null, 2), {
+    mode: 0o600,
+  });
+}
+
+function signLicense(input, statusUrl) {
   if (!fs.existsSync(VENDOR_KEY)) throw new Error('Sotuvchi kaliti topilmadi');
   if (!/^FF-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(input.installId || ''))
     throw new Error('O‘rnatish ID noto‘g‘ri (FF-XXXX-XXXX-XXXX)');
@@ -437,10 +477,13 @@ ipcMain.handle('vendor:sign', (_event, input) => {
     installId: input.installId,
     issuedAt: new Date().toISOString(),
     expiresAt: input.expiresAt,
-    features: Array.isArray(input.features) ? input.features.map(String) : [],
+    features: Array.isArray(input.features)
+      ? input.features.map(String)
+      : ALL_FEATURES,
     maxBranches: input.maxBranches ?? null,
     maxUsers: input.maxUsers ?? null,
     maxDevices: input.maxDevices ?? null,
+    ...(statusUrl ? { statusUrl } : {}),
   };
   const body = Buffer.from(JSON.stringify(payload));
   const signature = crypto.sign(
@@ -452,7 +495,150 @@ ipcMain.handle('vendor:sign', (_event, input) => {
   const history = vendorHistory();
   history.push({ ...payload, key });
   fs.writeFileSync(VENDOR_HISTORY, JSON.stringify(history, null, 2));
-  return key;
+  return { payload, key };
+}
+
+async function github(state, method, url, body) {
+  const response = await fetch(`https://api.github.com${url}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${state.githubToken}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'FastFood-Vendor',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok)
+    throw new Error(
+      response.status === 401
+        ? 'GitHub token noto‘g‘ri yoki muddati o‘tgan'
+        : `GitHub xatosi ${response.status}`,
+    );
+  return response.json();
+}
+
+const STATUS_FILE = 'fastfood-licenses.txt';
+
+/** Signs and uploads the status document every customer app polls. */
+async function publishStatus(state) {
+  if (!state.githubToken || !state.gistId) return { published: false };
+  const entries = {};
+  for (const [installId, customer] of Object.entries(state.customers))
+    entries[installId] = {
+      blocked: !!customer.blocked,
+      ...(customer.key ? { key: customer.key } : {}),
+    };
+  const body = Buffer.from(
+    JSON.stringify({ v: 1, issuedAt: new Date().toISOString(), entries }),
+  );
+  const signature = crypto.sign(
+    null,
+    body,
+    crypto.createPrivateKey(fs.readFileSync(VENDOR_KEY)),
+  );
+  await github(state, 'PATCH', `/gists/${state.gistId}`, {
+    files: {
+      [STATUS_FILE]: {
+        content: `${body.toString('base64url')}.${signature.toString('base64url')}`,
+      },
+    },
+  });
+  return { published: true };
+}
+
+function vendorView(state) {
+  return {
+    connected: !!state.gistId,
+    statusUrl: state.statusUrl ?? null,
+    customers: Object.values(state.customers)
+      .map((customer) => ({
+        installId: customer.installId,
+        customer: customer.customer,
+        expiresAt: customer.expiresAt,
+        blocked: !!customer.blocked,
+        features: customer.features ?? [],
+        maxBranches: customer.maxBranches ?? null,
+        maxUsers: customer.maxUsers ?? null,
+        maxDevices: customer.maxDevices ?? null,
+        key: customer.key ?? null,
+      }))
+      .sort((a, b) => String(a.customer).localeCompare(String(b.customer))),
+  };
+}
+
+const isVendorComputer = () => fs.existsSync(VENDOR_KEY);
+ipcMain.on('vendor:isVendor', (event) => {
+  event.returnValue = isVendorComputer();
+});
+ipcMain.handle('vendor:history', () => vendorHistory());
+ipcMain.handle('vendor:state', () => vendorView(vendorState()));
+
+ipcMain.handle('vendor:connect', async (_event, token) => {
+  const state = vendorState();
+  state.githubToken = String(token || '').trim();
+  if (!state.githubToken) throw new Error('GitHub token kiriting');
+  if (!state.gistId) {
+    const gist = await github(state, 'POST', '/gists', {
+      description: 'FastFood licence status (signed)',
+      public: false,
+      files: { [STATUS_FILE]: { content: 'init' } },
+    });
+    state.gistId = gist.id;
+    state.statusUrl = `https://gist.githubusercontent.com/${gist.owner.login}/${gist.id}/raw/${STATUS_FILE}`;
+  }
+  saveVendorState(state);
+  await publishStatus(state);
+  return vendorView(state);
+});
+
+/** New customer (or new terms): signs a key and publishes it. */
+ipcMain.handle('vendor:sign', async (_event, input) => {
+  const state = vendorState();
+  const { payload, key } = signLicense(input, state.statusUrl);
+  state.customers[payload.installId] = {
+    ...(state.customers[payload.installId] ?? { blocked: false }),
+    ...payload,
+    key,
+  };
+  saveVendorState(state);
+  const result = await publishStatus(state).catch((error) => ({
+    published: false,
+    error: error.message,
+  }));
+  return { key, ...result };
+});
+
+/** Extends a customer by whole months from the later of today and the current end. */
+ipcMain.handle('vendor:extend', async (_event, installId, months) => {
+  const state = vendorState();
+  const customer = state.customers[installId];
+  if (!customer) throw new Error('Mijoz topilmadi');
+  const today = new Date().toISOString().slice(0, 10);
+  const base = new Date(
+    `${customer.expiresAt > today ? customer.expiresAt : today}T00:00:00Z`,
+  );
+  base.setUTCMonth(base.getUTCMonth() + Number(months || 1));
+  const { payload, key } = signLicense(
+    { ...customer, expiresAt: base.toISOString().slice(0, 10) },
+    state.statusUrl,
+  );
+  state.customers[installId] = { ...customer, ...payload, key, blocked: false };
+  saveVendorState(state);
+  const result = await publishStatus(state).catch((error) => ({
+    published: false,
+    error: error.message,
+  }));
+  return { key, expiresAt: payload.expiresAt, ...result };
+});
+
+ipcMain.handle('vendor:block', async (_event, installId, blocked) => {
+  const state = vendorState();
+  if (!state.customers[installId]) throw new Error('Mijoz topilmadi');
+  state.customers[installId].blocked = !!blocked;
+  saveVendorState(state);
+  return publishStatus(state);
 });
 
 /**
@@ -534,19 +720,9 @@ async function ensureVendorLicense(keys) {
   }
 }
 
+/** The vendor tools live inside the app (left menu: Sotuvchi paneli). */
 function openVendorPanel() {
-  const panel = new BrowserWindow({
-    width: 920,
-    height: 860,
-    title: 'Sotuvchi paneli',
-    webPreferences: {
-      contextIsolation: true,
-      sandbox: true,
-      preload: path.join(__dirname, 'preload.cjs'),
-    },
-  });
-  panel.setMenuBarVisibility(false);
-  panel.loadFile(path.join(__dirname, 'vendor.html'));
+  if (win) win.loadURL(`http://localhost:${APP_PORT}/sotuvchi`);
 }
 
 async function boot() {

@@ -57,6 +57,7 @@ import { LicensePage } from './pages/LicensePage';
 import { WaiterPage } from './pages/WaiterPage';
 import { ReceiptDesignPage } from './pages/ReceiptDesignPage';
 import { QrPaymentPage } from './pages/QrPaymentPage';
+import { VendorPage } from './pages/VendorPage';
 import { ApprovalsPage, TrainingPage } from './pages/TrainingPage';
 import { FranchisePage, FranchisePortalPage } from './pages/FranchisePage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -597,6 +598,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: '/litsenziya', element: <LicensePage /> },
+      { path: '/sotuvchi', element: <VendorPage /> },
       {
         path: '/obuna',
         element: (

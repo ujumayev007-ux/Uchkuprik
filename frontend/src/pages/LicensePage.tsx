@@ -37,7 +37,8 @@ export const licenseBlocks = (license: License | undefined) =>
   !!license?.selfHosted &&
   (license.status === 'EXPIRED' ||
     license.status === 'MISSING' ||
-    license.status === 'INVALID');
+    license.status === 'INVALID' ||
+    license.status === 'BLOCKED');
 
 function KeyForm() {
   const client = useQueryClient();
@@ -78,6 +79,32 @@ function KeyForm() {
         </Button>
       </div>
     </form>
+  );
+}
+
+function SyncButton() {
+  const client = useQueryClient();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      size="sm"
+      busy={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await post('/license/sync');
+          toast(l.synced);
+          await client.invalidateQueries();
+        } catch {
+          toast(t.common.errorTitle, 'error');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {l.sync}
+    </Button>
   );
 }
 
@@ -131,7 +158,8 @@ export function LicenseDetails({ license }: { license: License }) {
               }
             >
               {l.copy}
-            </Button>
+            </Button>{' '}
+            <SyncButton />
           </div>
         </div>
       </section>

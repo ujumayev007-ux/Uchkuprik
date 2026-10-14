@@ -11,7 +11,10 @@ import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { setEntitlementsOverride } from './modules/billing/entitlements.js';
-import { licenseEntitlements } from './modules/license/license.js';
+import {
+  licenseEntitlements,
+  startLicenseSync,
+} from './modules/license/license.js';
 import { startMaintenanceWorker } from './modules/assets/assets.routes.js';
 import { startNotificationWorker } from './modules/notifications/notify.js';
 import { startWebhookWorker } from './modules/developer/webhooks.js';
@@ -64,6 +67,9 @@ async function main(): Promise<void> {
     selfHosted: config.SELF_HOSTED,
     ...(config.INSTALL_ID ? { installId: config.INSTALL_ID } : {}),
     ...(config.INSTALLED_AT ? { installedAt: config.INSTALLED_AT } : {}),
+    ...(config.LICENSE_STATUS_URL
+      ? { licenseStatusUrl: config.LICENSE_STATUS_URL }
+      : {}),
     limits: {
       credentialsPerMinute: config.CREDENTIAL_RATE_LIMIT,
       signupsPerHour: config.SIGNUP_RATE_LIMIT,
@@ -72,6 +78,9 @@ async function main(): Promise<void> {
   services.afterOrderChange = (orderId) =>
     enqueueKitchenTickets(services, orderId);
   const stopPrinting = startPrintWorker(services);
+  const stopLicenseSync = config.SELF_HOSTED
+    ? startLicenseSync(services)
+    : () => undefined;
   if (config.SELF_HOSTED)
     setEntitlementsOverride(() => licenseEntitlements(services));
   const stopBilling = config.SELF_HOSTED
@@ -125,6 +134,7 @@ async function main(): Promise<void> {
     stopMaintenance();
     stopNotifications();
     stopWebhooks();
+    stopLicenseSync();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

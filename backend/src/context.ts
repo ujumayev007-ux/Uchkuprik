@@ -25,6 +25,8 @@ export type Services = {
   // Identity of this desktop install (licences are bound to it) and first install time.
   installId?: string;
   installedAt?: Date;
+  // Vendor status document for remote licence renewals and blocking.
+  licenseStatusUrl?: string;
   // Requests per minute. Defaults suit production; tests raise them.
   limits?: {
     credentialsPerMinute?: number;

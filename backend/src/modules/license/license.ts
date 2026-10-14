@@ -27,10 +27,19 @@ export type LicensePayload = {
   maxBranches: number | null;
   maxUsers: number | null;
   maxDevices: number | null;
+  // Where the vendor publishes signed remote updates (renewals, blocking).
+  statusUrl?: string;
 };
 
 export type LicenseStatus = {
-  status: 'TRIAL' | 'VALID' | 'EXPIRING' | 'EXPIRED' | 'MISSING' | 'INVALID';
+  status:
+    | 'TRIAL'
+    | 'VALID'
+    | 'EXPIRING'
+    | 'EXPIRED'
+    | 'MISSING'
+    | 'INVALID'
+    | 'BLOCKED';
   customer: string | null;
   expiresAt: string | null;
   daysLeft: number | null;
@@ -83,7 +92,7 @@ export async function licenseStatus(
       data: { lastSeenAt: now },
     });
   let value: LicenseStatus;
-  const payload = row ? verifyLicense(row.key) : null;
+  const payload = row?.key ? verifyLicense(row.key) : null;
   if (payload && payload.installId === installId) {
     const end = new Date(`${payload.expiresAt}T23:59:59.999+05:00`).getTime();
     const daysLeft = Math.ceil((end - effective.getTime()) / DAY);
@@ -109,15 +118,17 @@ export async function licenseStatus(
       (installed + TRIAL_DAYS * DAY - effective.getTime()) / DAY,
     );
     value = {
-      status: row ? 'INVALID' : daysLeft > 0 ? 'TRIAL' : 'MISSING',
+      status: row?.key ? 'INVALID' : daysLeft > 0 ? 'TRIAL' : 'MISSING',
       customer: null,
       expiresAt: null,
       daysLeft: Math.max(0, daysLeft),
       installId,
       features: null,
     };
-    if (row && daysLeft > 0) value.status = 'TRIAL';
+    if (row?.key && daysLeft > 0) value.status = 'TRIAL';
   }
+  // The vendor blocked this install remotely (e.g. unpaid month).
+  if (row?.remoteBlocked) value.status = 'BLOCKED';
   cache = { at: now.getTime(), value };
   return value;
 }
@@ -136,7 +147,7 @@ export async function licenseEntitlements(
 ): Promise<Entitlements> {
   const status = await licenseStatus(services);
   const row = await services.db.appLicense.findUnique({ where: { id: 1 } });
-  const payload = row ? verifyLicense(row.key) : null;
+  const payload = row?.key ? verifyLicense(row.key) : null;
   const valid =
     payload && payload.installId === (services.installId ?? 'unknown');
   return {
@@ -148,5 +159,94 @@ export async function licenseEntitlements(
       users: valid ? payload.maxUsers : null,
       devices: valid ? payload.maxDevices : null,
     },
+  };
+}
+
+type StatusDocument = {
+  v: 1;
+  issuedAt: string;
+  entries: Record<string, { blocked?: boolean; key?: string }>;
+};
+
+/**
+ * Applies the vendor's signed status document: a newer licence key for this install
+ * (renewal without typing a key) and the remote block flag. Older documents are
+ * ignored, so replaying an old file cannot unblock or downgrade anything.
+ */
+export async function syncLicense(services: Services) {
+  const installId = services.installId;
+  if (!installId) return 'no-install';
+  const row = await services.db.appLicense.findUnique({ where: { id: 1 } });
+  const current = row?.key ? verifyLicense(row.key) : null;
+  const url = current?.statusUrl ?? services.licenseStatusUrl;
+  if (!url || !/^https:\/\//.test(url)) return 'no-url';
+  let text: string;
+  try {
+    const response = await fetch(
+      `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`,
+      {
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok) return 'unreachable';
+    text = (await response.text()).trim();
+  } catch {
+    return 'offline';
+  }
+  const [body, signature] = text.split('.');
+  if (!body || !signature) return 'invalid';
+  if (
+    !verify(
+      null,
+      Buffer.from(body, 'base64url'),
+      VENDOR_PUBLIC_KEY,
+      Buffer.from(signature, 'base64url'),
+    )
+  )
+    return 'invalid';
+  const doc = JSON.parse(
+    Buffer.from(body, 'base64url').toString('utf8'),
+  ) as StatusDocument;
+  const issuedAt = new Date(doc.issuedAt);
+  if (doc.v !== 1 || Number.isNaN(issuedAt.getTime())) return 'invalid';
+  if (row?.statusIssuedAt && issuedAt <= row.statusIssuedAt) return 'unchanged';
+  const entry = doc.entries[installId];
+  let key = row?.key ?? '';
+  const offered = entry?.key ? verifyLicense(entry.key) : null;
+  if (
+    offered &&
+    offered.installId === installId &&
+    (!current || offered.issuedAt > current.issuedAt)
+  )
+    key = entry!.key!;
+  await services.db.appLicense.upsert({
+    where: { id: 1 },
+    update: { key, remoteBlocked: !!entry?.blocked, statusIssuedAt: issuedAt },
+    create: {
+      id: 1,
+      key,
+      remoteBlocked: !!entry?.blocked,
+      statusIssuedAt: issuedAt,
+    },
+  });
+  clearLicenseCache();
+  return 'applied';
+}
+
+export function startLicenseSync(
+  services: Services,
+  intervalMs = 3 * 60 * 60_000,
+) {
+  const tick = () =>
+    void syncLicense(services).catch(() =>
+      services.logger.warn('Licence sync failed'),
+    );
+  const first = setTimeout(tick, 20_000);
+  first.unref();
+  const timer = setInterval(tick, intervalMs);
+  timer.unref();
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
   };
 }
