@@ -219,6 +219,55 @@ export function financeRouter(services: Services) {
     res.send(Buffer.from(file.data));
   });
 
+  // Fiscal reconciliation: completed orders by fiscal status in a period.
+  router.get('/reports/fiscal', ...view, async (req, res) => {
+    const auth = getAuth(res);
+    const query = parse(range, req.query);
+    const branch = await resolveBranch(db, auth, query.branchId);
+    const orders = await db.order.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        branchId: branch.id,
+        status: 'COMPLETED',
+        businessDate: { gte: day(query.from), lte: day(query.to) },
+      },
+      select: { id: true, number: true, total: true, businessDate: true },
+      orderBy: { completedAt: 'desc' },
+      take: 5000,
+    });
+    const receipts = await db.fiscalReceipt.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        orderId: { in: orders.map((order) => order.id) },
+      },
+      select: { orderId: true, status: true, error: true },
+    });
+    const statusOf = (id: string) =>
+      receipts.find((row) => row.orderId === id)?.status ?? 'NOT_CONFIGURED';
+    const summary: Record<string, { count: number; total: number }> = {};
+    for (const order of orders) {
+      const key = statusOf(order.id);
+      summary[key] ??= { count: 0, total: 0 };
+      summary[key].count += 1;
+      summary[key].total += order.total;
+    }
+    res.json({
+      summary,
+      unregistered: orders
+        .filter((order) => statusOf(order.id) !== 'REGISTERED')
+        .slice(0, 200)
+        .map((order) => ({
+          id: order.id,
+          number: order.number,
+          total: order.total,
+          date: order.businessDate,
+          status: statusOf(order.id),
+          error:
+            receipts.find((row) => row.orderId === order.id)?.error ?? null,
+        })),
+    });
+  });
+
   router.get('/finance/settings', ...view, async (_req, res) => {
     const auth = getAuth(res);
     const profile = await db.tenantProfile.findUnique({

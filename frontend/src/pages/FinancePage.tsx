@@ -15,6 +15,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { FiscalReport } from './FiscalCard';
 import { api, del, post, uploadEvidence } from '../lib/api';
 import { formatMoney } from '../lib/format';
 
@@ -160,6 +161,7 @@ function PnlTab() {
           </p>
         </section>
       )}
+      <FiscalReport from={from} to={to} />
     </div>
   );
 }

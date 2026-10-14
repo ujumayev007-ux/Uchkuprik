@@ -197,6 +197,84 @@ export function settingsRouter(services: Services) {
     },
   );
 
+  // Fiscal (OFD) details. The provider secret is write-only and encrypted; no
+  // receipts are registered until a certified provider adapter is connected.
+  const fiscalSchema = z.object({
+    enabled: z.boolean().default(false),
+    provider: z.string().trim().max(60).default(''),
+    tin: z
+      .string()
+      .trim()
+      .regex(/^(\d{9}|\d{14})?$/)
+      .default(''),
+    terminalId: z.string().trim().max(60).default(''),
+  });
+  router.get(
+    '/settings/fiscal',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (_req, res) => {
+      const auth = getAuth(res);
+      const profile = await db.tenantProfile.findUnique({
+        where: { tenantId: auth.tenantId },
+      });
+      const parsed = fiscalSchema.safeParse(profile?.fiscalSettings ?? {});
+      res.json({
+        ...(parsed.success ? parsed.data : fiscalSchema.parse({})),
+        hasCredentials: !!profile?.fiscalCredentialsEnc,
+        // No certified provider adapter is installed in this build.
+        connected: false,
+      });
+    },
+  );
+  router.put(
+    '/settings/fiscal',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    requireRecentAuth(services),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(
+        fiscalSchema.extend({
+          credentials: z.string().trim().min(8).max(2000).optional(),
+          clearCredentials: z.boolean().default(false),
+        }),
+        req.body,
+      );
+      const { credentials, clearCredentials, ...settings } = input;
+      await db.$transaction(async (tx) => {
+        await tx.tenantProfile.upsert({
+          where: { tenantId: auth.tenantId },
+          update: {
+            fiscalSettings: settings,
+            ...(credentials
+              ? { fiscalCredentialsEnc: services.secrets.encrypt(credentials) }
+              : clearCredentials
+                ? { fiscalCredentialsEnc: null }
+                : {}),
+          },
+          create: {
+            tenantId: auth.tenantId,
+            fiscalSettings: settings,
+            fiscalCredentialsEnc: credentials
+              ? services.secrets.encrypt(credentials)
+              : null,
+          },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'settings.fiscal.update',
+          data: {
+            ...settings,
+            credentialsChanged: !!credentials || clearCredentials,
+          },
+        });
+      });
+      res.json({ ok: true });
+    },
+  );
+
   router.get('/settings/loyalty-rules', requireAuth(), async (_req, res) => {
     const auth = getAuth(res);
     if (auth.tenantKind !== 'BUSINESS') throw errors.forbidden();

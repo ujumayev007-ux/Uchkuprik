@@ -819,6 +819,27 @@ export const uz = {
       roadFactor: 'Yo‘l koeffitsiyenti (1.3 — ko‘chalar egri)',
     },
   },
+  fiscal: {
+    title: 'Fiskal chek (OFD)',
+    connected: 'Ulangan',
+    notConnected: 'Provayder ulanmagan',
+    hint: 'Fiskal cheklarni ro‘yxatdan o‘tkazish sertifikatlangan OFD provayderi bilan shartnoma, kassa terminali va provayder API kalitlarini talab qiladi. Bu yerda rekvizitlarni saqlab qo‘yasiz (kalit shifrlanadi va qaytarib ko‘rsatilmaydi). Provayder adapteri ulanmaguncha barcha cheklar “fiskal emas” deb belgilanadi — soxta fiskal belgi hech qachon chiqarilmaydi.',
+    enabled: 'Fiskal integratsiyani yoqish (provayder ulanganda ishlaydi)',
+    provider: 'Provayder nomi',
+    tin: 'STIR (9 yoki 14 raqam)',
+    terminal: 'Kassa / terminal ID',
+    key: 'Provayder API kaliti',
+    replaceKey: 'API kalitini almashtirish (saqlangan)',
+    report: 'Fiskal holat (yakunlangan buyurtmalar)',
+    reportHint:
+      'Fiskal ro‘yxatdan o‘tmagan cheklar provayder ulangandan keyin qayta yuborilishi kerak bo‘ladi.',
+    statuses: {
+      NOT_CONFIGURED: 'Fiskal emas (provayder yo‘q)',
+      PENDING: 'Yuborilmoqda',
+      REGISTERED: 'Ro‘yxatdan o‘tgan',
+      FAILED: 'Xato',
+    } as Record<string, string>,
+  },
   ticketTemplate: {
     button: 'Chek shabloni',
     title: 'Bo‘lim cheki shabloni',

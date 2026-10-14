@@ -16,6 +16,7 @@ import { t } from '../i18n';
 import { api, patch } from '../lib/api';
 import { OrderSettingsCard } from './OrderSettingsCard';
 import { LoyaltyRulesCard } from './LoyaltyRulesCard';
+import { FiscalCard } from './FiscalCard';
 
 type Settings = {
   name: string;
@@ -273,6 +274,7 @@ export function SettingsPage() {
       </form>
       <OrderSettingsCard editable={editable} />
       <LoyaltyRulesCard editable={editable} />
+      {editable && <FiscalCard />}
     </>
   );
 }

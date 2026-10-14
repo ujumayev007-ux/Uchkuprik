@@ -306,6 +306,9 @@ model TenantProfile {
   expenseApprovalLimit    Int?
   // Distance pricing: base fee, per-km fee, minimum, max distance, free-from subtotal.
   deliveryPricing         Json     @default("{}")
+  // Fiscal (OFD) details: provider, TIN, terminal; the secret is encrypted separately.
+  fiscalSettings          Json     @default("{}")
+  fiscalCredentialsEnc    String?
   // Configurable labour rules (review for the applicable jurisdiction).
   overtimeAfterMinutes    Int      @default(480)
   overtimeMultiplierBp    Int      @default(15000)
