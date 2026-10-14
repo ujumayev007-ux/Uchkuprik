@@ -22,6 +22,7 @@ type CourierOrder = {
   status: string;
   deliveryStatus: 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'FAILED';
   address: string | null;
+  landmark?: string | null;
   customerName: string | null;
   customerPhone: string | null;
   note: string | null;
@@ -128,6 +129,11 @@ export function CourierPage() {
               </Badge>
             </header>
             <p className="courier-address">{order.address}</p>
+            {order.landmark && (
+              <p className="muted">
+                📍 {t.deliverySheet.landmark}: {order.landmark}
+              </p>
+            )}
             <p className="muted">{order.customerName}</p>
             {order.note && <p className="ticket-note">{order.note}</p>}
             <ul className="plain-list small">

@@ -623,6 +623,8 @@ model Order {
   customerName       String?
   customerPhone      String?
   deliveryAddress    String?
+  // Address details / landmark ("mo‘ljal"), printed only on the courier handoff sheet.
+  deliveryLandmark   String?
   note               String?
   subtotal           Int             @default(0)
   // Discount rule: percentage (basis points) and/or fixed amount, recomputed on change.

@@ -77,6 +77,7 @@ function serialize(order: OrderWithRelations, auth: AuthContext) {
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     deliveryAddress: order.deliveryAddress,
+    deliveryLandmark: order.deliveryLandmark,
     note: order.note,
     subtotal: order.subtotal,
     discountBp: order.discountBp,
@@ -281,6 +282,7 @@ export function ordersRouter(services: Services) {
             customerName: z.string().trim().max(80).nullable().optional(),
             customerPhone: phone.nullable().optional(),
             deliveryAddress: z.string().trim().max(300).nullable().optional(),
+            deliveryLandmark: z.string().trim().max(200).nullable().optional(),
             note: z.string().trim().max(300).nullable().optional(),
             items: z.array(itemSchema).max(100).default([]),
             place: z.boolean().default(false),
@@ -362,6 +364,10 @@ export function ordersRouter(services: Services) {
               deliveryAddress:
                 input.type === 'DELIVERY'
                   ? (input.deliveryAddress ?? null)
+                  : null,
+              deliveryLandmark:
+                input.type === 'DELIVERY'
+                  ? (input.deliveryLandmark ?? null)
                   : null,
               note: input.note ?? null,
               subtotal,
@@ -705,6 +711,7 @@ export function ordersRouter(services: Services) {
           customerName: z.string().trim().max(80).nullable().optional(),
           customerPhone: phone.nullable().optional(),
           deliveryAddress: z.string().trim().max(300).nullable().optional(),
+          deliveryLandmark: z.string().trim().max(200).nullable().optional(),
           note: z.string().trim().max(300).nullable().optional(),
         }),
         req.body,
@@ -731,6 +738,8 @@ export function ordersRouter(services: Services) {
           data.customerPhone = input.customerPhone;
         if (input.deliveryAddress !== undefined)
           data.deliveryAddress = input.deliveryAddress;
+        if (input.deliveryLandmark !== undefined)
+          data.deliveryLandmark = input.deliveryLandmark;
         if (input.note !== undefined) data.note = input.note;
         await tx.order.update({ where: { id }, data });
         await addEvent(

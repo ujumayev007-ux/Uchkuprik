@@ -271,6 +271,7 @@ export function PosPage() {
     name: '',
     phone: '',
     address: '',
+    landmark: '',
   });
   const [paying, setPaying] = useState<Order | null>(null);
   // Optional loyalty customer and promo code applied right after the order is created.
@@ -353,6 +354,8 @@ export function PosPage() {
         customerPhone: customer.phone.trim() || null,
         deliveryAddress:
           type === 'DELIVERY' ? customer.address.trim() || null : null,
+        deliveryLandmark:
+          type === 'DELIVERY' ? customer.landmark.trim() || null : null,
         place,
         items: cart.map((line) => ({
           variantId: line.variant.id,
@@ -362,7 +365,7 @@ export function PosPage() {
         })),
       });
       setCart([]);
-      setCustomer({ name: '', phone: '', address: '' });
+      setCustomer({ name: '', phone: '', address: '', landmark: '' });
       let current = order;
       const loyaltyPhone =
         extras.phone.trim() ||
@@ -538,6 +541,13 @@ export function PosPage() {
                 setCustomer({ ...customer, address: e.target.value })
               }
               required
+            />
+            <TextField
+              label={t.deliverySheet.landmark}
+              value={customer.landmark}
+              onChange={(e) =>
+                setCustomer({ ...customer, landmark: e.target.value })
+              }
             />
             {(zones.data ?? []).some((zone) => zone.isActive) && (
               <label className="field">

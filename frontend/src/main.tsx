@@ -43,6 +43,7 @@ import {
 import { QueuePage } from './pages/QueuePage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PosPage } from './pages/PosPage';
+import { DeliverySheetPage } from './pages/DeliverySheetPage';
 import { ReceiptPage, ZReportPage } from './pages/PrintPages';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { PlatformBillingPage } from './pages/PlatformBillingPage';
@@ -232,6 +233,14 @@ const router = createBrowserRouter([
     element: (
       <SessionOnly>
         <QueuePage />
+      </SessionOnly>
+    ),
+  },
+  {
+    path: '/dostavka-varaqa/:id',
+    element: (
+      <SessionOnly>
+        <DeliverySheetPage />
       </SessionOnly>
     ),
   },

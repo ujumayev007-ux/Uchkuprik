@@ -96,6 +96,8 @@ export const systemRoles: Record<string, SystemRole> = {
       'orders.edit',
       'orders.approve',
       'payments.accept',
+      // Cashiers create and dispatch delivery orders ("Dostavka").
+      'delivery.manage',
       'shifts.manage',
       'customers.view',
       'operations.perform',

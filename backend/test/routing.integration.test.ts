@@ -97,6 +97,7 @@ describe('order routing and kitchen tickets', () => {
       type: 'DELIVERY',
       customerPhone: '+998901234567',
       deliveryAddress: 'Chilonzor 1',
+      deliveryLandmark: 'Bozor yonida',
       place: true,
       items: [
         { variantId: s.burgerVariant.id, quantity: 2 },
@@ -104,6 +105,7 @@ describe('order routing and kitchen tickets', () => {
       ],
     }).expect(201);
     expect(order.body.status).toBe('PLACED');
+    expect(order.body.deliveryLandmark).toBe('Bozor yonida');
     await enqueueKitchenTickets(ctx.services, order.body.id);
     let tickets = await ticketsOf(order.body.id);
     expect(tickets).toHaveLength(1);
@@ -113,6 +115,8 @@ describe('order routing and kitchen tickets', () => {
     expect(tickets[0]!.text).toContain('2 x Burger');
     // Customer address is not printed on kitchen tickets.
     expect(tickets[0]!.text).not.toContain('Chilonzor');
+    expect(tickets[0]!.text).not.toContain('Bozor yonida');
+    expect(tickets[0]!.text).not.toContain('901234567');
     expect(tickets[0]!.text).not.toContain('40 000');
 
     const lavashItem = order.body.items.find(

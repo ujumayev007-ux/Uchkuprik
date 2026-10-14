@@ -684,6 +684,17 @@ export const uz = {
     staffReady: '{n}-raqamli buyurtma tayyor',
     staffUpdated: '{n}-sonli buyurtma yangilandi!',
   },
+  deliverySheet: {
+    print: 'Kuryer varaqasi',
+    customer: 'Mijoz',
+    phone: 'Telefon',
+    address: 'Manzil',
+    landmark: 'Mo‘ljal (orientir)',
+    note: 'Izoh',
+    collect: 'Mijozdan olinadi',
+    paid: 'To‘langan',
+    signature: 'Kuryer imzosi: ____________',
+  },
   orderEdit: {
     version: 'Versiya {n}',
     waitingCook: 'Bekor qilish oshpaz tasdig‘ini kutmoqda',

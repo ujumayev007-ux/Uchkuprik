@@ -230,6 +230,18 @@ function Board() {
                     ) : (
                       t.delivery.paid
                     )}
+                    <button
+                      className="text-link block"
+                      onClick={() =>
+                        window.open(
+                          `/dostavka-varaqa/${order.id}`,
+                          '_blank',
+                          'noopener,width=420,height=700',
+                        )
+                      }
+                    >
+                      🖨 {t.deliverySheet.print}
+                    </button>
                   </td>
                 </tr>
               ))}

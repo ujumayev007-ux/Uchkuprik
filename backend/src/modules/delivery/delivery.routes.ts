@@ -295,6 +295,7 @@ export function deliveryRouter(services: Services) {
         zone:
           zones.find((zone) => zone.id === order.deliveryZoneId)?.name ?? null,
         address: order.deliveryAddress,
+        landmark: order.deliveryLandmark,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         total: order.total,
@@ -348,6 +349,7 @@ export function deliveryRouter(services: Services) {
         status: order.status,
         deliveryStatus: order.deliveryStatus,
         address: order.deliveryAddress,
+        landmark: order.deliveryLandmark,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         note: order.note,
