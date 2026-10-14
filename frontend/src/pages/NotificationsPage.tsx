@@ -29,6 +29,8 @@ type Settings = {
   botUsername: string | null;
   isActive: boolean;
   dailySummaryHour: number | null;
+  ordersEnabled?: boolean;
+  orderBranchId?: string | null;
   webhookUrl: string;
   events: EventKey[];
 };
@@ -75,6 +77,11 @@ function SettingsTab({ settings }: { settings: Settings }) {
   const [isActive, setActive] = useState(
     settings.isActive || !settings.configured,
   );
+  const branches = useBranches();
+  const [ordersEnabled, setOrdersEnabled] = useState(!!settings.ordersEnabled);
+  const [orderBranchId, setOrderBranchId] = useState(
+    settings.orderBranchId ?? '',
+  );
   const [hour, setHour] = useState(
     settings.dailySummaryHour === null ? '' : String(settings.dailySummaryHour),
   );
@@ -91,6 +98,8 @@ function SettingsTab({ settings }: { settings: Settings }) {
                 ...(token.trim() ? { botToken: token.trim() } : {}),
                 isActive,
                 dailySummaryHour: hour === '' ? null : Number(hour),
+                ordersEnabled,
+                orderBranchId: orderBranchId || null,
               },
             }),
           )
@@ -129,6 +138,29 @@ function SettingsTab({ settings }: { settings: Settings }) {
         checked={isActive}
         onChange={setActive}
       />
+      <fieldset className="stack">
+        <legend>🛒 {t.telegramOrders.title}</legend>
+        <Checkbox
+          label={t.telegramOrders.enable}
+          checked={ordersEnabled}
+          onChange={setOrdersEnabled}
+        />
+        <p className="muted small">{t.telegramOrders.hint}</p>
+        {ordersEnabled && (branches.data ?? []).length > 1 && (
+          <SelectField
+            label={t.telegramOrders.branch}
+            value={orderBranchId}
+            onChange={(event) => setOrderBranchId(event.target.value)}
+          >
+            <option value="">{t.telegramOrders.firstBranch}</option>
+            {(branches.data ?? []).map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </SelectField>
+        )}
+      </fieldset>
       <p className="muted small">
         {n.webhook}: <code>{settings.webhookUrl}</code>
       </p>

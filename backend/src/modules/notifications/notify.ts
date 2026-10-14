@@ -92,6 +92,8 @@ export type TelegramTransport = {
   send(token: string, chatId: string, text: string): Promise<void>;
   getMe(token: string): Promise<{ username: string }>;
   setWebhook(token: string, url: string, secret: string): Promise<void>;
+  // Generic Bot API call (bot ordering: keyboards, callbacks, polling).
+  api?(token: string, method: string, body: object): Promise<unknown>;
 };
 
 class TelegramError extends Error {}
@@ -109,11 +111,14 @@ export const telegramTransport: TelegramTransport = {
     const result = (await call(token, 'getMe', {})) as { username?: string };
     return { username: result.username ?? '' };
   },
+  async api(token, method, body) {
+    return call(token, method, body);
+  },
   async setWebhook(token, url, secret) {
     await call(token, 'setWebhook', {
       url,
       secret_token: secret,
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
     });
   },
 };

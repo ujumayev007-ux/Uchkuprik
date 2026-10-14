@@ -1,3 +1,7 @@
+import {
+  notifyTelegramCustomer,
+  startTelegramPolling,
+} from './modules/telegram/bot.js';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
@@ -75,8 +79,12 @@ async function main(): Promise<void> {
       signupsPerHour: config.SIGNUP_RATE_LIMIT,
     },
   } as Services;
-  services.afterOrderChange = (orderId) =>
-    enqueueKitchenTickets(services, orderId);
+  services.afterOrderChange = async (orderId) => {
+    await enqueueKitchenTickets(services, orderId);
+    await notifyTelegramCustomer(services, orderId).catch(() =>
+      logger.warn('Telegram customer notice failed'),
+    );
+  };
   const stopPrinting = startPrintWorker(services);
   const stopLicenseSync = config.SELF_HOSTED
     ? startLicenseSync(services)
@@ -89,6 +97,10 @@ async function main(): Promise<void> {
   const stopMaintenance = startMaintenanceWorker(services);
   const stopNotifications = startNotificationWorker(services);
   const stopWebhooks = startWebhookWorker(services);
+  // Without a public HTTPS address (desktop) the bot is polled instead of webhooks.
+  const stopTelegram = config.APP_ORIGIN.startsWith('https://')
+    ? () => undefined
+    : startTelegramPolling(services);
   let shuttingDown = false;
   const app = createApp({
     config,
@@ -134,6 +146,7 @@ async function main(): Promise<void> {
     stopMaintenance();
     stopNotifications();
     stopWebhooks();
+    stopTelegram();
     stopLicenseSync();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])

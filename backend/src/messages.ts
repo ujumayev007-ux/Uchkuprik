@@ -99,6 +99,11 @@ export const messages = {
     'Litsenziya kaliti noto‘g‘ri yoki boshqa kompyuter uchun berilgan.',
   approvalRequired: 'Bu xarajat uchun tasdiq kerak. So‘rov yuborildi.',
   monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
+  codeMissing: 'Bu buyurtma uchun faol kod yo‘q. Yangi kod yarating.',
+  codeExpired: 'Kodning muddati tugagan. Yangi kod yarating.',
+  codeLocked:
+    'Juda ko‘p noto‘g‘ri urinish. Kod bloklandi — yangi kod yarating.',
+  codeInvalid: 'Kod noto‘g‘ri.',
   itemInPreparation:
     'Bu taom oshxonada tayyorlanmoqda. Avval uni bekor qilishni so‘rang — oshpaz tasdiqlaydi.',
 } as const;

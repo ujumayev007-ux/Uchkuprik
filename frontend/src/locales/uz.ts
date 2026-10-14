@@ -684,6 +684,13 @@ export const uz = {
     staffReady: '{n}-raqamli buyurtma tayyor',
     staffUpdated: '{n}-sonli buyurtma yangilandi!',
   },
+  telegramOrders: {
+    title: 'Telegram orqali buyurtma',
+    enable: 'Mijozlar botda buyurtma bera olsin',
+    hint: 'Mijoz botda menyuni ko‘radi, savatga qo‘shadi, telefonini va manzilini yuboradi. Buyurtma “Tasdiqlash kutilmoqda” ro‘yxatiga tushadi — kassir, ofitsiant yoki admin qabul qiladi. Qabul qilingach mijozga bir martalik tasdiq kodi va holat xabarlari boradi.',
+    branch: 'Buyurtmalar qaysi filialga tushsin',
+    firstBranch: 'Asosiy filial',
+  },
   deliverySheet: {
     print: 'Kuryer varaqasi',
     customer: 'Mijoz',

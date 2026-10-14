@@ -1,3 +1,4 @@
+import { handleTelegramUpdate } from '../telegram/bot.js';
 import { timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -48,6 +49,8 @@ export function notificationsRouter(services: Services, appOrigin: string) {
       botUsername: config?.botUsername ?? null,
       isActive: config?.isActive ?? false,
       dailySummaryHour: config?.dailySummaryHour ?? null,
+      ordersEnabled: config?.ordersEnabled ?? false,
+      orderBranchId: config?.orderBranchId ?? null,
       webhookUrl: `${appOrigin}/api/webhooks/telegram/${auth.tenantId}`,
       events: notificationEvents,
     });
@@ -75,9 +78,18 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             .max(23)
             .nullable()
             .default(22),
+          // Customers order through the bot (Telegram buyurtmalar).
+          ordersEnabled: z.boolean().default(false),
+          orderBranchId: z.uuid().nullable().default(null),
         }),
         req.body,
       );
+      if (input.orderBranchId) {
+        const branch = await db.branch.findFirst({
+          where: { id: input.orderBranchId, tenantId: auth.tenantId },
+        });
+        if (!branch) throw errors.validation([{ path: 'orderBranchId' }]);
+      }
       const existing = await db.telegramConfig.findUnique({
         where: { tenantId: auth.tenantId },
       });
@@ -106,11 +118,32 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             )
             .catch(() => undefined);
       }
+      // Bot ordering needs callback updates: re-register the webhook with a new secret.
+      if (
+        !input.botToken &&
+        existing &&
+        input.ordersEnabled &&
+        appOrigin.startsWith('https://')
+      ) {
+        secret = randomToken();
+        await transport
+          .setWebhook(
+            services.secrets.decrypt(existing.botTokenEnc),
+            `${appOrigin}/api/webhooks/telegram/${auth.tenantId}`,
+            secret,
+          )
+          .catch(() => undefined);
+      }
       await db.$transaction(async (tx) => {
         const data = {
           isActive: input.isActive,
           dailySummaryHour: input.dailySummaryHour,
+          ordersEnabled: input.ordersEnabled,
+          orderBranchId: input.orderBranchId,
           botUsername,
+          ...(secret && !input.botToken
+            ? { webhookSecretHash: sha256(secret) }
+            : {}),
           ...(input.botToken
             ? {
                 botTokenEnc: services.secrets.encrypt(input.botToken),
@@ -127,6 +160,8 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             webhookSecretHash: sha256(secret!),
             isActive: input.isActive,
             dailySummaryHour: input.dailySummaryHour,
+            ordersEnabled: input.ordersEnabled,
+            orderBranchId: input.orderBranchId,
             botUsername,
           },
         });
@@ -135,7 +170,11 @@ export function notificationsRouter(services: Services, appOrigin: string) {
           actorUserId: auth.userId,
           action: 'notifications.telegram.update',
           entityType: 'telegram_config',
-          data: { tokenChanged: !!input.botToken, isActive: input.isActive },
+          data: {
+            tokenChanged: !!input.botToken,
+            isActive: input.isActive,
+            ordersEnabled: input.ordersEnabled,
+          },
         });
       });
       res.json({ ok: true, botUsername });
@@ -361,6 +400,11 @@ export function notificationsRouter(services: Services, appOrigin: string) {
         }
       }
     }
+    // Everything else is the customer ordering conversation (when enabled).
+    else if (config.ordersEnabled)
+      await handleTelegramUpdate(services, config.tenantId, req.body).catch(
+        () => services.logger.warn('Telegram update failed'),
+      );
     // Telegram retries non-2xx responses, so acknowledge everything else.
     res.json({ ok: true });
   });

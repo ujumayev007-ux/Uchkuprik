@@ -652,6 +652,15 @@ model Order {
   deliveredAt        DateTime?
   deliveryProof      String?
   deliveryFailReason String?
+  // Courier handoff (stage 1) and cash collected on delivery (reconciled by cashier).
+  handedOverById     String?         @db.Uuid
+  onTheWayAt         DateTime?
+  cashCollected      Int             @default(0)
+  cashReconciledAt   DateTime?
+  cashReconciledById String?         @db.Uuid
+  // Telegram customer: chat to notify and the last status we told them about.
+  telegramChatId     String?
+  telegramNotified   String?
   createdById        String?         @db.Uuid
   version            Int             @default(1)
   placedAt           DateTime?
@@ -1284,9 +1293,58 @@ model Feedback {
 enum DeliveryStatus {
   UNASSIGNED
   ASSIGNED
+  // Handed to the courier after the cashier verified the pickup code.
   PICKED_UP
+  ON_THE_WAY
   DELIVERED
   FAILED
+  RETURNED
+}
+
+// One-time verification codes. Only an HMAC of the code is stored; codes expire,
+// allow a few attempts and are consumed once.
+enum OrderCodePurpose {
+  // Telegram customer collects a takeaway order.
+  PICKUP
+  // Cashier -> courier handoff.
+  HANDOFF
+  // Courier -> customer delivery confirmation.
+  DELIVERY
+}
+
+model OrderCode {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  tenantId    String           @db.Uuid
+  orderId     String           @db.Uuid
+  purpose     OrderCodePurpose
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int              @default(0)
+  maxAttempts Int              @default(5)
+  consumedAt  DateTime?
+  revokedAt   DateTime?
+  createdById String?          @db.Uuid
+  createdAt   DateTime         @default(now())
+
+  @@index([orderId, purpose])
+  @@map("order_codes")
+}
+
+// Customer chats of the restaurant's Telegram bot (ordering conversation state).
+model TelegramChat {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  tenantId    String    @db.Uuid
+  chatId      String
+  name        String?
+  phone       String?
+  // Conversation step and cart; never contains payment data.
+  state       Json      @default("{}")
+  lastOrderAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, chatId])
+  @@map("telegram_chats")
 }
 
 model DeliveryZone {
@@ -2233,6 +2291,12 @@ model TelegramConfig {
   dailySummaryHour  Int?      @default(22)
   lastDailySummary  DateTime? @db.Date
   updatedAt         DateTime  @updatedAt
+
+  // Customers can order through the bot; orders go to this branch.
+  ordersEnabled Boolean @default(false)
+  orderBranchId String? @db.Uuid
+  // Long-polling offset (self-hosted installs without a public HTTPS address).
+  updateOffset  BigInt  @default(0)
 
   @@map("telegram_configs")
 }
