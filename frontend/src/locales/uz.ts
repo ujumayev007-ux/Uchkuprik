@@ -684,6 +684,31 @@ export const uz = {
     staffReady: '{n}-raqamli buyurtma tayyor',
     staffUpdated: '{n}-sonli buyurtma yangilandi!',
   },
+  courierCodes: {
+    getHandoff: 'Topshirish kodini olish',
+    handoffTitle: 'Topshirish kodi',
+    showCashier:
+      'Bu kodni kassirga ko‘rsating. Kassir kiritgach buyurtma sizga topshiriladi.',
+    onTheWay: 'Yo‘lga chiqdim',
+    askCustomer:
+      'Mijozdan 6 xonali tasdiq kodini so‘rang. Kod mijozga Telegram yoki kassir orqali yuborilgan.',
+    customerCode: 'Mijozning tasdiq kodi',
+    cashCollected: 'Mijozdan olingan naqd pul',
+    handoff: 'Kuryerga topshirish',
+    handoffPrompt: 'Kuryer ko‘rsatgan 6 xonali kodni kiriting:',
+    handedOver: 'Buyurtma kuryerga topshirildi.',
+    customerCodeBtn: 'Mijoz kodi',
+    sentTelegram: 'Kod mijozga Telegram orqali yuborildi.',
+    tellCustomer:
+      'Mijozga qo‘ng‘iroq qilib shu kodni ayting (kuryerga bermang): {code}',
+    cashToReconcile: 'Kuryerdagi pul',
+    reconcile: 'Pulni qabul qildim',
+    reconcilePrompt: 'Kuryer topshirgan summani kiriting:',
+    reconciled: 'Pul qabul qilindi. Endi buyurtmada naqd to‘lovni kiriting.',
+    exception: 'Istisno',
+    exceptionPrompt: 'Holat: 1 — Yetkazildi, 2 — Muammo, 3 — Qaytarildi',
+    exceptionReason: 'Sababi (audit jurnaliga yoziladi):',
+  },
   telegramOrders: {
     title: 'Telegram orqali buyurtma',
     enable: 'Mijozlar botda buyurtma bera olsin',
@@ -735,6 +760,8 @@ export const uz = {
         'Tayyorlanayotgan taomni bekor qilish uchun oshxona roziligi kerak',
       staffCanCancelPlaced:
         'Ofitsiant va kassir yuborilgan taomni bekor qila olsin',
+      deliveryCodes:
+        'Yetkazib berishda ikki bosqichli kod (kassir → kuryer → mijoz)',
     },
     hints: {
       requireCashierConfirm:
@@ -746,6 +773,8 @@ export const uz = {
         'Oshxona “tayyorlanmoqda” deb belgilagan taomni bekor qilishda oshpaz tasdiqlaydi yoki menejer ruxsat beradi.',
       staffCanCancelPlaced:
         'O‘chiq bo‘lsa, oshxonaga yuborilgan taomni faqat menejer bekor qiladi yoki kamaytiradi (tushum himoyasi).',
+      deliveryCodes:
+        'Kuryer buyurtmani kassirga kod ko‘rsatib oladi; mijozga topshirishda mijozning maxfiy kodini kiritadi. O‘chirilsa, oddiy “oldim / yetkazdim” tugmalari ishlaydi.',
     },
   },
   live: {
@@ -1106,10 +1135,12 @@ export const uz = {
     noLocation: 'Joylashuv ulashilmagan',
     statuses: {
       UNASSIGNED: 'Kuryer kutilmoqda',
-      ASSIGNED: 'Kuryerga berildi',
-      PICKED_UP: 'Yo‘lda',
-      DELIVERED: 'Yetkazildi',
+      ASSIGNED: 'Kuryer tayinlandi',
+      PICKED_UP: 'Kuryerga topshirildi',
+      ON_THE_WAY: 'Yo‘lda',
+      DELIVERED: 'Yetkazib berildi',
       FAILED: 'Muammo',
+      RETURNED: 'Qaytarildi',
     } as Record<string, string>,
     due: 'Olinadigan summa',
     delivered: 'Yetkazilgan',

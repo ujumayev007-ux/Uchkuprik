@@ -15,12 +15,14 @@ import {
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
+import { useOrderSettings } from './OrderSettingsCard';
 
 type CourierOrder = {
   id: string;
   number: number;
   status: string;
-  deliveryStatus: 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'FAILED';
+  deliveryStatus:
+    'ASSIGNED' | 'PICKED_UP' | 'ON_THE_WAY' | 'DELIVERED' | 'FAILED';
   address: string | null;
   landmark?: string | null;
   customerName: string | null;
@@ -70,7 +72,15 @@ export function CourierPage() {
     kind: 'deliver' | 'fail';
   } | null>(null);
   const [text, setText] = useState('');
+  const [cash, setCash] = useState('');
+  const [handoff, setHandoff] = useState<{
+    number: number;
+    code: string;
+  } | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const settings = useOrderSettings();
+  // Two-stage codes unless the restaurant turned them off.
+  const codes = settings.data?.settings.deliveryCodes ?? true;
   useLocationSharing(!!data.data?.locationConsent);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -169,23 +179,53 @@ export function CourierPage() {
                 </a>
               )}
               {(order.deliveryStatus === 'ASSIGNED' ||
-                order.deliveryStatus === 'FAILED') && (
+                order.deliveryStatus === 'FAILED') &&
+                (codes ? (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() =>
+                      void act(async () => {
+                        const result = await post<{ code: string }>(
+                          `/courier/orders/${order.id}/handoff-code`,
+                        );
+                        setHandoff({ number: order.number, code: result.code });
+                      })
+                    }
+                  >
+                    🔐 {t.courierCodes.getHandoff}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() =>
+                      void act(() => post(`/courier/orders/${order.id}/pickup`))
+                    }
+                  >
+                    {t.delivery.pickup}
+                  </Button>
+                ))}
+              {order.deliveryStatus === 'PICKED_UP' && codes && (
                 <Button
-                  variant="primary"
                   size="lg"
                   onClick={() =>
-                    void act(() => post(`/courier/orders/${order.id}/pickup`))
+                    void act(() =>
+                      post(`/courier/orders/${order.id}/on-the-way`),
+                    )
                   }
                 >
-                  {t.delivery.pickup}
+                  🚚 {t.courierCodes.onTheWay}
                 </Button>
               )}
-              {order.deliveryStatus === 'PICKED_UP' && (
+              {(order.deliveryStatus === 'PICKED_UP' ||
+                order.deliveryStatus === 'ON_THE_WAY') && (
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={() => {
                     setText('');
+                    setCash(order.due > 0 ? String(order.due) : '');
                     setError(null);
                     setDialog({ order, kind: 'deliver' });
                   }}
@@ -226,7 +266,14 @@ export function CourierPage() {
             try {
               await post(
                 `/courier/orders/${dialog.order.id}/${dialog.kind === 'deliver' ? 'deliver' : 'fail'}`,
-                dialog.kind === 'deliver' ? { proof: text } : { reason: text },
+                dialog.kind === 'fail'
+                  ? { reason: text }
+                  : codes
+                    ? {
+                        code: text.replace(/\D/g, ''),
+                        cashCollected: Number(cash.replace(/\D/g, '') || 0),
+                      }
+                    : { proof: text },
               );
               setDialog(null);
               await client.invalidateQueries({
@@ -237,21 +284,52 @@ export function CourierPage() {
             }
           }}
         >
+          {dialog?.kind === 'deliver' && codes && (
+            <p className="muted small">{t.courierCodes.askCustomer}</p>
+          )}
           <TextField
             label={
-              dialog?.kind === 'deliver' ? t.delivery.proof : t.delivery.reason
+              dialog?.kind === 'deliver'
+                ? codes
+                  ? t.courierCodes.customerCode
+                  : t.delivery.proof
+                : t.delivery.reason
             }
             value={text}
             onChange={(e) => setText(e.target.value)}
-            minLength={dialog?.kind === 'deliver' ? 2 : 3}
+            {...(dialog?.kind === 'deliver' && codes
+              ? { inputMode: 'numeric' as const, pattern: '\\d{6}' }
+              : {})}
+            minLength={dialog?.kind === 'deliver' ? (codes ? 6 : 2) : 3}
             required
             autoFocus
           />
+          {dialog?.kind === 'deliver' && codes && dialog.order.due > 0 && (
+            <TextField
+              label={t.courierCodes.cashCollected}
+              inputMode="numeric"
+              value={cash}
+              onChange={(e) => setCash(e.target.value)}
+            />
+          )}
           <FormError error={error} />
           <Button type="submit" variant="primary" size="lg">
             {t.common.confirm}
           </Button>
         </form>
+      </Dialog>
+      <Dialog
+        open={handoff !== null}
+        title={`${t.courierCodes.handoffTitle} · №${handoff?.number ?? ''}`}
+        onClose={() => setHandoff(null)}
+      >
+        <div className="stack center">
+          <p className="handoff-code">{handoff?.code}</p>
+          <p className="muted">{t.courierCodes.showCashier}</p>
+          <Button variant="primary" size="lg" onClick={() => setHandoff(null)}>
+            {t.common.close}
+          </Button>
+        </div>
       </Dialog>
     </div>
   );

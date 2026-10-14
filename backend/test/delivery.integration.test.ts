@@ -52,6 +52,8 @@ async function setup() {
     username: 'kassir',
     roleIds: [tenant.roleId('cashier')],
   });
+  // These tests cover the simple flow; code verification has its own suite.
+  await put(owner, '/settings/orders', { deliveryCodes: false }).expect(200);
   return {
     tenant,
     tenantId,
@@ -263,8 +265,10 @@ describe('courier workflow', () => {
 describe('website delivery zones', () => {
   it('requires a zone when the branch has zones and adds its fee', async () => {
     const s = await setup();
-    await ctx.db.tenantProfile.create({
-      data: { tenantId: s.tenantId, publicOrdering: true },
+    await ctx.db.tenantProfile.upsert({
+      where: { tenantId: s.tenantId },
+      update: { publicOrdering: true },
+      create: { tenantId: s.tenantId, publicOrdering: true },
     });
     const menu = await ctx
       .agent()

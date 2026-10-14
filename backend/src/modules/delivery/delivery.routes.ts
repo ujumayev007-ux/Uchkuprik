@@ -1,3 +1,6 @@
+import { issueOrderCode, verifyOrderCode } from '../orders/codes.js';
+import { loadOrderSettings } from '../orders/settings.js';
+import { telegramApi } from '../telegram/bot.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -302,6 +305,9 @@ export function deliveryRouter(services: Services) {
         due: order.total - netPaid(order),
         createdAt: order.createdAt,
         failReason: order.deliveryFailReason,
+        cashCollected: order.cashCollected,
+        cashReconciled: !!order.cashReconciledAt,
+        telegram: !!order.telegramChatId,
       })),
       couriers: couriers.map((user) => {
         const profile = profiles.find((item) => item.userId === user.id);
@@ -330,7 +336,11 @@ export function deliveryRouter(services: Services) {
         tenantId: auth.tenantId,
         courierId: auth.userId,
         OR: [
-          { deliveryStatus: { in: ['ASSIGNED', 'PICKED_UP', 'FAILED'] } },
+          {
+            deliveryStatus: {
+              in: ['ASSIGNED', 'PICKED_UP', 'ON_THE_WAY', 'FAILED'],
+            },
+          },
           { deliveredAt: { gte: new Date(now().getTime() - 12 * 3_600_000) } },
         ],
       },
@@ -355,6 +365,7 @@ export function deliveryRouter(services: Services) {
         note: order.note,
         total: order.total,
         due: order.total - netPaid(order),
+        cashCollected: order.cashCollected,
         items: order.items.map((item) => ({
           name: item.productName,
           quantity: item.quantity,
@@ -378,10 +389,306 @@ export function deliveryRouter(services: Services) {
     await notify(id);
   };
 
+  // --- Two-stage verification (cashier -> courier -> customer) ----------------
+
+  const deliveryTransitions: Record<string, string[]> = {
+    UNASSIGNED: ['ASSIGNED'],
+    ASSIGNED: ['ASSIGNED', 'UNASSIGNED', 'PICKED_UP', 'FAILED'],
+    PICKED_UP: ['ON_THE_WAY', 'DELIVERED', 'FAILED'],
+    ON_THE_WAY: ['DELIVERED', 'FAILED'],
+    FAILED: ['ASSIGNED', 'PICKED_UP', 'RETURNED', 'DELIVERED'],
+    DELIVERED: [],
+    RETURNED: [],
+  };
+  const assertDelivery = (from: string | null, to: string) => {
+    if (!(deliveryTransitions[from ?? 'UNASSIGNED'] ?? []).includes(to))
+      throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition', {
+        from,
+        to,
+      });
+  };
+  const codesRequired = async (tx: Tx, tenantId: string) =>
+    (await loadOrderSettings(tx, tenantId)).deliveryCodes;
+
+  // Stage 1a: the courier asks for a handoff code and shows it to the cashier.
+  router.post(
+    '/courier/orders/:id/handoff-code',
+    ...courier,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      let issued: { code: string; expiresAt: Date } | null = null;
+      await courierAction(auth, id, async (tx, order) => {
+        assertDelivery(order.deliveryStatus, 'PICKED_UP');
+        if (order.status !== 'READY' && order.status !== 'SERVED')
+          throw new AppError(409, 'ORDER_NOT_READY', 'orderNotReady');
+        issued = await issueOrderCode(tx, services.secrets, {
+          tenantId: auth.tenantId,
+          orderId: id,
+          purpose: 'HANDOFF',
+          actorId: auth.userId,
+          now: now(),
+        });
+        await addEvent(tx, auth.tenantId, id, auth.userId, 'handoff_code', {});
+      });
+      res.json(issued);
+    },
+  );
+
+  // Stage 1b: the cashier enters the courier's code -> "Kuryerga topshirildi".
+  router.post('/delivery/orders/:id/handoff', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const { code } = parse(
+      z.object({
+        code: z
+          .string()
+          .trim()
+          .regex(/^\d{6}$/),
+      }),
+      req.body,
+    );
+    // Wrong codes still commit their attempt count (no throw inside the transaction).
+    const result = await db.$transaction(async (tx) => {
+      const order = await lockOrder(tx, auth.tenantId, id);
+      await resolveBranch(tx, auth, order.branchId);
+      if (order.type !== 'DELIVERY' || !order.courierId)
+        throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      assertDelivery(order.deliveryStatus, 'PICKED_UP');
+      if (order.status !== 'READY' && order.status !== 'SERVED')
+        throw new AppError(409, 'ORDER_NOT_READY', 'orderNotReady');
+      const check = await verifyOrderCode(tx, services.secrets, {
+        orderId: id,
+        purpose: 'HANDOFF',
+        code,
+        now: now(),
+      });
+      await addEvent(tx, auth.tenantId, id, auth.userId, 'handoff_check', {
+        ok: check.ok,
+      });
+      if (!check.ok) return check;
+      await tx.order.update({
+        where: { id },
+        data: {
+          deliveryStatus: 'PICKED_UP',
+          pickedUpAt: now(),
+          handedOverById: auth.userId,
+          status: 'SERVED',
+          deliveryFailReason: null,
+          version: { increment: 1 },
+        },
+      });
+      await tx.orderItem.updateMany({
+        where: { orderId: id, status: 'ACTIVE' },
+        data: { kitchenStatus: 'SERVED' },
+      });
+      await addEvent(tx, auth.tenantId, id, auth.userId, 'delivery', {
+        status: 'PICKED_UP',
+        courierId: order.courierId,
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: order.branchId,
+        actorUserId: auth.userId,
+        action: 'delivery.handoff',
+        entityType: 'order',
+        entityId: id,
+        data: { courierId: order.courierId },
+      });
+      return check;
+    });
+    if (!result.ok)
+      throw new AppError(400, 'CODE_INVALID', 'codeInvalid', {
+        attemptsLeft: Math.max(0, result.attemptsLeft),
+      });
+    await notify(id);
+    res.json({ ok: true });
+  });
+
+  // Customer delivery code for non-Telegram customers (or a fresh one): sent to the
+  // Telegram chat when there is one, otherwise shown once to the cashier to phone
+  // the customer. Never returned to couriers.
+  router.post(
+    '/delivery/orders/:id/customer-code',
+    ...manage,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const result = await db.$transaction(async (tx) => {
+        const order = await lockOrder(tx, auth.tenantId, id);
+        await resolveBranch(tx, auth, order.branchId);
+        if (
+          order.type !== 'DELIVERY' ||
+          ['DELIVERED', 'RETURNED'].includes(order.deliveryStatus ?? '')
+        )
+          throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+        const issued = await issueOrderCode(tx, services.secrets, {
+          tenantId: auth.tenantId,
+          orderId: id,
+          purpose: 'DELIVERY',
+          actorId: auth.userId,
+          now: now(),
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: order.branchId,
+          actorUserId: auth.userId,
+          action: 'delivery.code.issue',
+          entityType: 'order',
+          entityId: id,
+          data: { telegram: !!order.telegramChatId },
+        });
+        return { ...issued, order };
+      });
+      if (result.order.telegramChatId) {
+        const bot = await db.telegramConfig.findUnique({
+          where: { tenantId: auth.tenantId },
+        });
+        if (bot?.isActive) {
+          await telegramApi(
+            services,
+            services.secrets.decrypt(bot.botTokenEnc),
+            'sendMessage',
+            {
+              chat_id: result.order.telegramChatId,
+              text: `🔐 Buyurtma №${result.order.number} uchun tasdiq kodi: ${result.code}\nKodni faqat kuryer buyurtmani topshirganda ayting.`,
+            },
+          );
+          res.json({ sent: 'telegram' });
+          return;
+        }
+      }
+      res.json({ code: result.code, expiresAt: result.expiresAt });
+    },
+  );
+
+  router.post(
+    '/courier/orders/:id/on-the-way',
+    ...courier,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      await courierAction(auth, id, async (tx, order) => {
+        assertDelivery(order.deliveryStatus, 'ON_THE_WAY');
+        await tx.order.update({
+          where: { id },
+          data: {
+            deliveryStatus: 'ON_THE_WAY',
+            onTheWayAt: now(),
+            version: { increment: 1 },
+          },
+        });
+        await addEvent(tx, auth.tenantId, id, auth.userId, 'delivery', {
+          status: 'ON_THE_WAY',
+        });
+      });
+      res.json({ ok: true });
+    },
+  );
+
+  // Cash the courier brought back is checked by the cashier before it is booked.
+  router.post('/delivery/orders/:id/reconcile', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const { amount } = parse(
+      z.object({ amount: z.number().int().min(1).max(1_000_000_000) }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      const order = await lockOrder(tx, auth.tenantId, id);
+      await resolveBranch(tx, auth, order.branchId);
+      if (order.cashCollected <= 0 || order.cashReconciledAt)
+        throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      if (amount !== order.cashCollected)
+        throw new AppError(409, 'CASH_MISMATCH', 'cashMismatch', {
+          expected: order.cashCollected,
+        });
+      await tx.order.update({
+        where: { id },
+        data: {
+          cashReconciledAt: now(),
+          cashReconciledById: auth.userId,
+          version: { increment: 1 },
+        },
+      });
+      await addEvent(tx, auth.tenantId, id, auth.userId, 'cash_reconciled', {
+        amount,
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: order.branchId,
+        actorUserId: auth.userId,
+        action: 'delivery.cash.reconcile',
+        entityType: 'order',
+        entityId: id,
+        data: { amount, courierId: order.courierId },
+      });
+    });
+    await notify(id);
+    res.json({ ok: true });
+  });
+
+  // Authorized manual exceptions (lost code, returned food), always audited.
+  router.post('/delivery/orders/:id/exception', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    if (!auth.permissions.has('orders.cancel')) throw errors.forbidden();
+    const id = parse(z.uuid(), req.params.id);
+    const input = parse(
+      z.object({
+        status: z.enum(['DELIVERED', 'FAILED', 'RETURNED']),
+        reason: z.string().trim().min(3).max(300),
+      }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      const order = await lockOrder(tx, auth.tenantId, id);
+      await resolveBranch(tx, auth, order.branchId);
+      if (order.type !== 'DELIVERY')
+        throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      assertDelivery(order.deliveryStatus, input.status);
+      await tx.order.update({
+        where: { id },
+        data: {
+          deliveryStatus: input.status,
+          ...(input.status === 'DELIVERED'
+            ? { deliveredAt: now(), deliveryProof: input.reason }
+            : { deliveryFailReason: input.reason }),
+          version: { increment: 1 },
+        },
+      });
+      await addEvent(tx, auth.tenantId, id, auth.userId, 'delivery', {
+        status: input.status,
+        reason: input.reason,
+        exception: true,
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: order.branchId,
+        actorUserId: auth.userId,
+        action: 'delivery.exception',
+        entityType: 'order',
+        entityId: id,
+        data: {
+          from: order.deliveryStatus,
+          to: input.status,
+          reason: input.reason,
+        },
+      });
+      if (input.status === 'DELIVERED' && netPaid(order) >= order.total) {
+        const fresh = await tx.order.findUniqueOrThrow({ where: { id } });
+        await completeOrder(tx, fresh, auth.userId, now());
+      }
+    });
+    await notify(id);
+    res.json({ ok: true });
+  });
+
   router.post('/courier/orders/:id/pickup', ...courier, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
     await courierAction(auth, id, async (tx, order) => {
+      if (await codesRequired(tx, auth.tenantId))
+        throw new AppError(409, 'HANDOFF_REQUIRED', 'handoffRequired');
       if (
         order.deliveryStatus !== 'ASSIGNED' &&
         order.deliveryStatus !== 'FAILED'
@@ -415,20 +722,53 @@ export function deliveryRouter(services: Services) {
   router.post('/courier/orders/:id/deliver', ...courier, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
-    const { proof } = parse(
-      z.object({ proof: z.string().trim().min(2).max(300) }),
+    const input = parse(
+      z.object({
+        proof: z.string().trim().min(2).max(300).optional(),
+        code: z
+          .string()
+          .trim()
+          .regex(/^\d{6}$/)
+          .optional(),
+        // Cash taken from the customer; booked later by the cashier.
+        cashCollected: z.number().int().min(0).max(1_000_000_000).default(0),
+      }),
       req.body,
     );
+    const proof = input.proof ?? null;
     let completed = false;
+    let wrong: { attemptsLeft: number } | null = null;
     await courierAction(auth, id, async (tx, order) => {
-      if (order.deliveryStatus !== 'PICKED_UP')
+      if (
+        order.deliveryStatus !== 'PICKED_UP' &&
+        order.deliveryStatus !== 'ON_THE_WAY'
+      )
         throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      if (await codesRequired(tx, auth.tenantId)) {
+        if (!input.code) throw errors.validation([{ path: 'code' }]);
+        const check = await verifyOrderCode(tx, services.secrets, {
+          orderId: id,
+          purpose: 'DELIVERY',
+          code: input.code,
+          now: now(),
+        });
+        await addEvent(tx, auth.tenantId, id, auth.userId, 'delivery_check', {
+          ok: check.ok,
+        });
+        if (!check.ok) {
+          wrong = { attemptsLeft: Math.max(0, check.attemptsLeft) };
+          return;
+        }
+      } else if (!proof) throw errors.validation([{ path: 'proof' }]);
+      if (input.cashCollected > order.total - netPaid(order))
+        throw errors.validation([{ path: 'cashCollected' }]);
       await tx.order.update({
         where: { id },
         data: {
           deliveryStatus: 'DELIVERED',
           deliveredAt: now(),
           deliveryProof: proof,
+          cashCollected: input.cashCollected,
         },
       });
       await addEvent(tx, auth.tenantId, id, auth.userId, 'delivery', {
@@ -441,6 +781,7 @@ export function deliveryRouter(services: Services) {
         completed = true;
       }
     });
+    if (wrong) throw new AppError(400, 'CODE_INVALID', 'codeInvalid', wrong);
     res.json({ ok: true, completed });
   });
 
@@ -452,11 +793,7 @@ export function deliveryRouter(services: Services) {
       req.body,
     );
     await courierAction(auth, id, async (tx, order) => {
-      if (
-        order.deliveryStatus !== 'ASSIGNED' &&
-        order.deliveryStatus !== 'PICKED_UP'
-      )
-        throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      assertDelivery(order.deliveryStatus, 'FAILED');
       await tx.order.update({
         where: { id },
         data: { deliveryStatus: 'FAILED', deliveryFailReason: reason },

@@ -99,6 +99,9 @@ export const messages = {
     'Litsenziya kaliti noto‘g‘ri yoki boshqa kompyuter uchun berilgan.',
   approvalRequired: 'Bu xarajat uchun tasdiq kerak. So‘rov yuborildi.',
   monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
+  handoffRequired:
+    'Buyurtmani olish uchun kassirga topshirish kodini ko‘rsating.',
+  cashMismatch: 'Summa kuryer yig‘gan pulga mos emas.',
   codeMissing: 'Bu buyurtma uchun faol kod yo‘q. Yangi kod yarating.',
   codeExpired: 'Kodning muddati tugagan. Yangi kod yarating.',
   codeLocked:

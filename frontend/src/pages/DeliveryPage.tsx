@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useMe } from '../auth/session';
+import { can, useMe } from '../auth/session';
 import {
   Badge,
   Button,
@@ -18,6 +18,8 @@ import {
 import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
+
+const c = t.courierCodes;
 
 export type Zone = {
   id: string;
@@ -41,6 +43,9 @@ type BoardOrder = {
   due: number;
   createdAt: string;
   failReason: string | null;
+  cashCollected?: number;
+  cashReconciled?: boolean;
+  telegram?: boolean;
 };
 type Courier = {
   id: string;
@@ -223,6 +228,105 @@ function Board() {
                         {order.failReason}
                       </small>
                     )}
+                    <div className="toolbar">
+                      {order.courierId &&
+                        ['ASSIGNED', 'FAILED'].includes(order.deliveryStatus) &&
+                        ['READY', 'SERVED'].includes(order.status) && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => {
+                              const code = window.prompt(c.handoffPrompt) ?? '';
+                              if (!/^\d{6}$/.test(code.trim())) return;
+                              void act(async () => {
+                                await post(
+                                  `/delivery/orders/${order.id}/handoff`,
+                                  { code: code.trim() },
+                                );
+                                toast(c.handedOver);
+                              });
+                            }}
+                          >
+                            🔐 {c.handoff}
+                          </Button>
+                        )}
+                      {!['DELIVERED', 'RETURNED'].includes(
+                        order.deliveryStatus,
+                      ) && (
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            void act(async () => {
+                              const result = await post<{
+                                sent?: string;
+                                code?: string;
+                              }>(`/delivery/orders/${order.id}/customer-code`);
+                              if (result.sent) toast(c.sentTelegram);
+                              else if (result.code)
+                                window.alert(
+                                  c.tellCustomer.replace('{code}', result.code),
+                                );
+                            })
+                          }
+                        >
+                          {c.customerCodeBtn}
+                        </Button>
+                      )}
+                      {!!order.cashCollected && !order.cashReconciled && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const amount = Number(
+                              (window.prompt(c.reconcilePrompt) ?? '').replace(
+                                /\D/g,
+                                '',
+                              ),
+                            );
+                            if (!amount) return;
+                            void act(async () => {
+                              await post(
+                                `/delivery/orders/${order.id}/reconcile`,
+                                { amount },
+                              );
+                              toast(c.reconciled);
+                            });
+                          }}
+                        >
+                          💵 {c.reconcile} ({formatMoney(order.cashCollected)})
+                        </Button>
+                      )}
+                      {can(me, 'orders.cancel') &&
+                        !['DELIVERED', 'RETURNED', 'UNASSIGNED'].includes(
+                          order.deliveryStatus,
+                        ) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const pick = window.prompt(c.exceptionPrompt);
+                              const status = (
+                                {
+                                  '1': 'DELIVERED',
+                                  '2': 'FAILED',
+                                  '3': 'RETURNED',
+                                } as Record<string, string>
+                              )[pick?.trim() ?? ''];
+                              if (!status) return;
+                              const reason =
+                                window.prompt(c.exceptionReason) ?? '';
+                              if (reason.trim().length < 3) return;
+                              void act(() =>
+                                post(`/delivery/orders/${order.id}/exception`, {
+                                  status,
+                                  reason,
+                                }),
+                              );
+                            }}
+                          >
+                            {c.exception}
+                          </Button>
+                        )}
+                    </div>
                   </td>
                   <td className="right nowrap">
                     {order.due > 0 ? (
