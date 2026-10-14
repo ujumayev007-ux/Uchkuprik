@@ -20,14 +20,22 @@ function machineHash() {
     const out = execFileSync(
       'reg',
       ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'],
-      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] },
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
     );
     raw = /REG_SZ\s+(.+)\s*$/m.exec(out)?.[1]?.trim() ?? null;
   } catch {
     /* Not available. */
   }
   return raw
-    ? crypto.createHash('sha256').update(`fastfood|${raw}`).digest('hex').slice(0, 16)
+    ? crypto
+        .createHash('sha256')
+        .update(`fastfood|${raw}`)
+        .digest('hex')
+        .slice(0, 16)
     : null;
 }
 
@@ -40,11 +48,19 @@ function encrypt(publicKeyB64, data) {
   const eph = crypto.generateKeyPairSync('x25519');
   const key = crypto
     .createHash('sha256')
-    .update(crypto.diffieHellman({ privateKey: eph.privateKey, publicKey: vendorKey }))
+    .update(
+      crypto.diffieHellman({
+        privateKey: eph.privateKey,
+        publicKey: vendorKey,
+      }),
+    )
     .digest();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const body = Buffer.concat([cipher.update(JSON.stringify(data)), cipher.final()]);
+  const body = Buffer.concat([
+    cipher.update(JSON.stringify(data)),
+    cipher.final(),
+  ]);
   return [
     'FF1',
     eph.publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'),
@@ -94,12 +110,18 @@ function ensureReportKeys(vendorDir, state) {
   if (fs.existsSync(file) && state.report?.publicKey && state.report?.topic)
     return false;
   const pair = crypto.generateKeyPairSync('x25519');
-  fs.writeFileSync(file, pair.privateKey.export({ format: 'pem', type: 'pkcs8' }), {
-    mode: 0o600,
-  });
+  fs.writeFileSync(
+    file,
+    pair.privateKey.export({ format: 'pem', type: 'pkcs8' }),
+    {
+      mode: 0o600,
+    },
+  );
   state.report = {
     topic: `ff-${crypto.randomBytes(16).toString('hex')}`,
-    publicKey: pair.publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    publicKey: pair.publicKey
+      .export({ format: 'der', type: 'spki' })
+      .toString('base64'),
   };
   return true;
 }
@@ -121,15 +143,17 @@ async function collectReport({ keys, version, dbConfig }) {
   const db = new Client(dbConfig);
   await db.connect();
   try {
-    const lic = (
-      await db.query('SELECT key FROM app_license WHERE id = 1')
-    ).rows[0];
+    const lic = (await db.query('SELECT key FROM app_license WHERE id = 1'))
+      .rows[0];
     if (lic?.key)
       try {
         const payload = JSON.parse(
           Buffer.from(lic.key.split('.')[0], 'base64url').toString('utf8'),
         );
-        report.license = { customer: payload.customer, expiresAt: payload.expiresAt };
+        report.license = {
+          customer: payload.customer,
+          expiresAt: payload.expiresAt,
+        };
       } catch {
         /* Unreadable key: reported as no licence. */
       }
@@ -241,15 +265,20 @@ function createReportWatch({ vendorDir, vendorState, saveVendorState, log }) {
         if (
           !report ||
           report.v !== 1 ||
-          !/^FF-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(report.installId || '')
+          !/^FF-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(
+            report.installId || '',
+          )
         )
           continue;
         const previous = state.installs[report.installId];
-        const seenAt = new Date((event.time ?? Date.now() / 1000) * 1000).toISOString();
+        const seenAt = new Date(
+          (event.time ?? Date.now() / 1000) * 1000,
+        ).toISOString();
         const others = report.machine
           ? Object.values(state.installs).filter(
               (item) =>
-                item.machine === report.machine && item.installId !== report.installId,
+                item.machine === report.machine &&
+                item.installId !== report.installId,
             )
           : [];
         state.installs[report.installId] = {
@@ -281,12 +310,15 @@ function createReportWatch({ vendorDir, vendorState, saveVendorState, log }) {
         if (left > 2 || left < -3 || state.reminded[key] === today) continue;
         state.reminded[key] = today;
         alerts.push([
-          left > 0 ? `⌛ Demo tugashiga ${left} kun qoldi` : '⌛ Demo muddati tugadi',
+          left > 0
+            ? `⌛ Demo tugashiga ${left} kun qoldi`
+            : '⌛ Demo muddati tugadi',
           describe(install),
         ]);
       }
       saveVendorState(state);
-      for (const [title, text] of alerts) await notifyVendor(state, title, text, log);
+      for (const [title, text] of alerts)
+        await notifyVendor(state, title, text, log);
       return { checked: true, alerts: alerts.length };
     } catch (error) {
       log(`report watch failed: ${error.message}`);

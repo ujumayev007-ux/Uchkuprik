@@ -115,6 +115,18 @@ describe('two-stage delivery verification', () => {
         'delivery.cash.reconcile',
       ]),
     );
+    // Searchable history: by order number, with the actor's role and session.
+    const number = (
+      await ctx.db.order.findUniqueOrThrow({ where: { id: s.id } })
+    ).number;
+    const history = await s.owner
+      .get(`/api/audit-logs?orderNumber=${number}`)
+      .expect(200);
+    const handoffRow = history.body.entries.find(
+      (entry: { action: string }) => entry.action === 'delivery.handoff',
+    );
+    expect(handoffRow.roles).toContain('owner');
+    expect(handoffRow.session).toBeTruthy();
     // Codes are never stored or logged in plain text.
     const auditText = JSON.stringify(audit, (_key, value) =>
       typeof value === 'bigint' ? String(value) : value,

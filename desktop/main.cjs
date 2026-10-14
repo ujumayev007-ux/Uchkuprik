@@ -494,18 +494,23 @@ function signLicense(input, statusUrl) {
     maxDevices: input.maxDevices ?? null,
     ...(statusUrl ? { statusUrl } : {}),
     hiddenMenus: Array.isArray(input.hiddenMenus)
-      ? input.hiddenMenus.map(String).filter((item) => /^\/[a-z0-9/-]*$/.test(item))
+      ? input.hiddenMenus
+          .map(String)
+          .filter((item) => /^\/[a-z0-9/-]*$/.test(item))
       : [],
     // Locked restaurant settings and permissions removed for everyone (SUPER_OWNER).
     settings: {
       orders: Object.fromEntries(
         Object.entries(input.settings?.orders ?? {}).filter(
-          ([key, value]) => /^[a-zA-Z]{1,40}$/.test(key) && typeof value === 'boolean',
+          ([key, value]) =>
+            /^[a-zA-Z]{1,40}$/.test(key) && typeof value === 'boolean',
         ),
       ),
     },
     deniedPermissions: Array.isArray(input.deniedPermissions)
-      ? input.deniedPermissions.map(String).filter((key) => /^[a-z]+\.[a-z.]+$/.test(key))
+      ? input.deniedPermissions
+          .map(String)
+          .filter((key) => /^[a-z]+\.[a-z.]+$/.test(key))
       : [],
   };
   const body = Buffer.from(JSON.stringify(payload));
@@ -685,16 +690,27 @@ ipcMain.handle('vendor:update', async (_event, installId, changes) => {
       features: changes.features ?? customer.features,
       hiddenMenus: changes.hiddenMenus ?? customer.hiddenMenus,
       settings: changes.settings ?? customer.settings,
-      deniedPermissions: changes.deniedPermissions ?? customer.deniedPermissions,
-      maxBranches: changes.maxBranches !== undefined ? changes.maxBranches : customer.maxBranches,
-      maxUsers: changes.maxUsers !== undefined ? changes.maxUsers : customer.maxUsers,
-      maxDevices: changes.maxDevices !== undefined ? changes.maxDevices : customer.maxDevices,
+      deniedPermissions:
+        changes.deniedPermissions ?? customer.deniedPermissions,
+      maxBranches:
+        changes.maxBranches !== undefined
+          ? changes.maxBranches
+          : customer.maxBranches,
+      maxUsers:
+        changes.maxUsers !== undefined ? changes.maxUsers : customer.maxUsers,
+      maxDevices:
+        changes.maxDevices !== undefined
+          ? changes.maxDevices
+          : customer.maxDevices,
     },
     state.statusUrl,
   );
   state.customers[installId] = { ...customer, ...payload, key };
   saveVendorState(state);
-  const result = await publishStatus(state).catch((error) => ({ published: false, error: error.message }));
+  const result = await publishStatus(state).catch((error) => ({
+    published: false,
+    error: error.message,
+  }));
   return { key, ...result };
 });
 
@@ -745,7 +761,9 @@ ipcMain.handle('vendor:checkReports', () => reportWatch.poll());
 
 /** Blocks or unblocks any install by its ID (e.g. a demo that has no licence). */
 ipcMain.handle('vendor:blockInstall', async (_event, installId, blocked) => {
-  const id = String(installId || '').trim().toUpperCase();
+  const id = String(installId || '')
+    .trim()
+    .toUpperCase();
   if (!/^FF-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(id))
     throw new Error('O‘rnatish ID noto‘g‘ri (FF-XXXX-XXXX-XXXX)');
   const state = vendorState();
@@ -929,7 +947,10 @@ ipcMain.handle('vendor:publishUpdate', async (_event, notes) => {
   if (picked.canceled || !picked.filePaths[0]) return { cancelled: true };
   const exe = picked.filePaths[0];
   const match = /FastFood-Setup-(\d+\.\d+\.\d+)\.exe$/i.exec(exe);
-  if (!match) throw new Error('Fayl nomi FastFood-Setup-X.Y.Z.exe ko‘rinishida bo‘lishi kerak');
+  if (!match)
+    throw new Error(
+      'Fayl nomi FastFood-Setup-X.Y.Z.exe ko‘rinishida bo‘lishi kerak',
+    );
   const version = match[1];
   const apkPath = path.join(path.dirname(exe), `FastFood-${version}.apk`);
   const user = await github(state, 'GET', '/user');
@@ -953,7 +974,11 @@ ipcMain.handle('vendor:publishUpdate', async (_event, notes) => {
   const tag = `v${version}`;
   let release;
   try {
-    release = await github(state, 'GET', `/repos/${repo.full_name}/releases/tags/${tag}`);
+    release = await github(
+      state,
+      'GET',
+      `/repos/${repo.full_name}/releases/tags/${tag}`,
+    );
   } catch {
     release = await github(state, 'POST', `/repos/${repo.full_name}/releases`, {
       tag_name: tag,
@@ -961,13 +986,31 @@ ipcMain.handle('vendor:publishUpdate', async (_event, notes) => {
       body: String(notes || ''),
     });
   }
-  const existing = new Map((release.assets ?? []).map((asset) => [asset.name, asset]));
+  const existing = new Map(
+    (release.assets ?? []).map((asset) => [asset.name, asset]),
+  );
   for (const name of [path.basename(exe), path.basename(apkPath)])
     if (existing.has(name))
-      await github(state, 'DELETE', `/repos/${repo.full_name}/releases/assets/${existing.get(name).id}`).catch(() => null);
-  const exeAsset = await uploadAsset(state, release, exe, path.basename(exe), 'application/octet-stream');
+      await github(
+        state,
+        'DELETE',
+        `/repos/${repo.full_name}/releases/assets/${existing.get(name).id}`,
+      ).catch(() => null);
+  const exeAsset = await uploadAsset(
+    state,
+    release,
+    exe,
+    path.basename(exe),
+    'application/octet-stream',
+  );
   const apkAsset = fs.existsSync(apkPath)
-    ? await uploadAsset(state, release, apkPath, path.basename(apkPath), 'application/vnd.android.package-archive')
+    ? await uploadAsset(
+        state,
+        release,
+        apkPath,
+        path.basename(apkPath),
+        'application/vnd.android.package-archive',
+      )
     : null;
   state.update = {
     version,

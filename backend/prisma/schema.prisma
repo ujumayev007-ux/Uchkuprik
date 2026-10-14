@@ -265,10 +265,15 @@ model AuditLog {
   data        Json?
   ipAddress   String?
   requestId   String?
+  // Session (device) and role keys of the actor at the time of the action.
+  sessionId   String?  @db.Uuid
+  roles       String?
   createdAt   DateTime @default(now())
 
   @@index([tenantId, createdAt])
   @@index([tenantId, action, createdAt])
+  @@index([tenantId, entityId])
+  @@index([tenantId, actorUserId, createdAt])
   @@map("audit_logs")
 }
 

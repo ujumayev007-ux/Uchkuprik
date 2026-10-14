@@ -231,6 +231,13 @@ export function printersRouter(services: Services) {
       },
     });
     if (result.count === 0) throw errors.notFound();
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      actorUserId: auth.userId,
+      action: 'print.retry',
+      entityType: 'print_job',
+      entityId: id,
+    });
     res.json({ ok: true });
   });
 

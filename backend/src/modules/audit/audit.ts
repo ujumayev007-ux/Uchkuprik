@@ -15,9 +15,16 @@ export type AuditEntry = {
 };
 
 export function requestMeta(req: Request) {
+  // Signed-in actor's session (device) and roles, when the request has one.
+  const auth = req.res?.locals.auth as
+    { sessionId?: string; roleKeys?: string[] } | undefined;
   return {
     ipAddress: req.ip ?? null,
     requestId: (req.res?.locals.requestId as string | undefined) ?? null,
+    sessionId: auth?.sessionId ?? null,
+    roles: auth?.roleKeys?.length
+      ? auth.roleKeys.join(',').slice(0, 200)
+      : null,
   };
 }
 

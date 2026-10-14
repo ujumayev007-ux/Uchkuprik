@@ -11,6 +11,13 @@ import {
 
 const query = z.object({
   action: z.string().trim().max(60).optional(),
+  // Employee, order (number or id), outcome and period filters.
+  actorUserId: z.uuid().optional(),
+  orderNumber: z.coerce.number().int().min(1).max(1_000_000).optional(),
+  entityId: z.string().trim().max(60).optional(),
+  outcome: z.enum(['SUCCESS', 'DENIED', 'FAILURE']).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
   before: z.coerce.bigint().positive().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -23,10 +30,36 @@ export function auditRouter(services: Services) {
     tenantId: string | undefined,
     input: z.infer<typeof query>,
   ) => {
+    // Order numbers repeat daily: match every order of the tenant with that number.
+    const orderIds =
+      input.orderNumber && tenantId
+        ? (
+            await db.order.findMany({
+              where: { tenantId, number: input.orderNumber },
+              select: { id: true },
+              take: 200,
+            })
+          ).map((order) => order.id)
+        : null;
     const rows = await db.auditLog.findMany({
       where: {
         ...(tenantId ? { tenantId } : {}),
         ...(input.action ? { action: { startsWith: input.action } } : {}),
+        ...(input.actorUserId ? { actorUserId: input.actorUserId } : {}),
+        ...(input.outcome ? { outcome: input.outcome } : {}),
+        ...(orderIds
+          ? { entityId: { in: orderIds } }
+          : input.entityId
+            ? { entityId: input.entityId }
+            : {}),
+        ...(input.from || input.to
+          ? {
+              createdAt: {
+                ...(input.from ? { gte: input.from } : {}),
+                ...(input.to ? { lte: input.to } : {}),
+              },
+            }
+          : {}),
         ...(input.before ? { id: { lt: input.before } } : {}),
       },
       orderBy: { id: 'desc' },
@@ -56,6 +89,8 @@ export function auditRouter(services: Services) {
           : null,
         data: row.data,
         ipAddress: row.ipAddress,
+        roles: row.roles,
+        session: row.sessionId ? row.sessionId.slice(-6) : null,
         createdAt: row.createdAt,
       })),
       nextBefore:

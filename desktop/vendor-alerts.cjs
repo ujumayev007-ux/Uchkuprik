@@ -31,7 +31,17 @@ function firstInstallDate(candidate) {
     try {
       execFileSync(
         'reg',
-        ['add', MARKER_KEY, '/v', 'FirstInstall', '/t', 'REG_SZ', '/d', candidate, '/f'],
+        [
+          'add',
+          MARKER_KEY,
+          '/v',
+          'FirstInstall',
+          '/t',
+          'REG_SZ',
+          '/d',
+          candidate,
+          '/f',
+        ],
         { windowsHide: true, stdio: 'ignore' },
       );
     } catch {
@@ -43,12 +53,15 @@ function firstInstallDate(candidate) {
 async function telegram(state, method, body) {
   const token = state.telegram?.token;
   if (!token) throw new Error('Telegram bot ulanmagan');
-  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(15_000),
-  });
+  const response = await fetch(
+    `https://api.telegram.org/bot${token}/${method}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
   const data = await response.json().catch(() => ({}));
   if (!data.ok)
     throw new Error(
@@ -61,7 +74,8 @@ async function telegram(state, method, body) {
 
 async function notifyVendor(state, title, text, log) {
   try {
-    if (Notification.isSupported()) new Notification({ title, body: text }).show();
+    if (Notification.isSupported())
+      new Notification({ title, body: text }).show();
   } catch {
     /* Desktop notifications unavailable. */
   }
@@ -84,9 +98,15 @@ function createPaymentWatch({ vendorState, saveVendorState, log }) {
       for (const customer of Object.values(state.customers ?? {})) {
         if (customer.blocked || !customer.expiresAt) continue;
         const days = Math.ceil(
-          (new Date(`${customer.expiresAt}T23:59:59+05:00`).getTime() - Date.now()) / DAY,
+          (new Date(`${customer.expiresAt}T23:59:59+05:00`).getTime() -
+            Date.now()) /
+            DAY,
         );
-        if (days > 5 || days < -7 || state.reminded[customer.installId] === today)
+        if (
+          days > 5 ||
+          days < -7 ||
+          state.reminded[customer.installId] === today
+        )
           continue;
         state.reminded[customer.installId] = today;
         alerts.push([
@@ -97,7 +117,8 @@ function createPaymentWatch({ vendorState, saveVendorState, log }) {
         ]);
       }
       saveVendorState(state);
-      for (const [title, text] of alerts) await notifyVendor(state, title, text, log);
+      for (const [title, text] of alerts)
+        await notifyVendor(state, title, text, log);
       return { alerts: alerts.length };
     } catch (error) {
       log(`payment watch failed: ${error.message}`);
@@ -113,4 +134,9 @@ function createPaymentWatch({ vendorState, saveVendorState, log }) {
   };
 }
 
-module.exports = { firstInstallDate, telegram, notifyVendor, createPaymentWatch };
+module.exports = {
+  firstInstallDate,
+  telegram,
+  notifyVendor,
+  createPaymentWatch,
+};

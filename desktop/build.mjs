@@ -83,7 +83,8 @@ if (existsSync(vendorState)) {
       join(server, 'report.json'),
       JSON.stringify({ topic: report.topic, publicKey: report.publicKey }),
     );
-  else console.warn('Report key missing: open the vendor app once, then rebuild.');
+  else
+    console.warn('Report key missing: open the vendor app once, then rebuild.');
 }
 
 // PostgreSQL 17 binaries for Windows (bin, lib, share).

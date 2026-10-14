@@ -25,9 +25,12 @@ function compareVersions(a, b) {
 }
 
 async function fetchSignedDocument(url) {
-  const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, {
-    signal: AbortSignal.timeout(15_000),
-  });
+  const response = await fetch(
+    `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`,
+    {
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const [body, signature] = (await response.text()).trim().split('.');
   if (
@@ -96,12 +99,18 @@ function registerUpdates({ statusUrl, log }) {
       const response = await fetch(update.exe.url, {
         signal: AbortSignal.timeout(30 * 60_000),
       });
-      if (!response.ok) throw new Error(`Yuklab bo‘lmadi (HTTP ${response.status})`);
+      if (!response.ok)
+        throw new Error(`Yuklab bo‘lmadi (HTTP ${response.status})`);
       const data = Buffer.from(await response.arrayBuffer());
       const hash = crypto.createHash('sha256').update(data).digest('hex');
       if (hash !== update.exe.sha256)
-        throw new Error('Yuklangan fayl buzilgan (hash mos emas). Qayta urinib ko‘ring.');
-      const file = path.join(os.tmpdir(), `FastFood-Setup-${update.version}.exe`);
+        throw new Error(
+          'Yuklangan fayl buzilgan (hash mos emas). Qayta urinib ko‘ring.',
+        );
+      const file = path.join(
+        os.tmpdir(),
+        `FastFood-Setup-${update.version}.exe`,
+      );
       fs.writeFileSync(file, data);
       log(`starting installer ${file}`);
       // The new version installs side by side and uses the same data folder; this

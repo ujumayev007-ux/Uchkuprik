@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   Badge,
@@ -20,6 +20,9 @@ type Entry = {
   entityId: string | null;
   actorName: string | null;
   ipAddress: string | null;
+  roles?: string | null;
+  session?: string | null;
+  data?: unknown;
   createdAt: string;
 };
 
@@ -31,13 +34,40 @@ const tones = {
 
 export function AuditPage({ platform = false }: { platform?: boolean }) {
   const [action, setAction] = useState('');
+  const [actor, setActor] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
+  const [outcome, setOutcome] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const users = useQuery({
+    queryKey: ['users', 'audit-filter'],
+    queryFn: () =>
+      api<{ users: { id: string; displayName: string }[] }>('/users').then(
+        (data) => data.users,
+      ),
+    enabled: !platform,
+  });
   const base = platform ? '/platform/audit-logs' : '/audit-logs';
   const log = useInfiniteQuery({
-    queryKey: ['audit', platform, action],
+    queryKey: [
+      'audit',
+      platform,
+      action,
+      actor,
+      orderNumber,
+      outcome,
+      from,
+      to,
+    ],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: '50' });
       if (action) params.set('action', action);
+      if (actor) params.set('actorUserId', actor);
+      if (/^\d+$/.test(orderNumber)) params.set('orderNumber', orderNumber);
+      if (outcome) params.set('outcome', outcome);
+      if (from) params.set('from', new Date(`${from}T00:00:00`).toISOString());
+      if (to) params.set('to', new Date(`${to}T23:59:59`).toISOString());
       if (pageParam) params.set('before', pageParam);
       return api<{ entries: Entry[]; nextBefore: string | null }>(
         `${base}?${params}`,
@@ -75,6 +105,59 @@ export function AuditPage({ platform = false }: { platform?: boolean }) {
             </optgroup>
           ))}
         </select>
+        {!platform && (
+          <select
+            aria-label={t.audit.employee}
+            value={actor}
+            onChange={(event) => setActor(event.target.value)}
+          >
+            <option value="">{t.audit.allEmployees}</option>
+            {(users.data ?? []).map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.displayName}
+              </option>
+            ))}
+          </select>
+        )}
+        <input
+          className="input"
+          inputMode="numeric"
+          placeholder={t.audit.orderNumber}
+          aria-label={t.audit.orderNumber}
+          value={orderNumber}
+          onChange={(event) =>
+            setOrderNumber(event.target.value.replace(/\D/g, ''))
+          }
+          style={{ maxWidth: 140 }}
+        />
+        <select
+          aria-label={t.audit.outcome}
+          value={outcome}
+          onChange={(event) => setOutcome(event.target.value)}
+        >
+          <option value="">
+            {t.audit.outcome}: {t.common.all}
+          </option>
+          {(['SUCCESS', 'DENIED', 'FAILURE'] as const).map((key) => (
+            <option key={key} value={key}>
+              {t.audit.outcomes[key]}
+            </option>
+          ))}
+        </select>
+        <input
+          className="input"
+          type="date"
+          aria-label={t.audit.from}
+          value={from}
+          onChange={(event) => setFrom(event.target.value)}
+        />
+        <input
+          className="input"
+          type="date"
+          aria-label={t.audit.to}
+          value={to}
+          onChange={(event) => setTo(event.target.value)}
+        />
       </div>
       {log.isPending ? (
         <LoadingState />
@@ -107,7 +190,15 @@ export function AuditPage({ platform = false }: { platform?: boolean }) {
                         <code>{entry.action}</code>
                       </small>
                     </td>
-                    <td>{entry.actorName ?? t.audit.system}</td>
+                    <td>
+                      {entry.actorName ?? t.audit.system}
+                      {entry.roles && (
+                        <small className="muted block">
+                          {entry.roles}
+                          {entry.session ? ` · #${entry.session}` : ''}
+                        </small>
+                      )}
+                    </td>
                     <td>
                       <Badge tone={tones[entry.outcome]}>
                         {t.audit.outcomes[entry.outcome]}
