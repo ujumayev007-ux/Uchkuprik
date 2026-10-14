@@ -795,6 +795,18 @@ export const uz = {
     online: 'Jonli ulanish',
     offline: 'Jonli ulanish uzildi — qayta ulanmoqda',
   },
+  loyaltyRules: {
+    title: 'Sodiqlik dasturi',
+    hint: 'Asosiy keshbek foizi yuqoridagi sozlamada. Bu yerda: darajalar (qo‘shimcha foiz), har N-xarid sovg‘asi va tug‘ilgan kun sovg‘asi (ball, 1 ball = 1 so‘m).',
+    tiers: 'Darajalar',
+    addDefault: 'Bronze / Silver / Gold / VIP qo‘shish',
+    tierName: 'Daraja nomi',
+    minSpent: 'Jami xariddan boshlab (so‘m)',
+    bonus: 'Qo‘shimcha keshbek (%)',
+    everyN: 'Har nechanchi xaridda sovg‘a (masalan 10)',
+    everyNPoints: 'Sovg‘a ballari',
+    birthday: 'Tug‘ilgan kun sovg‘asi (ball)',
+  },
   vendorTools: {
     title: 'Shablonlar va tarix',
     apply: 'Shablonni qo‘llash',

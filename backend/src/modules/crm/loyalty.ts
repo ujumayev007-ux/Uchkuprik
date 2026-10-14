@@ -1,3 +1,4 @@
+import { loyaltyRulesOf, ruleTier } from './loyalty-rules.js';
 import type { Tx } from '../../db.js';
 import type { LoyaltyEntryType } from '../../generated/prisma/client.js';
 import { AppError } from '../../http/errors.js';
@@ -96,7 +97,7 @@ export async function onOrderCompleted(
     include: { payments: true, refunds: true },
   });
   if (!order.customerId) return;
-  await tx.customer.update({
+  const customer = await tx.customer.update({
     where: { id: order.customerId },
     data: {
       totalSpent: { increment: order.total },
@@ -107,7 +108,43 @@ export async function onOrderCompleted(
   const profile = await tx.tenantProfile.findUnique({
     where: { tenantId: order.tenantId },
   });
-  const rate = profile?.loyaltyEarnBp ?? 0;
+  const rules = loyaltyRulesOf(profile?.loyaltyRules);
+  const reward = (points: number, reason: string) =>
+    postLoyalty(tx, {
+      tenantId: order.tenantId,
+      customerId: order.customerId!,
+      type: 'EARN',
+      points,
+      orderId: order.id,
+      reason,
+      actorId,
+    });
+  // Every N-th completed order earns a fixed reward.
+  if (rules.everyNth && customer.orderCount % rules.everyNth.n === 0)
+    await reward(
+      rules.everyNth.points,
+      `${customer.orderCount}-xarid sovg‘asi`,
+    );
+  // Birthday gift once a year, on an order completed on the birthday.
+  if (rules.birthdayPoints > 0 && customer.birthday) {
+    const today = new Date(Date.now() + 5 * 3_600_000);
+    const year = today.getUTCFullYear();
+    if (
+      customer.birthday.getUTCMonth() === today.getUTCMonth() &&
+      customer.birthday.getUTCDate() === today.getUTCDate() &&
+      !(await tx.loyaltyEntry.findFirst({
+        where: {
+          customerId: customer.id,
+          reason: `Tug‘ilgan kun ${year}`,
+        },
+      }))
+    )
+      await reward(rules.birthdayPoints, `Tug‘ilgan kun ${year}`);
+  }
+  // Tier bonus is added to the base cashback rate.
+  const rate =
+    (profile?.loyaltyEarnBp ?? 0) +
+    (ruleTier(rules, customer.totalSpent)?.bonusBp ?? 0);
   if (rate <= 0) return;
   const paidMoney =
     order.payments

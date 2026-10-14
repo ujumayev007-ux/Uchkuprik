@@ -1,3 +1,4 @@
+import { loyaltyRulesOf, loyaltyRulesSchema } from '../crm/loyalty-rules.js';
 import {
   lockedOrderSettingKeys,
   loadOrderSettings,
@@ -193,6 +194,39 @@ export function settingsRouter(services: Services) {
         settings: await loadOrderSettings(db, auth.tenantId),
         locked,
       });
+    },
+  );
+
+  router.get('/settings/loyalty-rules', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    if (auth.tenantKind !== 'BUSINESS') throw errors.forbidden();
+    const profile = await db.tenantProfile.findUnique({
+      where: { tenantId: auth.tenantId },
+    });
+    res.json(loyaltyRulesOf(profile?.loyaltyRules));
+  });
+
+  router.put(
+    '/settings/loyalty-rules',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(loyaltyRulesSchema, req.body);
+      await db.$transaction(async (tx) => {
+        await tx.tenantProfile.upsert({
+          where: { tenantId: auth.tenantId },
+          update: { loyaltyRules: input },
+          create: { tenantId: auth.tenantId, loyaltyRules: input },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'settings.loyalty.update',
+          data: input,
+        });
+      });
+      res.json(input);
     },
   );
 

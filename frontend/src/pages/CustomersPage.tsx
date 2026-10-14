@@ -30,6 +30,8 @@ type Customer = {
   lastOrderAt: string | null;
   marketingConsent: boolean;
   tier: string;
+  // Restaurant-defined level name, when loyalty tiers are configured.
+  level?: string | null;
 };
 
 const tierTone = {
@@ -112,7 +114,7 @@ function CustomerDetail({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
           <div className="stat">
             <span>{t.crm.tier}</span>
-            <strong>{t.crm.tiers[customer.tier]}</strong>
+            <strong>{customer.level ?? t.crm.tiers[customer.tier]}</strong>
           </div>
         </div>
         {manage && (
@@ -310,7 +312,7 @@ function CustomersTab() {
                         'neutral'
                       }
                     >
-                      {t.crm.tiers[customer.tier]}
+                      {customer.level ?? t.crm.tiers[customer.tier]}
                     </Badge>
                     {customer.marketingConsent && (
                       <Badge tone="success">✓</Badge>

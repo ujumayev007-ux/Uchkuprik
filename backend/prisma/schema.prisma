@@ -297,6 +297,8 @@ model TenantProfile {
   publicOrdering          Boolean  @default(false)
   // Loyalty earn rate in basis points of the paid amount (0 = loyalty off).
   loyaltyEarnBp           Int      @default(0)
+  // Tiers, every-Nth-purchase reward and birthday gift (see crm/loyalty-rules.ts).
+  loyaltyRules            Json     @default("{}")
   // Configurable labour rules (review for the applicable jurisdiction).
   overtimeAfterMinutes    Int      @default(480)
   overtimeMultiplierBp    Int      @default(15000)

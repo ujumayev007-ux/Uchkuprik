@@ -1,3 +1,4 @@
+import { loyaltyRulesOf, ruleTier } from './loyalty-rules.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -45,6 +46,11 @@ const couponInput = z
 
 export function crmRouter(services: Services) {
   const { db } = services;
+  const rulesFor = async (tenantId: string) =>
+    loyaltyRulesOf(
+      (await db.tenantProfile.findUnique({ where: { tenantId } }))
+        ?.loyaltyRules,
+    );
   const router = Router();
   const now = () => services.now?.() ?? new Date();
 
@@ -94,6 +100,7 @@ export function crmRouter(services: Services) {
         ],
         take: 100,
       });
+      const rules = await rulesFor(auth.tenantId);
       res.json({
         customers: customers.map((customer) => ({
           id: customer.id,
@@ -105,6 +112,8 @@ export function crmRouter(services: Services) {
           lastOrderAt: customer.lastOrderAt,
           marketingConsent: customer.marketingConsent,
           tier: tierOf(customer.totalSpent),
+          // Restaurant-defined level (Bronze/Silver/Gold/VIP), when configured.
+          level: ruleTier(rules, customer.totalSpent)?.name ?? null,
         })),
       });
     },
@@ -143,7 +152,13 @@ export function crmRouter(services: Services) {
         }),
       ]);
       res.json({
-        customer: { ...customer, tier: tierOf(customer.totalSpent) },
+        customer: {
+          ...customer,
+          tier: tierOf(customer.totalSpent),
+          level:
+            ruleTier(await rulesFor(auth.tenantId), customer.totalSpent)
+              ?.name ?? null,
+        },
         orders,
         loyalty: loyalty.map((entry) => ({
           ...entry,
