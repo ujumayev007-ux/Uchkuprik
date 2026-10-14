@@ -26,6 +26,25 @@ describe('ESC/POS encoding', () => {
     expect([...bytes.subarray(-4)]).toEqual([0x1d, 0x56, 0x42, 0x00]);
   });
 
+  it('fits kitchen tickets to 58 mm paper', () => {
+    const text = Buffer.from(
+      kitchenTicket({
+        stationName: null,
+        number: 7,
+        typeLabel: 'Olib ketish',
+        table: null,
+        note: null,
+        priority: 0,
+        createdAt: new Date('2026-10-12T09:30:00Z'),
+        timezone: 'Asia/Tashkent',
+        items: [{ quantity: 1, name: 'Somsa', modifiers: [], note: null }],
+        columns: 32,
+      }),
+    ).toString('latin1');
+    expect(text).toContain('-'.repeat(32) + String.fromCharCode(10));
+    expect(text).not.toContain('-'.repeat(33));
+  });
+
   it('renders kitchen tickets without prices', () => {
     const text = Buffer.from(
       kitchenTicket({

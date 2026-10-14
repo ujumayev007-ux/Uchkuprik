@@ -164,6 +164,7 @@ export async function enqueueKitchenTickets(
           purpose: update ? 'UPDATE' : 'NEW',
           payload: kitchenTicket({
             stationName: printer.station?.name ?? null,
+            columns: printer.paperWidth === 58 ? 32 : 48,
             number: order.number,
             typeLabel: typeLabels[order.type],
             table: order.table?.name ?? null,

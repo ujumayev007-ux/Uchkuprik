@@ -18,6 +18,8 @@ export function toPrintable(text: string): string {
 
 export class EscPos {
   private chunks: number[] = [ESC, 0x40]; // initialize
+  // 48 columns on 80 mm paper, 32 on 58 mm.
+  constructor(private readonly columns = COLUMNS) {}
 
   text(value: string) {
     for (const char of toPrintable(value)) this.chunks.push(char.charCodeAt(0));
@@ -37,10 +39,10 @@ export class EscPos {
     return this.raw(GS, 0x21, ((width - 1) << 4) | (height - 1));
   }
   rule(char = '-') {
-    return this.line(char.repeat(COLUMNS));
+    return this.line(char.repeat(this.columns));
   }
   /** Left and right text on one line, padded to the paper width. */
-  pair(left: string, right: string, columns = COLUMNS) {
+  pair(left: string, right: string, columns = this.columns) {
     const l = toPrintable(left);
     const r = toPrintable(right);
     const space = Math.max(1, columns - l.length - r.length);
@@ -82,6 +84,8 @@ export type KitchenTicket = {
   changedBy?: string | null;
   changedAt?: Date;
   cancelled?: KitchenTicketItem[];
+  // Characters per line (paper width).
+  columns?: number;
 };
 
 export type KitchenTicketItem = {
@@ -104,7 +108,7 @@ export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
       minute: '2-digit',
     }).format(date);
   const time = clock(ticket.createdAt);
-  const doc = new EscPos().align('center');
+  const doc = new EscPos(ticket.columns ?? COLUMNS).align('center');
   if (ticket.delivery)
     doc.size(2, 2).bold(true).line('! DOSTAVKA !').size(1, 1).bold(false);
   if (ticket.update)

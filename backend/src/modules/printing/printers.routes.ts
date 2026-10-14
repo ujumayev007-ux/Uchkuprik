@@ -37,6 +37,7 @@ const printerInput = z.object({
   isActive: z.boolean().default(true),
   // Kitchen tickets that keep failing are copied once to this printer.
   fallbackPrinterId: z.uuid().nullable().optional(),
+  paperWidth: z.union([z.literal(58), z.literal(80)]).default(80),
 });
 
 export function printersRouter(services: Services) {
@@ -66,7 +67,9 @@ export function printersRouter(services: Services) {
           port,
           isActive,
           fallbackPrinterId,
+          paperWidth,
         }) => ({
+          paperWidth,
           id,
           name,
           kind,
@@ -98,6 +101,7 @@ export function printersRouter(services: Services) {
     }
     return {
       fallbackPrinterId: input.fallbackPrinterId ?? null,
+      paperWidth: input.paperWidth,
       branchId: input.branchId,
       name: input.name,
       kind: input.kind,

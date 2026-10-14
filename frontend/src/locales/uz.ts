@@ -671,6 +671,7 @@ export const uz = {
     attempts: 'Urinishlar',
     retry: 'Qayta yuborish',
     fallback: 'Zaxira printer',
+    paper: 'Qog‘oz kengligi',
     fallbackHint:
       'Bu printer 2 marta ishlamasa, chek bir marta zaxira printerga chiqadi.',
     noFallback: 'Zaxira yo‘q',

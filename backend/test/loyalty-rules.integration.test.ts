@@ -59,7 +59,7 @@ describe('loyalty rules', () => {
     );
     // Birthday gift only once per year.
     expect(
-      entries.filter((entry) => entry.reason.startsWith('Tug‘ilgan')),
+      entries.filter((entry) => entry.reason?.startsWith('Tug‘ilgan')),
     ).toHaveLength(1);
     const list = await owner.get('/api/customers').expect(200);
     expect(

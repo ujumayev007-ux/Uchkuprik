@@ -26,6 +26,7 @@ type Printer = {
   kind: 'RECEIPT' | 'KITCHEN';
   stationId: string | null;
   fallbackPrinterId: string | null;
+  paperWidth?: number;
   host: string;
   port: number;
   isActive: boolean;
@@ -59,6 +60,7 @@ function PrinterForm({
     kind: printer?.kind ?? ('KITCHEN' as const),
     stationId: printer?.stationId ?? '',
     fallbackPrinterId: printer?.fallbackPrinterId ?? '',
+    paperWidth: printer?.paperWidth ?? 80,
     host: printer?.host ?? '',
     port: printer?.port ?? 9100,
     isActive: printer?.isActive ?? true,
@@ -120,6 +122,16 @@ function PrinterForm({
             ))}
           </SelectField>
         )}
+        <SelectField
+          label={t.printers.paper}
+          value={String(form.paperWidth)}
+          onChange={(e) =>
+            setForm({ ...form, paperWidth: Number(e.target.value) })
+          }
+        >
+          <option value="80">80 mm</option>
+          <option value="58">58 mm</option>
+        </SelectField>
         <SelectField
           label={t.printers.fallback}
           hint={t.printers.fallbackHint}

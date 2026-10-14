@@ -853,6 +853,8 @@ model Printer {
   isActive          Boolean     @default(true)
   // Jobs that keep failing here are copied once to this printer.
   fallbackPrinterId String?     @db.Uuid
+  // Paper width in mm (58 = 32 columns, 80 = 48 columns).
+  paperWidth        Int         @default(80)
   createdAt         DateTime    @default(now())
 
   station KitchenStation? @relation(fields: [tenantId, stationId], references: [tenantId, id], onDelete: Restrict)
