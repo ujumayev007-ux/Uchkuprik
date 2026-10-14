@@ -15,6 +15,7 @@ import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 import { useStockItems } from './InventoryPage';
+import { useStockRequests } from './StockRequestsTab';
 
 const m = t.market;
 const NEW = '__new__';
@@ -61,6 +62,8 @@ export function MarketTab() {
   const client = useQueryClient();
   const toast = useToast();
   const [lines, setLines] = useState<Line[]>([empty()]);
+  const approved = useStockRequests('APPROVED');
+  const [requestIds, setRequestIds] = useState<string[]>([]);
   const [place, setPlace] = useState('Bozor');
   const [note, setNote] = useState('');
   const [paid, setPaid] = useState(true);
@@ -107,6 +110,7 @@ export function MarketTab() {
         supplierName: place.trim() || 'Bozor',
         note: note.trim() || null,
         paid,
+        requestIds,
         lines: ready.map((line) => ({
           ...(line.stockItemId === NEW
             ? { newItem: { name: line.newName.trim(), baseUnit: line.newUnit } }
@@ -118,6 +122,7 @@ export function MarketTab() {
       });
       toast(m.saved.replace('{sum}', formatMoney(total)));
       setLines([empty()]);
+      setRequestIds([]);
       setNote('');
       await client.invalidateQueries({ queryKey: ['inventory'] });
     } catch (caught) {
@@ -250,6 +255,40 @@ export function MarketTab() {
             + {m.addLine}
           </Button>
         </div>
+        {(approved.data ?? []).length > 0 && (
+          <fieldset className="stack">
+            <legend>{t.stockRequests.approvedList}</legend>
+            {(approved.data ?? []).map((request) => (
+              <Checkbox
+                key={request.id}
+                label={`${request.requestedBy ?? ''}: ${request.items
+                  .map(
+                    (item) =>
+                      `${list.find((s) => s.id === item.stockItemId)?.name ?? '?'} ${Number(item.quantity)} ${item.unitName}`,
+                  )
+                  .join(', ')}`}
+                checked={requestIds.includes(request.id)}
+                onChange={(on) => {
+                  setRequestIds(
+                    on
+                      ? [...requestIds, request.id]
+                      : requestIds.filter((id) => id !== request.id),
+                  );
+                  if (on)
+                    setLines([
+                      ...lines.filter((line) => line.stockItemId),
+                      ...request.items.map((item) => ({
+                        ...empty(),
+                        stockItemId: item.stockItemId,
+                        quantity: String(Number(item.quantity)),
+                        unitName: item.unitName,
+                      })),
+                    ]);
+                }}
+              />
+            ))}
+          </fieldset>
+        )}
         <Checkbox label={m.paidCash} checked={paid} onChange={setPaid} />
         <p>
           {m.total}: <strong>{formatMoney(total)}</strong> ·{' '}

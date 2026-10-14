@@ -92,6 +92,30 @@ export function inventoryRouter(services: Services) {
 
   // --- Stock items --------------------------------------------------------
 
+  // Names and units only (no quantities or costs): lets kitchen staff build requests.
+  router.get('/inventory/item-names', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    if (
+      !auth.permissions.has('inventory.view') &&
+      !auth.permissions.has('kitchen.access') &&
+      !auth.permissions.has('operations.perform')
+    )
+      throw errors.forbidden();
+    const items = await db.stockItem.findMany({
+      where: { tenantId: auth.tenantId, isActive: true },
+      orderBy: { name: 'asc' },
+      include: { units: { select: { name: true } } },
+    });
+    res.json({
+      items: items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        unitLabel: baseUnitLabels[item.baseUnit],
+        units: item.units.map((unit) => unit.name),
+      })),
+    });
+  });
+
   router.get('/inventory/items', ...view, async (req, res) => {
     const auth = getAuth(res);
     const { branchId } = parse(
@@ -539,6 +563,11 @@ export function inventoryRouter(services: Services) {
         _sum: { amount: true },
       }),
     ]);
+    const returned = await db.supplierReturn.groupBy({
+      by: ['supplierId'],
+      where: { tenantId: auth.tenantId },
+      _sum: { total: true },
+    });
     const showMoney =
       auth.permissions.has('purchasing.manage') ||
       auth.permissions.has('finance.view');
@@ -549,6 +578,9 @@ export function inventoryRouter(services: Services) {
           0;
         const payments =
           paid.find((row) => row.supplierId === supplier.id)?._sum.amount ?? 0;
+        const returns =
+          returned.find((row) => row.supplierId === supplier.id)?._sum.total ??
+          0;
         return {
           id: supplier.id,
           name: supplier.name,
@@ -557,7 +589,12 @@ export function inventoryRouter(services: Services) {
           note: supplier.note,
           isActive: supplier.isActive,
           ...(showMoney
-            ? { purchased: total, paid: payments, debt: total - payments }
+            ? {
+                purchased: total,
+                paid: payments,
+                returned: returns,
+                debt: total - payments - returns,
+              }
             : {}),
         };
       }),
@@ -872,6 +909,8 @@ export function inventoryRouter(services: Services) {
     supplierName: z.string().trim().min(1).max(100).default('Bozor'),
     note: z.string().trim().max(300).nullable().optional(),
     paid: z.boolean().default(true),
+    // Approved stock requests this purchase fulfils.
+    requestIds: z.array(z.uuid()).max(20).default([]),
     lines: z
       .array(
         z
@@ -1027,6 +1066,15 @@ export function inventoryRouter(services: Services) {
         entityId: purchase.id,
         data: { total, supplierId: supplier.id, paid: input.paid },
       });
+      if (input.requestIds.length)
+        await tx.stockRequest.updateMany({
+          where: {
+            id: { in: input.requestIds },
+            tenantId: auth.tenantId,
+            status: 'APPROVED',
+          },
+          data: { status: 'FULFILLED' },
+        });
       return { id: purchase.id, total };
     });
     services.events?.publish({
@@ -1035,6 +1083,325 @@ export function inventoryRouter(services: Services) {
     });
     res.status(201).json(result);
   });
+
+  // --- Supplier returns -------------------------------------------------------
+
+  router.post('/suppliers/:id/returns', ...purchasing, async (req, res) => {
+    const auth = getAuth(res);
+    const supplierId = parse(z.uuid(), req.params.id);
+    const input = parse(
+      z.object({
+        branchId: z.uuid().optional(),
+        purchaseId: z.uuid().nullable().optional(),
+        reason: z.string().trim().min(3).max(300),
+        lines: z
+          .array(
+            z.object({
+              stockItemId: z.uuid(),
+              quantity: positive,
+              unitName: z.string().trim().min(1).max(40),
+              // Money credited by the supplier for this line.
+              amount: amount,
+            }),
+          )
+          .min(1)
+          .max(100),
+      }),
+      req.body,
+    );
+    const branch = await resolveBranch(db, auth, input.branchId);
+    const created = await db.$transaction(async (tx) => {
+      const supplier = await tx.supplier.findFirst({
+        where: { id: supplierId, tenantId: auth.tenantId },
+      });
+      if (!supplier) throw errors.notFound();
+      if (input.purchaseId) {
+        const purchase = await tx.purchase.findFirst({
+          where: {
+            id: input.purchaseId,
+            tenantId: auth.tenantId,
+            supplierId,
+            status: 'RECEIVED',
+          },
+        });
+        if (!purchase) throw errors.validation([{ path: 'purchaseId' }]);
+      }
+      const warehouse = await defaultWarehouse(tx, auth.tenantId, branch.id);
+      const lines = [];
+      for (const line of [...input.lines].sort((a, b) =>
+        a.stockItemId.localeCompare(b.stockItemId),
+      )) {
+        const { factor } = await toBase(
+          tx,
+          auth.tenantId,
+          line.stockItemId,
+          line.unitName,
+        );
+        const base = line.quantity.times(factor);
+        // Cannot send back more than is in stock.
+        await postMovement(tx, {
+          tenantId: auth.tenantId,
+          warehouseId: warehouse.id,
+          stockItemId: line.stockItemId,
+          type: 'SUPPLIER_RETURN',
+          quantity: base.negated(),
+          referenceType: 'supplier_return',
+          referenceId: supplierId,
+          actorId: auth.userId,
+          allowNegative: false,
+        });
+        lines.push({
+          stockItemId: line.stockItemId,
+          quantity: base.toString(),
+          amount: line.amount,
+        });
+      }
+      const total = lines.reduce((sum, line) => sum + line.amount, 0);
+      const row = await tx.supplierReturn.create({
+        data: {
+          tenantId: auth.tenantId,
+          supplierId,
+          purchaseId: input.purchaseId ?? null,
+          warehouseId: warehouse.id,
+          lines,
+          total,
+          reason: input.reason,
+          createdById: auth.userId,
+        },
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: branch.id,
+        actorUserId: auth.userId,
+        action: 'supplier.return',
+        entityType: 'supplier',
+        entityId: supplierId,
+        data: { returnId: row.id, total, reason: input.reason },
+      });
+      return row;
+    });
+    services.events?.publish({
+      type: 'inventory.changed',
+      tenantId: auth.tenantId,
+    });
+    res.status(201).json({ id: created.id, total: created.total });
+  });
+
+  router.get('/suppliers/:id/returns', ...purchasing, async (req, res) => {
+    const auth = getAuth(res);
+    const supplierId = parse(z.uuid(), req.params.id);
+    const returns = await db.supplierReturn.findMany({
+      where: { tenantId: auth.tenantId, supplierId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json({ returns });
+  });
+
+  // --- Stock requests (staff ask, manager approves, purchase fulfils) ----------
+
+  const requestItems = z
+    .array(
+      z.object({
+        stockItemId: z.uuid(),
+        quantity: positive,
+        unitName: z.string().trim().min(1).max(40),
+      }),
+    )
+    .min(1)
+    .max(50);
+
+  router.post('/inventory/requests', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (
+      auth.tenantKind !== 'BUSINESS' ||
+      !(
+        auth.permissions.has('inventory.view') ||
+        auth.permissions.has('kitchen.access') ||
+        auth.permissions.has('operations.perform')
+      )
+    )
+      throw errors.forbidden();
+    const input = parse(
+      z.object({
+        branchId: z.uuid().optional(),
+        items: requestItems,
+        note: z.string().trim().max(300).nullable().optional(),
+      }),
+      req.body,
+    );
+    const branch = await resolveBranch(db, auth, input.branchId);
+    const row = await db.$transaction(async (tx) => {
+      for (const item of input.items)
+        await toBase(tx, auth.tenantId, item.stockItemId, item.unitName);
+      return tx.stockRequest.create({
+        data: {
+          tenantId: auth.tenantId,
+          branchId: branch.id,
+          items: input.items.map((item) => ({
+            ...item,
+            quantity: item.quantity.toString(),
+          })),
+          note: input.note ?? null,
+          requestedById: auth.userId,
+        },
+      });
+    });
+    services.events?.publish({
+      type: 'inventory.changed',
+      tenantId: auth.tenantId,
+    });
+    res.status(201).json({ id: row.id });
+  });
+
+  // Low-stock alerts turned into one request (shortfall up to twice the minimum).
+  router.post('/inventory/requests/from-alerts', ...view, async (req, res) => {
+    const auth = getAuth(res);
+    const { branchId } = parse(
+      z.object({ branchId: z.uuid().optional() }),
+      req.body ?? {},
+    );
+    const branch = await resolveBranch(db, auth, branchId);
+    const warehouse = await db.$transaction((tx) =>
+      defaultWarehouse(tx, auth.tenantId, branch.id),
+    );
+    const items = await db.stockItem.findMany({
+      where: { tenantId: auth.tenantId, isActive: true, minStock: { gt: 0 } },
+      include: { balances: { where: { warehouseId: warehouse.id } } },
+    });
+    const low = items
+      .map((item) => {
+        const quantity = new Decimal(item.balances[0]?.quantity ?? 0);
+        const need = new Decimal(item.minStock).times(2).minus(quantity);
+        return quantity.lessThan(item.minStock) && need.isPositive()
+          ? {
+              stockItemId: item.id,
+              quantity: need.toDecimalPlaces(3).toString(),
+              unitName: baseUnitLabels[item.baseUnit],
+            }
+          : null;
+      })
+      .filter((item) => item !== null);
+    if (!low.length) {
+      res.json({ id: null, items: 0 });
+      return;
+    }
+    const row = await db.stockRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        branchId: branch.id,
+        items: low,
+        note: 'Kam qoldiqlar',
+        requestedById: auth.userId,
+      },
+    });
+    res.status(201).json({ id: row.id, items: low.length });
+  });
+
+  router.get('/inventory/requests', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (auth.tenantKind !== 'BUSINESS') throw errors.forbidden();
+    const { status, branchId } = parse(
+      z.object({
+        status: z
+          .enum(['PENDING', 'APPROVED', 'REJECTED', 'FULFILLED'])
+          .optional(),
+        branchId: z.uuid().optional(),
+      }),
+      req.query,
+    );
+    const branch = await resolveBranch(db, auth, branchId);
+    const managers =
+      auth.permissions.has('inventory.manage') ||
+      auth.permissions.has('purchasing.manage');
+    const rows = await db.stockRequest.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        branchId: branch.id,
+        ...(status ? { status } : {}),
+        // Staff see their own requests; managers see all.
+        ...(managers ? {} : { requestedById: auth.userId }),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const people = await db.user.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        id: { in: rows.map((row) => row.requestedById) },
+      },
+      select: { id: true, displayName: true },
+    });
+    res.json({
+      requests: rows.map((row) => ({
+        ...row,
+        requestedBy:
+          people.find((person) => person.id === row.requestedById)
+            ?.displayName ?? null,
+      })),
+    });
+  });
+
+  router.post(
+    '/inventory/requests/:id/decide',
+    requireAuth(),
+    async (req, res) => {
+      const auth = getAuth(res);
+      if (
+        !auth.permissions.has('inventory.manage') &&
+        !auth.permissions.has('purchasing.manage')
+      )
+        throw errors.forbidden();
+      const id = parse(z.uuid(), req.params.id);
+      const input = parse(
+        z.object({
+          decision: z.enum(['APPROVED', 'REJECTED', 'FULFILLED']),
+          comment: z.string().trim().max(300).nullable().optional(),
+        }),
+        req.body,
+      );
+      await db.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM stock_requests WHERE id = ${id}::uuid AND "tenantId" = ${auth.tenantId}::uuid FOR UPDATE`;
+        if (!rows.length) throw errors.notFound();
+        const row = await tx.stockRequest.findUniqueOrThrow({ where: { id } });
+        await resolveBranch(tx, auth, row.branchId);
+        const allowed =
+          input.decision === 'FULFILLED'
+            ? row.status === 'APPROVED'
+            : row.status === 'PENDING';
+        if (!allowed) throw errors.conflict();
+        if (input.decision !== 'FULFILLED' && row.requestedById === auth.userId)
+          throw new AppError(409, 'SELF_APPROVAL', 'selfApproval');
+        await tx.stockRequest.update({
+          where: { id },
+          data: {
+            status: input.decision,
+            ...(input.decision === 'FULFILLED'
+              ? {}
+              : {
+                  decidedById: auth.userId,
+                  decidedAt: services.now?.() ?? new Date(),
+                  comment: input.comment ?? null,
+                }),
+          },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: row.branchId,
+          actorUserId: auth.userId,
+          action: `stock.request.${input.decision.toLowerCase()}`,
+          entityType: 'stock_request',
+          entityId: id,
+        });
+      });
+      services.events?.publish({
+        type: 'inventory.changed',
+        tenantId: auth.tenantId,
+      });
+      res.json({ ok: true });
+    },
+  );
 
   router.post('/purchases/:id/cancel', ...purchasing, async (req, res) => {
     const auth = getAuth(res);

@@ -1,3 +1,8 @@
+import { kitchenTicket } from '../../printing/escpos.js';
+import {
+  ticketTemplateOf,
+  ticketTemplateSchema,
+} from '../../printing/template.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -69,12 +74,15 @@ export function kitchenRouter(services: Services) {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
     res.json({
-      stations: stations.map(({ id, name, sortOrder, isActive }) => ({
-        id,
-        name,
-        sortOrder,
-        isActive,
-      })),
+      stations: stations.map(
+        ({ id, name, sortOrder, isActive, ticketTemplate }) => ({
+          template: ticketTemplateOf(ticketTemplate),
+          id,
+          name,
+          sortOrder,
+          isActive,
+        }),
+      ),
     });
   });
 
@@ -104,6 +112,81 @@ export function kitchenRouter(services: Services) {
         if (isUniqueViolation(error)) throw errors.conflict();
         throw error;
       }
+    },
+  );
+
+  // Department ticket layout and a test print to the department's printers.
+  router.put(
+    '/kitchen/stations/:id/template',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const template = parse(ticketTemplateSchema, req.body);
+      const station = await db.kitchenStation.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!station) throw errors.notFound();
+      await db.kitchenStation.update({
+        where: { id },
+        data: { ticketTemplate: template },
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'kitchen.template.update',
+        entityType: 'kitchen_station',
+        entityId: id,
+      });
+      res.json(template);
+    },
+  );
+
+  router.post(
+    '/kitchen/stations/:id/test-print',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const station = await db.kitchenStation.findFirst({
+        where: { id, tenantId: auth.tenantId },
+        include: { printers: { where: { isActive: true, kind: 'KITCHEN' } } },
+      });
+      if (!station) throw errors.notFound();
+      const layout = ticketTemplateOf(station.ticketTemplate);
+      for (const printer of station.printers)
+        await db.printJob.create({
+          data: {
+            tenantId: auth.tenantId,
+            printerId: printer.id,
+            kind: 'KITCHEN',
+            purpose: 'TEST',
+            payload: kitchenTicket({
+              stationName: station.name,
+              number: 123,
+              typeLabel: 'Sinov',
+              table: 'Stol 5',
+              note: 'Sinov cheki',
+              priority: 0,
+              createdAt: now(),
+              timezone: 'Asia/Tashkent',
+              waiter: auth.displayName,
+              columns: printer.paperWidth === 58 ? 32 : 48,
+              template: layout,
+              items: [
+                {
+                  quantity: 2,
+                  name: 'Namuna taom',
+                  modifiers: [],
+                  note: 'Achchiq',
+                },
+              ],
+            }),
+          },
+        });
+      res.json({ printers: station.printers.length });
     },
   );
 

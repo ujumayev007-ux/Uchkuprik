@@ -22,6 +22,8 @@ import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 import { MarketTab } from './MarketTab';
+import { StockRequestsTab } from './StockRequestsTab';
+import { SupplierReturnDialog } from './SupplierReturnDialog';
 
 export type StockItem = {
   id: string;
@@ -567,6 +569,7 @@ type Supplier = {
   isActive: boolean;
   purchased?: number;
   paid?: number;
+  returned?: number;
   debt?: number;
 };
 type Purchase = {
@@ -906,6 +909,7 @@ function SuppliersTab() {
   const client = useQueryClient();
   const toast = useToast();
   const suppliers = useSuppliers();
+  const [returning, setReturning] = useState<Supplier | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [paying, setPaying] = useState<Supplier | null>(null);
@@ -998,6 +1002,15 @@ function SuppliersTab() {
                     <Button size="sm" onClick={() => setPaying(supplier)}>
                       {t.inventory.pay}
                     </Button>
+                    <Button size="sm" onClick={() => setReturning(supplier)}>
+                      ↩ {t.supplierReturn.button}
+                    </Button>
+                    {!!supplier.returned && (
+                      <small className="muted block">
+                        {t.supplierReturn.returned}:{' '}
+                        {formatMoney(supplier.returned)}
+                      </small>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1006,6 +1019,12 @@ function SuppliersTab() {
         </div>
       ) : (
         <EmptyState />
+      )}
+      {returning && (
+        <SupplierReturnDialog
+          supplier={returning}
+          onClose={() => setReturning(null)}
+        />
       )}
       <Dialog
         open={paying !== null}
@@ -1097,14 +1116,15 @@ function MovementsTab() {
   );
 }
 
-type Tab = 'stock' | 'market' | 'purchases' | 'suppliers' | 'movements';
+type Tab =
+  'stock' | 'market' | 'requests' | 'purchases' | 'suppliers' | 'movements';
 
 export function InventoryPage() {
   const { data: me } = useMe();
   const [tab, setTab] = useState<Tab>('stock');
   const tabs: Tab[] = can(me, 'purchasing.manage')
-    ? ['stock', 'market', 'purchases', 'suppliers', 'movements']
-    : ['stock', 'movements'];
+    ? ['stock', 'market', 'requests', 'purchases', 'suppliers', 'movements']
+    : ['stock', 'requests', 'movements'];
   return (
     <>
       <PageHeader title={t.inventory.title} subtitle={t.inventory.subtitle} />
@@ -1123,6 +1143,7 @@ export function InventoryPage() {
       </div>
       {tab === 'stock' && <StockTab />}
       {tab === 'market' && <MarketTab />}
+      {tab === 'requests' && <StockRequestsTab />}
       {tab === 'purchases' && <PurchasesTab />}
       {tab === 'suppliers' && <SuppliersTab />}
       {tab === 'movements' && <MovementsTab />}

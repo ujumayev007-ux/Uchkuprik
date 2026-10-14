@@ -18,12 +18,13 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { StationTemplateDialog } from './StationTemplateDialog';
 import { CombosTab } from './CombosTab';
 import { BrandSelect } from '../lib/brands';
 import { api, del, patch, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import { RecipeDialog } from '../components/RecipeDialog';
-import { useStations } from './KitchenPage';
+import { useStations, type Station } from './KitchenPage';
 
 export type Variant = {
   id: string;
@@ -758,6 +759,7 @@ function BranchPrices({ menu, branchId }: { menu: Menu; branchId: string }) {
 type Tab = 'products' | 'combos' | 'modifiers' | 'prices' | 'stations';
 
 function StationsTab() {
+  const [templateFor, setTemplateFor] = useState<Station | null>(null);
   const stations = useStations();
   const client = useQueryClient();
   const toast = useToast();
@@ -816,9 +818,21 @@ function StationsTab() {
               >
                 {station.isActive ? t.common.active : t.common.inactive}
               </button>
+              <button
+                className="text-link"
+                onClick={() => setTemplateFor(station)}
+              >
+                🧾 {t.ticketTemplate.button}
+              </button>
             </span>
           ))}
         </div>
+      )}
+      {templateFor && (
+        <StationTemplateDialog
+          station={templateFor}
+          onClose={() => setTemplateFor(null)}
+        />
       )}
     </div>
   );

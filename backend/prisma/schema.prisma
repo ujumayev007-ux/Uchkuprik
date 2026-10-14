@@ -836,12 +836,14 @@ enum PrintJobStatus {
 }
 
 model KitchenStation {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  tenantId  String   @db.Uuid
-  name      String
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id             String   @id @default(uuid(7)) @db.Uuid
+  tenantId       String   @db.Uuid
+  name           String
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  // Ticket layout for this department (header/footer, large items, copies...).
+  ticketTemplate Json     @default("{}")
+  createdAt      DateTime @default(now())
 
   categories MenuCategory[]
   printers   Printer[]
@@ -911,6 +913,8 @@ enum BaseUnit {
 
 enum StockMovementType {
   RECEIPT
+  // Goods sent back to the supplier.
+  SUPPLIER_RETURN
   SALE
   WASTE
   ADJUSTMENT
@@ -2498,4 +2502,43 @@ model AppLicense {
   updatedAt      DateTime  @updatedAt
 
   @@map("app_license")
+}
+
+// Goods returned to a supplier: stock goes down and the supplier debt is reduced.
+model SupplierReturn {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  supplierId  String   @db.Uuid
+  purchaseId  String?  @db.Uuid
+  warehouseId String   @db.Uuid
+  // [{ stockItemId, quantity (base unit), amount }]
+  lines       Json
+  total       Int
+  reason      String
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, supplierId])
+  @@map("supplier_returns")
+}
+
+// Staff ask for stock (e.g. the kitchen runs low); a manager approves or rejects,
+// approved requests become the shopping list and are closed by a purchase.
+model StockRequest {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @db.Uuid
+  branchId      String    @db.Uuid
+  // [{ stockItemId, quantity, unitName }]
+  items         Json
+  note          String?
+  // PENDING, APPROVED, REJECTED, FULFILLED
+  status        String    @default("PENDING")
+  requestedById String    @db.Uuid
+  decidedById   String?   @db.Uuid
+  decidedAt     DateTime?
+  comment       String?
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, branchId, status])
+  @@map("stock_requests")
 }

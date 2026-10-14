@@ -4,6 +4,7 @@ import { can, useMe } from '../auth/session';
 import {
   Badge,
   Button,
+  Dialog,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -13,6 +14,7 @@ import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { chime } from '../lib/realtime';
 import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
+import { StockRequestsTab } from './StockRequestsTab';
 
 type KitchenStatus = 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
 type Ticket = {
@@ -45,6 +47,7 @@ export type Station = {
   name: string;
   sortOrder: number;
   isActive: boolean;
+  template?: import('./StationTemplateDialog').TicketTemplate;
 };
 
 export function useStations(enabled = true) {
@@ -106,6 +109,7 @@ export function KitchenPage() {
   });
   const known = useRef<Set<string> | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
   const now = useNow();
   // Correct for device clock drift using the server time of the last response.
   const skew = tickets.data
@@ -160,6 +164,14 @@ export function KitchenPage() {
           onClick={() => setVoiceOpen(true)}
         >
           🔊
+        </button>
+        <button
+          className="icon-button"
+          aria-label={t.stockRequests.new}
+          title={t.stockRequests.new}
+          onClick={() => setRequestOpen(true)}
+        >
+          📦
         </button>
         <div className="chip-row">
           <button
@@ -379,6 +391,16 @@ export function KitchenPage() {
         </div>
       )}
       <p className="muted small center">{t.kitchen.tapHint}</p>
+      {requestOpen && (
+        <Dialog
+          open
+          wide
+          title={t.stockRequests.new}
+          onClose={() => setRequestOpen(false)}
+        >
+          <StockRequestsTab />
+        </Dialog>
+      )}
       {voiceOpen && <VoiceSettingsDialog onClose={() => setVoiceOpen(false)} />}
     </div>
   );

@@ -2,6 +2,7 @@ import { Socket } from 'node:net';
 import type { Services } from '../context.js';
 import { loadOrderSettings } from '../modules/orders/settings.js';
 import { kitchenTicket } from './escpos.js';
+import { ticketTemplateOf } from './template.js';
 
 const MAX_ATTEMPTS = 6;
 // Failed attempts before a copy of the ticket goes to the fallback printer.
@@ -155,6 +156,35 @@ export async function enqueueKitchenTickets(
       const cancelled = forPrinter(printer, removed);
       if (items.length === 0 && cancelled.length === 0) continue;
       const update = printedBefore;
+      const layout = ticketTemplateOf(printer.station?.ticketTemplate);
+      const single = kitchenTicket({
+        stationName: printer.station?.name ?? null,
+        columns: printer.paperWidth === 58 ? 32 : 48,
+        number: order.number,
+        typeLabel: typeLabels[order.type],
+        table: order.table?.name ?? null,
+        note: order.note,
+        priority: order.priority,
+        createdAt: order.placedAt ?? order.createdAt,
+        timezone: order.branch.timezone,
+        items: items.map(toLine),
+        cancelled: cancelled.map(toLine),
+        delivery: order.type === 'DELIVERY',
+        update,
+        version: order.version,
+        waiter: nameOf(order.createdById),
+        changedBy: update ? changedBy : null,
+        changedAt: update ? (lastChange?.createdAt ?? now) : now,
+        template: layout,
+      });
+      const copies = Array.from({ length: layout.copies }, () => single);
+      const payload = new Uint8Array(
+        copies.reduce((total, part) => total + part.length, 0),
+      );
+      copies.reduce((offset, part) => {
+        payload.set(part, offset);
+        return offset + part.length;
+      }, 0);
       await tx.printJob.create({
         data: {
           tenantId: order.tenantId,
@@ -162,25 +192,7 @@ export async function enqueueKitchenTickets(
           orderId: order.id,
           kind: 'KITCHEN',
           purpose: update ? 'UPDATE' : 'NEW',
-          payload: kitchenTicket({
-            stationName: printer.station?.name ?? null,
-            columns: printer.paperWidth === 58 ? 32 : 48,
-            number: order.number,
-            typeLabel: typeLabels[order.type],
-            table: order.table?.name ?? null,
-            note: order.note,
-            priority: order.priority,
-            createdAt: order.placedAt ?? order.createdAt,
-            timezone: order.branch.timezone,
-            items: items.map(toLine),
-            cancelled: cancelled.map(toLine),
-            delivery: order.type === 'DELIVERY',
-            update,
-            version: order.version,
-            waiter: nameOf(order.createdById),
-            changedBy: update ? changedBy : null,
-            changedAt: update ? (lastChange?.createdAt ?? now) : now,
-          }),
+          payload,
         },
       });
     }

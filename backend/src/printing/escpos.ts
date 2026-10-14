@@ -86,6 +86,14 @@ export type KitchenTicket = {
   cancelled?: KitchenTicketItem[];
   // Characters per line (paper width).
   columns?: number;
+  // Department template (KitchenStation.ticketTemplate).
+  template?: {
+    header: string;
+    footer: string;
+    largeItems: boolean;
+    showWaiter: boolean;
+    showNotes: boolean;
+  };
 };
 
 export type KitchenTicketItem = {
@@ -109,6 +117,8 @@ export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
     }).format(date);
   const time = clock(ticket.createdAt);
   const doc = new EscPos(ticket.columns ?? COLUMNS).align('center');
+  const layout = ticket.template;
+  if (layout?.header) doc.bold(true).line(layout.header).bold(false);
   if (ticket.delivery)
     doc.size(2, 2).bold(true).line('! DOSTAVKA !').size(1, 1).bold(false);
   if (ticket.update)
@@ -127,7 +137,8 @@ export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
   doc.line(
     `${ticket.typeLabel}${ticket.table ? ` - ${ticket.table}` : ''} - ${time}`,
   );
-  if (ticket.waiter) doc.line(`Ofitsiant: ${ticket.waiter}`);
+  if (ticket.waiter && layout?.showWaiter !== false)
+    doc.line(`Ofitsiant: ${ticket.waiter}`);
   if (ticket.update && ticket.changedAt)
     doc.line(
       `O'zgartirildi: ${clock(ticket.changedAt)}${ticket.changedBy ? ` - ${ticket.changedBy}` : ''}`,
@@ -149,14 +160,16 @@ export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
   }
   for (const item of ticket.items) {
     const text = `${item.quantity} x ${item.name}`;
-    doc.size(1, 2).bold(true);
+    doc.size(1, layout?.largeItems === false ? 1 : 2).bold(true);
     if (item.price !== undefined && item.price !== null)
       doc.pair(text, money(item.price));
     else doc.line(text);
     doc.size(1, 1).bold(false);
     for (const modifier of item.modifiers) doc.line(`   + ${modifier}`);
-    if (item.note) doc.line(`   ! ${item.note}`);
+    if (item.note && layout?.showNotes !== false) doc.line(`   ! ${item.note}`);
   }
-  if (ticket.note) doc.rule().line(`Izoh: ${ticket.note}`);
+  if (ticket.note && layout?.showNotes !== false)
+    doc.rule().line(`Izoh: ${ticket.note}`);
+  if (layout?.footer) doc.rule().align('center').line(layout.footer);
   return doc.rule().feed(4).cut().build();
 }
