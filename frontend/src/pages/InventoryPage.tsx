@@ -21,6 +21,7 @@ import {
 import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
+import { MarketTab } from './MarketTab';
 
 export type StockItem = {
   id: string;
@@ -1096,13 +1097,13 @@ function MovementsTab() {
   );
 }
 
-type Tab = 'stock' | 'purchases' | 'suppliers' | 'movements';
+type Tab = 'stock' | 'market' | 'purchases' | 'suppliers' | 'movements';
 
 export function InventoryPage() {
   const { data: me } = useMe();
   const [tab, setTab] = useState<Tab>('stock');
   const tabs: Tab[] = can(me, 'purchasing.manage')
-    ? ['stock', 'purchases', 'suppliers', 'movements']
+    ? ['stock', 'market', 'purchases', 'suppliers', 'movements']
     : ['stock', 'movements'];
   return (
     <>
@@ -1121,6 +1122,7 @@ export function InventoryPage() {
         ))}
       </div>
       {tab === 'stock' && <StockTab />}
+      {tab === 'market' && <MarketTab />}
       {tab === 'purchases' && <PurchasesTab />}
       {tab === 'suppliers' && <SuppliersTab />}
       {tab === 'movements' && <MovementsTab />}

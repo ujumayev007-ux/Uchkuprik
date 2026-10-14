@@ -33,6 +33,7 @@ type Customer = {
 type VendorState = {
   connected: boolean;
   statusUrl: string | null;
+  update: { version: string; publishedAt: string } | null;
   customers: Customer[];
 };
 type Publish = { published?: boolean; error?: string };
@@ -52,6 +53,9 @@ export type VendorBridge = {
     changes: CustomerSettings,
   ) => Promise<{ key: string } & Publish>;
   block: (installId: string, blocked: boolean) => Promise<Publish>;
+  publishUpdate: (
+    notes: string,
+  ) => Promise<{ cancelled?: boolean; version?: string; apk?: boolean }>;
 };
 export const vendor = (window as unknown as { fastfoodVendor?: VendorBridge })
   .fastfoodVendor;
@@ -101,6 +105,7 @@ export function VendorPage() {
   });
   const [lastKey, setLastKey] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<Customer | null>(null);
+  const [notes, setNotes] = useState('');
 
   const reload = useCallback(() => {
     void vendor?.state().then(setState);
@@ -147,10 +152,10 @@ export function VendorPage() {
             {state?.connected ? v.remoteOn : v.remoteOff}
           </Badge>
         </div>
-        {state?.connected ? (
-          <p className="muted small">{v.remoteOnHint}</p>
-        ) : (
-          <>
+        {state?.connected && <p className="muted small">{v.remoteOnHint}</p>}
+        <details open={!state?.connected}>
+          <summary className="small">{v.replaceToken}</summary>
+          <div className="stack">
             <p className="sop-body small">{v.remoteSetup}</p>
             <TextField
               label={v.githubToken}
@@ -175,8 +180,8 @@ export function VendorPage() {
                 {v.connect}
               </Button>
             </div>
-          </>
-        )}
+          </div>
+        </details>
       </section>
 
       <section className="card stack">
@@ -388,6 +393,43 @@ export function VendorPage() {
             })}
           </ul>
         )}
+      </section>
+      <section className="card stack">
+        <h2 className="section-title">⬆ {t.updates.publishTitle}</h2>
+        <p className="muted small">{t.updates.publishHint}</p>
+        {state?.update && (
+          <p>
+            {t.updates.lastPublished}: <strong>{state.update.version}</strong>
+          </p>
+        )}
+        <TextField
+          label={t.updates.notes}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+        />
+        <div className="form-actions">
+          <Button
+            variant="primary"
+            busy={busy}
+            disabled={!state?.connected}
+            onClick={() =>
+              run(async () => {
+                toast(t.updates.uploading);
+                const result = await vendor.publishUpdate(notes.trim());
+                if (result.cancelled) return;
+                setNotes('');
+                toast(
+                  t.updates.publishedOk.replace(
+                    '{version}',
+                    result.version ?? '',
+                  ),
+                );
+              })
+            }
+          >
+            {t.updates.publish}
+          </Button>
+        </div>
       </section>
       <section className="card stack">
         <h2 className="section-title">{v.howTitle}</h2>

@@ -21,7 +21,8 @@ export type RealtimeEvent =
       branchId: string;
       orderId: string;
     }
-  | { type: 'menu.changed'; tenantId: string };
+  | { type: 'menu.changed'; tenantId: string }
+  | { type: 'inventory.changed'; tenantId: string };
 
 export interface EventBus {
   publish(event: RealtimeEvent): void;

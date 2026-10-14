@@ -103,7 +103,7 @@ await build({
       output: join(here, 'release'),
       buildResources: join(here, 'build'),
     },
-    files: ['main.cjs', 'preload.cjs', 'loading.html', 'package.json'],
+    files: ['main.cjs', 'preload.cjs', 'updates.cjs', 'loading.html', 'package.json'],
     extraResources: [
       { from: join(stage, 'app-server'), to: 'app-server' },
       { from: join(stage, 'postgres'), to: 'postgres' },

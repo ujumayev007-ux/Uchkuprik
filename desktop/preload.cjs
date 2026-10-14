@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('fastfoodDesktop', {
   openAnyDesk: () => ipcRenderer.invoke('anydesk:open'),
+  checkUpdate: () => ipcRenderer.invoke('updates:check'),
+  installUpdate: () => ipcRenderer.invoke('updates:install'),
 });
 
 // Vendor tools: present (and working) only on the vendor's computer, which holds the
@@ -20,4 +22,5 @@ contextBridge.exposeInMainWorld('fastfoodVendor', {
   block: (installId, blocked) =>
     ipcRenderer.invoke('vendor:block', installId, blocked),
   history: () => ipcRenderer.invoke('vendor:history'),
+  publishUpdate: (notes) => ipcRenderer.invoke('vendor:publishUpdate', notes),
 });

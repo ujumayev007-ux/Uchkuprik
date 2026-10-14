@@ -1517,3 +1517,36 @@ textarea {
 .qr-pay-amount {
   font-size: 28px;
 }
+
+/* Live clock (every panel). */
+.live-clock {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.live-clock-time {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.live-clock-seconds {
+  opacity: 0.55;
+  font-size: 0.8em;
+}
+.live-clock-date {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+.live-clock.large .live-clock-time {
+  font-size: 2.4rem;
+}
+.live-clock.large .live-clock-date {
+  font-size: 1.1rem;
+}
+@media (max-width: 420px) {
+  .live-clock-date {
+    display: none;
+  }
+}

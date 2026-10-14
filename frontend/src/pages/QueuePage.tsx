@@ -1,3 +1,4 @@
+import { LiveClock } from '../components/LiveClock';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useMe } from '../auth/session';
@@ -43,6 +44,7 @@ export function QueuePage() {
     <div className="queue-screen">
       <header>
         <h1>{queue.data?.branch.name ?? t.queue.title}</h1>
+        <LiveClock large />
         <button
           className="btn btn-ghost btn-sm queue-close"
           onClick={() => {

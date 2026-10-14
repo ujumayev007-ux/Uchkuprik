@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { api } from '../lib/api';
 import { formatMoney } from '../lib/format';
-import { useStockItems } from '../pages/InventoryPage';
+import { useStockItems, type StockItem } from '../pages/InventoryPage';
 import type { Product } from '../pages/MenuPage';
 import {
   Button,
@@ -19,7 +19,25 @@ type Recipe = {
   recipeCost?: number;
 };
 
-/** Edits the ingredients consumed per sold unit of each product variant. */
+type Line = { stockItemId: string; quantity: string; unitName: string };
+
+const r = t.recipe;
+
+/** Factor of a unit name to the item's base unit (g, ml or dona). */
+const factorOf = (item: StockItem | undefined, unitName: string) =>
+  !item || unitName === item.unitLabel
+    ? 1
+    : Number(item.units.find((unit) => unit.name === unitName)?.factor ?? 1);
+
+const fmt = (value: number) =>
+  value
+    .toLocaleString('uz-UZ', { maximumFractionDigits: 3 })
+    .replace(/,/g, ' ');
+
+/**
+ * Ingredients of one sold unit of each product variant (e.g. a hot dog: 1 dona sausage,
+ * 1 dona bun, 20 g sauce). Completed orders deduct them from stock automatically.
+ */
 export function RecipeDialog({
   product,
   onClose,
@@ -37,62 +55,93 @@ export function RecipeDialog({
     queryFn: () => api<Recipe>(`/recipes/${variantId}`),
     enabled: !!variantId,
   });
-  const [lines, setLines] = useState<
-    { stockItemId: string; quantity: string }[]
-  >([]);
+  const [lines, setLines] = useState<Line[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const all = stock.data ?? [];
+  const items = all.filter((item) => item.isActive);
+  const byId = new Map(all.map((item) => [item.id, item]));
   useEffect(() => {
     if (recipe.data)
       setLines(
         recipe.data.lines.map(({ stockItemId, quantity }) => ({
           stockItemId,
-          quantity,
+          quantity: String(Number(quantity)),
+          unitName: byId.get(stockItemId)?.unitLabel ?? '',
         })),
       );
-  }, [recipe.data]);
-  const items = (stock.data ?? []).filter((item) => item.isActive);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipe.data, stock.data]);
+
+  const baseQty = (line: Line) =>
+    Number(line.quantity || 0) *
+    factorOf(byId.get(line.stockItemId), line.unitName);
+  const update = (index: number, change: Partial<Line>) =>
+    setLines(
+      lines.map((line, i) => (i === index ? { ...line, ...change } : line)),
+    );
+
+  const valid = lines.filter((line) => line.stockItemId && baseQty(line) > 0);
+  const showCost = valid.some(
+    (line) => byId.get(line.stockItemId)?.avgCost !== undefined,
+  );
+  const cost = valid.reduce(
+    (sum, line) =>
+      sum + baseQty(line) * Number(byId.get(line.stockItemId)?.avgCost ?? 0),
+    0,
+  );
+  const portions = valid.length
+    ? Math.min(
+        ...valid.map((line) =>
+          Math.floor(
+            Math.max(0, Number(byId.get(line.stockItemId)?.quantity ?? 0)) /
+              baseQty(line),
+          ),
+        ),
+      )
+    : null;
+  const variant = variants.find((candidate) => candidate.id === variantId);
 
   return (
     <Dialog
       open
-      title={`${t.inventory.recipe}: ${product.name}`}
-      description={t.inventory.recipeHint}
+      title={`${r.title}: ${product.name}`}
+      description={r.hint}
       onClose={onClose}
       wide
     >
       <div className="stack">
         {variants.length > 1 && (
           <div className="segmented">
-            {variants.map((variant) => (
+            {variants.map((candidate) => (
               <button
-                key={variant.id}
-                className={variantId === variant.id ? 'active' : ''}
-                aria-pressed={variantId === variant.id}
-                onClick={() => setVariantId(variant.id)}
+                key={candidate.id}
+                className={variantId === candidate.id ? 'active' : ''}
+                aria-pressed={variantId === candidate.id}
+                onClick={() => setVariantId(candidate.id)}
               >
-                {variant.name}
+                {candidate.name}
               </button>
             ))}
           </div>
         )}
+        {lines.length === 0 && <p className="muted">{r.empty}</p>}
         <div className="variant-list">
           {lines.map((line, index) => {
-            const item = items.find(
-              (candidate) => candidate.id === line.stockItemId,
-            );
+            const item = byId.get(line.stockItemId);
+            const base = baseQty(line);
             return (
-              <div key={index} className="variant-row">
+              <div key={index} className="purchase-row">
                 <SelectField
-                  label={t.inventory.ingredient}
+                  label={r.ingredient}
                   value={line.stockItemId}
-                  onChange={(e) =>
-                    setLines(
-                      lines.map((l, i) =>
-                        i === index ? { ...l, stockItemId: e.target.value } : l,
-                      ),
-                    )
-                  }
+                  onChange={(e) => {
+                    const next = byId.get(e.target.value);
+                    update(index, {
+                      stockItemId: e.target.value,
+                      unitName: next?.unitLabel ?? '',
+                    });
+                  }}
                 >
                   {items.map((candidate) => (
                     <option key={candidate.id} value={candidate.id}>
@@ -101,20 +150,45 @@ export function RecipeDialog({
                   ))}
                 </SelectField>
                 <TextField
-                  label={`${t.pos.quantity} (${item?.unitLabel ?? ''})`}
+                  label={r.amount}
                   inputMode="decimal"
                   value={line.quantity}
                   onChange={(e) =>
-                    setLines(
-                      lines.map((l, i) =>
-                        i === index
-                          ? { ...l, quantity: e.target.value.replace(',', '.') }
-                          : l,
-                      ),
-                    )
+                    update(index, {
+                      quantity: e.target.value.replace(',', '.'),
+                    })
                   }
                   required
                 />
+                <SelectField
+                  label={r.unit}
+                  value={line.unitName}
+                  onChange={(e) => update(index, { unitName: e.target.value })}
+                >
+                  {item &&
+                    [
+                      item.unitLabel,
+                      ...item.units.map((unit) => unit.name),
+                    ].map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                </SelectField>
+                <div className="small muted">
+                  {item && (
+                    <>
+                      {r.inStock}: {fmt(Number(item.quantity))} {item.unitLabel}
+                      {item.avgCost !== undefined && base > 0 && (
+                        <>
+                          <br />
+                          {r.lineCost}:{' '}
+                          {formatMoney(Math.round(base * Number(item.avgCost)))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="text-link"
@@ -130,16 +204,41 @@ export function RecipeDialog({
           size="sm"
           disabled={items.length === 0}
           onClick={() =>
-            setLines([...lines, { stockItemId: items[0]!.id, quantity: '' }])
+            setLines([
+              ...lines,
+              {
+                stockItemId: items[0]!.id,
+                quantity: '',
+                unitName: items[0]!.unitLabel,
+              },
+            ])
           }
         >
-          + {t.inventory.addIngredient}
+          + {r.add}
         </Button>
-        {recipe.data?.recipeCost !== undefined && (
-          <p className="muted">
-            {t.inventory.recipeCost}:{' '}
-            <strong>{formatMoney(recipe.data.recipeCost)}</strong>
-          </p>
+        {items.length === 0 && <p className="muted small">{r.noStock}</p>}
+        {valid.length > 0 && (
+          <div className="card stack">
+            {showCost && (
+              <p>
+                {r.cost}: <strong>{formatMoney(Math.round(cost))}</strong>
+                {variant && variant.price > 0 && (
+                  <>
+                    {' '}
+                    · {r.margin}:{' '}
+                    <strong>
+                      {formatMoney(variant.price - Math.round(cost))}
+                    </strong>
+                  </>
+                )}
+              </p>
+            )}
+            {portions !== null && (
+              <p>
+                {r.portions}: <strong>{fmt(portions)}</strong>
+              </p>
+            )}
+          </div>
         )}
         <FormError error={error} />
         <div className="form-actions">
@@ -152,7 +251,12 @@ export function RecipeDialog({
               try {
                 await api(`/recipes/${variantId}`, {
                   method: 'PUT',
-                  body: { lines: lines.filter((line) => line.quantity) },
+                  body: {
+                    lines: valid.map((line) => ({
+                      stockItemId: line.stockItemId,
+                      quantity: String(Math.round(baseQty(line) * 1000) / 1000),
+                    })),
+                  },
                 });
                 toast(t.common.saved);
                 await client.invalidateQueries({

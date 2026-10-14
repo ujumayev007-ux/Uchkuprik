@@ -6,6 +6,7 @@ import { ErrorState, LoadingState } from '../../components/ui';
 import { t } from '../../i18n';
 import { api, ApiError, errorMessage, post } from '../../lib/api';
 import { AuthLayout } from './AuthLayout';
+import { LiveClock } from '../../components/LiveClock';
 
 type DeviceInfo = {
   device: { id: string; name: string };
@@ -117,6 +118,9 @@ export function PinPage() {
       subtitle={`${info.tenant.name} · ${info.branch.name} · ${info.device.name}`}
       wide
     >
+      <div className="center">
+        <LiveClock large />
+      </div>
       {!selected ? (
         info.staff.length === 0 ? (
           <p className="muted center">{t.pin.noStaff}</p>

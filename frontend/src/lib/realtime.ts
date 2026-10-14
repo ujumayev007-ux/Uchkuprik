@@ -73,6 +73,10 @@ export function useRealtime(branchId: string | null | undefined) {
       void client.invalidateQueries({ queryKey: ['queue'] });
       for (const listener of listeners) listener('kitchen.changed', payload);
     });
+    socket.on('inventory.changed', () => {
+      void client.invalidateQueries({ queryKey: ['inventory'] });
+      void client.invalidateQueries({ queryKey: ['recipe'] });
+    });
     socket.on(
       'menu.changed',
       () => void client.invalidateQueries({ queryKey: ['menu'] }),

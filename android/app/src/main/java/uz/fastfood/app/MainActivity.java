@@ -161,6 +161,12 @@ public class MainActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        // Lets the web app know this shell version (to offer a newer APK).
+        try {
+            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            settings.setUserAgentString(settings.getUserAgentString() + " FastFoodAndroid/" + version);
+        } catch (Exception ignored) {
+        }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
 
@@ -169,7 +175,8 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 // Pages of the restaurant computer stay inside the app; others open in the browser.
-                if (url.toString().startsWith(server)) return false;
+                // APK downloads go to the browser, which installs them.
+                if (url.toString().startsWith(server) && !url.toString().endsWith(".apk")) return false;
                 startActivity(new Intent(Intent.ACTION_VIEW, url));
                 return true;
             }

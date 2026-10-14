@@ -73,7 +73,7 @@ export function attachRealtime(
   });
 
   const unsubscribe = bus.subscribe((event) => {
-    if (event.type === 'menu.changed')
+    if (event.type === 'menu.changed' || event.type === 'inventory.changed')
       io.to(tenantRoom(event.tenantId)).emit(event.type, {});
     else
       io.to(branchRoom(event.tenantId, event.branchId)).emit(event.type, {

@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { LiveClock } from './LiveClock';
+import { AppUpdateBanner } from './AppUpdateBanner';
 import { can, hasFeature, meKey, useMe, type Me } from '../auth/session';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
@@ -570,6 +572,7 @@ export function AppShell() {
           </button>
           <BranchSwitcher me={me} />
           <div className="topbar-spacer" />
+          <LiveClock />
           {me.tenantKind === 'BUSINESS' && (
             <span
               className={`live-dot ${online ? 'on' : 'off'}`}
@@ -669,6 +672,7 @@ export function AppShell() {
           )}
           <UpdateBanner />
           <LicenseBanner license={license.data} />
+          <AppUpdateBanner />
           <BillingBanner me={me} />
           {licenseBlocks(license.data) ? (
             <LicenseLock license={license.data!} />

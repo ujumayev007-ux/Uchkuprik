@@ -865,6 +865,170 @@ export function inventoryRouter(services: Services) {
     res.json({ ok: true });
   });
 
+  // Market shopping ("bozorlik"): a cash purchase entered after the trip, received at
+  // once. Lines carry the amount actually paid; unknown products are created on the fly.
+  const marketInput = z.object({
+    branchId: z.uuid().optional(),
+    supplierName: z.string().trim().min(1).max(100).default('Bozor'),
+    note: z.string().trim().max(300).nullable().optional(),
+    paid: z.boolean().default(true),
+    lines: z
+      .array(
+        z
+          .object({
+            stockItemId: z.uuid().optional(),
+            newItem: z
+              .object({
+                name: z.string().trim().min(1).max(100),
+                baseUnit: z.enum(['G', 'ML', 'PCS']),
+              })
+              .optional(),
+            quantity: positive,
+            unitName: z.string().trim().min(1).max(40),
+            lineTotal: amount,
+          })
+          .refine((line) => !!line.stockItemId !== !!line.newItem),
+      )
+      .min(1)
+      .max(200),
+  });
+
+  router.post('/purchases/market', ...purchasing, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(marketInput, req.body);
+    const branch = await resolveBranch(db, auth, input.branchId);
+    const canCreateItems = auth.permissions.has('inventory.manage');
+    const result = await db.$transaction(async (tx) => {
+      const supplier =
+        (await tx.supplier.findFirst({
+          where: { tenantId: auth.tenantId, name: input.supplierName },
+        })) ??
+        (await tx.supplier.create({
+          data: { tenantId: auth.tenantId, name: input.supplierName },
+        }));
+      const warehouse = await defaultWarehouse(tx, auth.tenantId, branch.id);
+      const now = services.now?.() ?? new Date();
+      const purchase = await tx.purchase.create({
+        data: {
+          tenantId: auth.tenantId,
+          supplierId: supplier.id,
+          warehouseId: warehouse.id,
+          note: input.note ?? null,
+          createdById: auth.userId,
+        },
+      });
+      let total = 0;
+      const lines: {
+        stockItemId: string;
+        baseQuantity: Decimal;
+        lineTotal: number;
+      }[] = [];
+      for (const line of input.lines) {
+        let stockItemId = line.stockItemId;
+        if (line.newItem) {
+          const existing = await tx.stockItem.findFirst({
+            where: {
+              tenantId: auth.tenantId,
+              name: { equals: line.newItem.name, mode: 'insensitive' },
+            },
+          });
+          if (existing) stockItemId = existing.id;
+          else {
+            if (!canCreateItems) throw errors.forbidden();
+            const big =
+              line.newItem.baseUnit === 'G'
+                ? [{ name: 'kg', factor: new Decimal(1000) }]
+                : line.newItem.baseUnit === 'ML'
+                  ? [{ name: 'l', factor: new Decimal(1000) }]
+                  : [];
+            stockItemId = await writeItem(
+              tx,
+              auth,
+              {
+                name: line.newItem.name,
+                baseUnit: line.newItem.baseUnit,
+                minStock: ZERO,
+                isActive: true,
+                units: big,
+              },
+              null,
+            );
+          }
+        }
+        const { factor } = await toBase(
+          tx,
+          auth.tenantId,
+          stockItemId!,
+          line.unitName,
+        );
+        const baseQuantity = line.quantity.times(factor);
+        total += line.lineTotal;
+        await tx.purchaseLine.create({
+          data: {
+            tenantId: auth.tenantId,
+            purchaseId: purchase.id,
+            stockItemId: stockItemId!,
+            quantity: line.quantity,
+            unitName: line.unitName,
+            factor,
+            baseQuantity,
+            unitPrice: Math.round(
+              new Decimal(line.lineTotal).dividedBy(line.quantity).toNumber(),
+            ),
+            lineTotal: line.lineTotal,
+          },
+        });
+        lines.push({ stockItemId: stockItemId!, baseQuantity, lineTotal: line.lineTotal });
+      }
+      for (const line of [...lines].sort((a, b) =>
+        a.stockItemId.localeCompare(b.stockItemId),
+      ))
+        await postMovement(tx, {
+          tenantId: auth.tenantId,
+          warehouseId: warehouse.id,
+          stockItemId: line.stockItemId,
+          type: 'RECEIPT',
+          quantity: line.baseQuantity,
+          unitCost: new Decimal(line.lineTotal).dividedBy(line.baseQuantity),
+          referenceType: 'purchase',
+          referenceId: purchase.id,
+          actorId: auth.userId,
+          allowNegative: true,
+        });
+      await tx.purchase.update({
+        where: { id: purchase.id },
+        data: {
+          total,
+          status: 'RECEIVED',
+          receivedAt: now,
+          receivedById: auth.userId,
+        },
+      });
+      if (input.paid && total > 0)
+        await tx.supplierPayment.create({
+          data: {
+            tenantId: auth.tenantId,
+            supplierId: supplier.id,
+            amount: total,
+            note: 'Bozorlik',
+            createdById: auth.userId,
+          },
+        });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: branch.id,
+        actorUserId: auth.userId,
+        action: 'purchase.market',
+        entityType: 'purchase',
+        entityId: purchase.id,
+        data: { total, supplierId: supplier.id, paid: input.paid },
+      });
+      return { id: purchase.id, total };
+    });
+    services.events?.publish({ type: 'inventory.changed', tenantId: auth.tenantId });
+    res.status(201).json(result);
+  });
+
   router.post('/purchases/:id/cancel', ...purchasing, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);

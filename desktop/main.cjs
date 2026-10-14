@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
+const { registerUpdates } = require('./updates.cjs');
 
 const APP_PORT = 8787;
 const PG_PORT = 54330;
@@ -534,7 +535,12 @@ async function publishStatus(state) {
       ...(customer.key ? { key: customer.key } : {}),
     };
   const body = Buffer.from(
-    JSON.stringify({ v: 1, issuedAt: new Date().toISOString(), entries }),
+    JSON.stringify({
+      v: 1,
+      issuedAt: new Date().toISOString(),
+      entries,
+      ...(state.update ? { update: state.update } : {}),
+    }),
   );
   const signature = crypto.sign(
     null,
@@ -555,6 +561,9 @@ function vendorView(state) {
   return {
     connected: !!state.gistId,
     statusUrl: state.statusUrl ?? null,
+    update: state.update
+      ? { version: state.update.version, publishedAt: state.update.publishedAt }
+      : null,
     customers: Object.values(state.customers)
       .map((customer) => ({
         installId: customer.installId,
@@ -747,6 +756,105 @@ async function ensureVendorLicense(keys) {
 }
 
 /** The vendor tools live inside the app (left menu: Sotuvchi paneli). */
+registerUpdates({
+  statusUrl: () => licenseStatusUrl().LICENSE_STATUS_URL ?? null,
+  log,
+});
+
+const RELEASE_REPO = 'fastfood-yangilanish';
+
+async function uploadAsset(state, release, file, name, contentType) {
+  const data = fs.readFileSync(file);
+  const url = release.upload_url.replace(/\{.*\}$/, '');
+  const response = await fetch(`${url}?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${state.githubToken}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': contentType,
+      'User-Agent': 'FastFood-Vendor',
+    },
+    body: data,
+    signal: AbortSignal.timeout(30 * 60_000),
+  });
+  if (!response.ok) throw new Error(`Fayl yuklanmadi (${response.status})`);
+  const asset = await response.json();
+  return {
+    url: asset.browser_download_url,
+    sha256: crypto.createHash('sha256').update(data).digest('hex'),
+    size: data.length,
+  };
+}
+
+/**
+ * Publishes a new version to every customer: uploads the installer (and APK) to a
+ * public GitHub release, then adds the signed update entry to the status document.
+ */
+ipcMain.handle('vendor:publishUpdate', async (_event, notes) => {
+  const state = vendorState();
+  if (!state.githubToken || !state.gistId)
+    throw new Error('Avval masofaviy boshqaruvni ulang (GitHub token)');
+  const picked = await dialog.showOpenDialog(win, {
+    title: 'Yangi versiya o‘rnatuvchisini tanlang (FastFood-Setup-X.Y.Z.exe)',
+    properties: ['openFile'],
+    filters: [{ name: 'FastFood', extensions: ['exe'] }],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { cancelled: true };
+  const exe = picked.filePaths[0];
+  const match = /FastFood-Setup-(\d+\.\d+\.\d+)\.exe$/i.exec(exe);
+  if (!match) throw new Error('Fayl nomi FastFood-Setup-X.Y.Z.exe ko‘rinishida bo‘lishi kerak');
+  const version = match[1];
+  const apkPath = path.join(path.dirname(exe), `FastFood-${version}.apk`);
+  const user = await github(state, 'GET', '/user');
+  let repo;
+  try {
+    repo = await github(state, 'GET', `/repos/${user.login}/${RELEASE_REPO}`);
+  } catch {
+    try {
+      repo = await github(state, 'POST', '/user/repos', {
+        name: RELEASE_REPO,
+        description: 'FastFood dasturi yangilanishlari',
+        private: false,
+        auto_init: true,
+      });
+    } catch {
+      throw new Error(
+        'GitHub token yangilanish joylashga ruxsat bermadi. Yangi token yarating: “gist” va “public_repo” belgilari yoqilgan bo‘lsin, so‘ng uni shu sahifada qayta ulang.',
+      );
+    }
+  }
+  const tag = `v${version}`;
+  let release;
+  try {
+    release = await github(state, 'GET', `/repos/${repo.full_name}/releases/tags/${tag}`);
+  } catch {
+    release = await github(state, 'POST', `/repos/${repo.full_name}/releases`, {
+      tag_name: tag,
+      name: `FastFood ${version}`,
+      body: String(notes || ''),
+    });
+  }
+  const existing = new Map((release.assets ?? []).map((asset) => [asset.name, asset]));
+  for (const name of [path.basename(exe), path.basename(apkPath)])
+    if (existing.has(name))
+      await github(state, 'DELETE', `/repos/${repo.full_name}/releases/assets/${existing.get(name).id}`).catch(() => null);
+  const exeAsset = await uploadAsset(state, release, exe, path.basename(exe), 'application/octet-stream');
+  const apkAsset = fs.existsSync(apkPath)
+    ? await uploadAsset(state, release, apkPath, path.basename(apkPath), 'application/vnd.android.package-archive')
+    : null;
+  state.update = {
+    version,
+    notes: String(notes || '').slice(0, 2000),
+    publishedAt: new Date().toISOString(),
+    exe: exeAsset,
+    ...(apkAsset ? { apk: apkAsset } : {}),
+  };
+  saveVendorState(state);
+  await publishStatus(state);
+  log(`published update ${version}`);
+  return { version, apk: !!apkAsset };
+});
+
 function openVendorPanel() {
   if (win) win.loadURL(`http://localhost:${APP_PORT}/sotuvchi`);
 }
