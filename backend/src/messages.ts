@@ -103,6 +103,8 @@ export const messages = {
     'Buyurtmani olish uchun kassirga topshirish kodini ko‘rsating.',
   cashMismatch: 'Summa kuryer yig‘gan pulga mos emas.',
   deliveryOutOfRange: 'Manzil yetkazib berish masofasidan tashqarida.',
+  referralInvalid:
+    'Taklif kodi noto‘g‘ri yoki mijoz allaqachon xarid qilgan / taklif qilingan.',
   codeMissing: 'Bu buyurtma uchun faol kod yo‘q. Yangi kod yarating.',
   codeExpired: 'Kodning muddati tugagan. Yangi kod yarating.',
   codeLocked:

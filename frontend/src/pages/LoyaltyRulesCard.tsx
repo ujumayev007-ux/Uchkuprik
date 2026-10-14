@@ -17,6 +17,8 @@ type Rules = {
   tiers: Tier[];
   everyNth: { n: number; points: number } | null;
   birthdayPoints: number;
+  referrerPoints: number;
+  referredPoints: number;
 };
 
 const DEFAULT_TIERS: Tier[] = [
@@ -124,6 +126,16 @@ export function LoyaltyRulesCard({ editable }: { editable: boolean }) {
           label={l.birthday}
           value={form.birthdayPoints}
           onChange={(value) => setForm({ ...form, birthdayPoints: value ?? 0 })}
+        />
+        <MoneyField
+          label={l.referrer}
+          value={form.referrerPoints ?? 0}
+          onChange={(value) => setForm({ ...form, referrerPoints: value ?? 0 })}
+        />
+        <MoneyField
+          label={l.referred}
+          value={form.referredPoints ?? 0}
+          onChange={(value) => setForm({ ...form, referredPoints: value ?? 0 })}
         />
       </div>
       <FormError error={error} />

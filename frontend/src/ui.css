@@ -1550,3 +1550,29 @@ textarea {
     display: none;
   }
 }
+
+.loyalty-card {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.loyalty-card svg {
+  width: 140px;
+  height: 140px;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #loyalty-card,
+  #loyalty-card * {
+    visibility: visible;
+  }
+  #loyalty-card {
+    position: fixed;
+    inset: 0 auto auto 0;
+  }
+}

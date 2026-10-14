@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { loyaltyRulesOf, ruleTier } from './loyalty-rules.js';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -69,6 +70,91 @@ export function crmRouter(services: Services) {
 
   // --- Customers ----------------------------------------------------------
 
+  // Loyalty card: a short code printed as QR; scanning it finds the customer.
+  router.post(
+    '/customers/:id/card',
+    requireAuth(),
+    requirePermission('customers.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const customer = await db.customer.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!customer) throw errors.notFound();
+      if (customer.cardCode) {
+        res.json({ cardCode: customer.cardCode });
+        return;
+      }
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const bytes = randomBytes(8);
+        const code = [...bytes]
+          .map((b) => alphabet[b % alphabet.length])
+          .join('');
+        try {
+          await db.customer.update({ where: { id }, data: { cardCode: code } });
+          await audit(db, req, {
+            tenantId: auth.tenantId,
+            actorUserId: auth.userId,
+            action: 'customer.card.issue',
+            entityType: 'customer',
+            entityId: id,
+          });
+          res.json({ cardCode: code });
+          return;
+        } catch (error) {
+          if (!isUniqueViolation(error)) throw error;
+        }
+      }
+      throw errors.conflict();
+    },
+  );
+
+  // Referral: a new customer (no orders yet) names the friend's card code.
+  router.post(
+    '/customers/:id/referrer',
+    requireAuth(),
+    requirePermission('customers.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const { code } = parse(
+        z.object({ code: z.string().trim().min(4).max(20) }),
+        req.body,
+      );
+      await db.$transaction(async (tx) => {
+        const customer = await tx.customer.findFirst({
+          where: { id, tenantId: auth.tenantId },
+        });
+        if (!customer) throw errors.notFound();
+        const referrer = await tx.customer.findFirst({
+          where: { tenantId: auth.tenantId, cardCode: code.toUpperCase() },
+        });
+        if (
+          !referrer ||
+          referrer.id === customer.id ||
+          customer.referredById ||
+          customer.orderCount > 0
+        )
+          throw new AppError(409, 'REFERRAL_INVALID', 'referralInvalid');
+        await tx.customer.update({
+          where: { id },
+          data: { referredById: referrer.id },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'customer.referral',
+          entityType: 'customer',
+          entityId: id,
+          data: { referrerId: referrer.id },
+        });
+      });
+      res.json({ ok: true });
+    },
+  );
+
   router.get(
     '/customers',
     requireAuth(),
@@ -86,6 +172,8 @@ export function crmRouter(services: Services) {
           ...(q
             ? {
                 OR: [
+                  // Scanned loyalty card (QR) code.
+                  { cardCode: q.toUpperCase() },
                   ...(digits.length >= 3
                     ? [{ phone: { contains: digits } }]
                     : []),
@@ -111,6 +199,7 @@ export function crmRouter(services: Services) {
           orderCount: customer.orderCount,
           lastOrderAt: customer.lastOrderAt,
           marketingConsent: customer.marketingConsent,
+          cardCode: customer.cardCode,
           tier: tierOf(customer.totalSpent),
           // Restaurant-defined level (Bronze/Silver/Gold/VIP), when configured.
           level: ruleTier(rules, customer.totalSpent)?.name ?? null,

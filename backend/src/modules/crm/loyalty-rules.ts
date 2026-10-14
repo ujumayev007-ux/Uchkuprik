@@ -26,6 +26,9 @@ export const loyaltyRulesSchema = z.object({
     .nullable()
     .default(null),
   birthdayPoints: z.number().int().min(0).max(10_000_000).default(0),
+  // Referral: both get points on the new customer's first completed order.
+  referrerPoints: z.number().int().min(0).max(10_000_000).default(0),
+  referredPoints: z.number().int().min(0).max(10_000_000).default(0),
 });
 export type LoyaltyRules = z.infer<typeof loyaltyRulesSchema>;
 

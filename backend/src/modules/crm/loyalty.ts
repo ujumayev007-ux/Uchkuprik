@@ -119,6 +119,31 @@ export async function onOrderCompleted(
       reason,
       actorId,
     });
+  // Referral reward on the referred customer's first completed order (claimed once).
+  if (
+    customer.orderCount === 1 &&
+    customer.referredById &&
+    (rules.referrerPoints > 0 || rules.referredPoints > 0)
+  ) {
+    const claimed = await tx.customer.updateMany({
+      where: { id: customer.id, referralRewardedAt: null },
+      data: { referralRewardedAt: new Date() },
+    });
+    if (claimed.count === 1) {
+      if (rules.referredPoints > 0)
+        await reward(rules.referredPoints, 'Taklif bo‘yicha birinchi xarid');
+      if (rules.referrerPoints > 0)
+        await postLoyalty(tx, {
+          tenantId: order.tenantId,
+          customerId: customer.referredById,
+          type: 'EARN',
+          points: rules.referrerPoints,
+          orderId: order.id,
+          reason: `Do‘st taklifi: ${customer.phone.slice(-4)}`,
+          actorId,
+        });
+    }
+  }
   // Every N-th completed order earns a fixed reward.
   if (rules.everyNth && customer.orderCount % rules.everyNth.n === 0)
     await reward(

@@ -1226,24 +1226,29 @@ enum FeedbackStatus {
 
 // Customer profile keyed by normalized phone number within a tenant.
 model Customer {
-  id               String    @id @default(uuid(7)) @db.Uuid
-  tenantId         String    @db.Uuid
-  phone            String
-  name             String?
-  birthday         DateTime? @db.Date
-  marketingConsent Boolean   @default(false)
-  consentAt        DateTime?
-  notes            String?
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  tenantId           String    @db.Uuid
+  phone              String
+  name               String?
+  birthday           DateTime? @db.Date
+  marketingConsent   Boolean   @default(false)
+  consentAt          DateTime?
+  notes              String?
   // Loyalty points; 1 point = 1 so‘m when redeemed.
-  points           Int       @default(0)
-  totalSpent       Int       @default(0)
-  orderCount       Int       @default(0)
-  lastOrderAt      DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  points             Int       @default(0)
+  totalSpent         Int       @default(0)
+  orderCount         Int       @default(0)
+  lastOrderAt        DateTime?
+  // Loyalty card / referral code (QR on the printed card).
+  cardCode           String?
+  referredById       String?   @db.Uuid
+  referralRewardedAt DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   loyalty LoyaltyEntry[]
 
+  @@unique([tenantId, cardCode])
   @@unique([tenantId, phone])
   @@unique([tenantId, id])
   @@map("customers")
@@ -1428,19 +1433,22 @@ enum AdjustmentType {
 }
 
 model EmployeeProfile {
-  userId         String    @id @db.Uuid
-  tenantId       String    @db.Uuid
-  position       String?
-  payType        PayType   @default(NONE)
+  userId           String    @id @db.Uuid
+  tenantId         String    @db.Uuid
+  position         String?
+  payType          PayType   @default(NONE)
   // so‘m per hour (HOURLY) or per month (MONTHLY).
-  rate           Int       @default(0)
+  rate             Int       @default(0)
   // Commissions on top of the base pay (waiters): per completed order, per distinct
   // customer and a share of net sales (basis points).
-  perOrder       Int       @default(0)
-  perCustomer    Int       @default(0)
-  salesPercentBp Int       @default(0)
-  hireDate       DateTime? @db.Date
-  updatedAt      DateTime  @updatedAt
+  perOrder         Int       @default(0)
+  perCustomer      Int       @default(0)
+  salesPercentBp   Int       @default(0)
+  // Quality bonus when the average guest rating of their orders reaches the minimum.
+  qualityBonus     Int       @default(0)
+  qualityMinRating Float     @default(4.5)
+  hireDate         DateTime? @db.Date
+  updatedAt        DateTime  @updatedAt
 
   @@index([tenantId])
   @@map("employee_profiles")

@@ -45,6 +45,7 @@ export async function computePayroll(
         { perOrder: { gt: 0 } },
         { perCustomer: { gt: 0 } },
         { salesPercentBp: { gt: 0 } },
+        { qualityBonus: { gt: 0 } },
       ],
     },
   });
@@ -57,11 +58,16 @@ export async function computePayroll(
       createdById: { in: employees.map((e) => e.userId) },
     },
     select: {
+      id: true,
       createdById: true,
       customerId: true,
       total: true,
       refundedTotal: true,
     },
+  });
+  const ratings = await tx.feedback.findMany({
+    where: { tenantId, orderId: { in: orders.map((order) => order.id) } },
+    select: { orderId: true, rating: true },
   });
   const [records, adjustments] = await Promise.all([
     tx.attendanceRecord.findMany({
@@ -140,7 +146,21 @@ export async function computePayroll(
       mine
         .filter((row) => row.type === type)
         .reduce((total, row) => total + row.amount, 0);
-    const bonuses = sum('BONUS');
+    // Quality bonus: at least 3 rated orders with an average at the minimum.
+    const mineRated = ratings.filter((row) =>
+      sold.some((order) => order.id === row.orderId),
+    );
+    const average = mineRated.length
+      ? mineRated.reduce((total, row) => total + row.rating, 0) /
+        mineRated.length
+      : 0;
+    const quality =
+      employee.qualityBonus > 0 &&
+      mineRated.length >= 3 &&
+      average >= employee.qualityMinRating
+        ? employee.qualityBonus
+        : 0;
+    const bonuses = sum('BONUS') + quality;
     const penalties = sum('PENALTY');
     // Loan repayments are deducted like advances; loans themselves are not.
     const advances = sum('ADVANCE') + sum('REPAYMENT');

@@ -17,6 +17,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { LoyaltyCardPanel } from './LoyaltyCardPanel';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 
@@ -32,6 +33,8 @@ type Customer = {
   tier: string;
   // Restaurant-defined level name, when loyalty tiers are configured.
   level?: string | null;
+  cardCode?: string | null;
+  referredById?: string | null;
 };
 
 const tierTone = {
@@ -117,6 +120,15 @@ function CustomerDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <strong>{customer.level ?? t.crm.tiers[customer.tier]}</strong>
           </div>
         </div>
+        <LoyaltyCardPanel
+          customerId={id}
+          name={customer.name ?? customer.phone}
+          cardCode={customer.cardCode ?? null}
+          canReferral={
+            manage && customer.orderCount === 0 && !customer.referredById
+          }
+          onChange={() => void refresh()}
+        />
         {manage && (
           <form
             className="stack card"

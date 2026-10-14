@@ -819,6 +819,17 @@ export const uz = {
       roadFactor: 'Yo‘l koeffitsiyenti (1.3 — ko‘chalar egri)',
     },
   },
+  loyaltyCard: {
+    title: 'Sodiqlik kartasi',
+    none: 'Karta hali berilmagan.',
+    issue: 'QR karta berish',
+    print: 'Kartani chop etish',
+    friendCode: 'Taklif qilgan do‘stning karta kodi',
+    friendHint: 'Faqat hali xarid qilmagan yangi mijoz uchun.',
+    saveReferral: 'Saqlash',
+    referralSaved:
+      'Taklif saqlandi — birinchi xariddan keyin ikkalasiga ball yoziladi.',
+  },
   expenseExtra: {
     recipient: 'Kimga berildi',
     note: 'Izoh / sabab',
@@ -846,6 +857,8 @@ export const uz = {
     everyN: 'Har nechanchi xaridda sovg‘a (masalan 10)',
     everyNPoints: 'Sovg‘a ballari',
     birthday: 'Tug‘ilgan kun sovg‘asi (ball)',
+    referrer: 'Do‘stini taklif qilganga (ball)',
+    referred: 'Taklif bilan kelgan yangi mijozga (ball)',
   },
   vendorTools: {
     title: 'Shablonlar va tarix',
@@ -1318,6 +1331,14 @@ export const uz = {
     perCustomer: 'Har mijoz uchun',
     salesPercent: 'Savdodan foiz (%)',
     commission: 'Komissiya',
+    qualityBonus: 'Sifat bonusi (so‘m)',
+    qualityMin: 'Kamida o‘rtacha baho (1–5)',
+    teamBonus: 'Jamoa bonusi',
+    teamHint:
+      'Bitta summani tanlangan xodimlarga teng yoki savdosiga qarab bo‘ladi.',
+    splitEqual: 'Teng bo‘lish',
+    splitSales: 'Savdoga qarab',
+    teamDone: 'Jamoa bonusi taqsimlandi.',
     addAdjustment: 'Qo‘shish',
     overtimeAfter: 'Qo‘shimcha ish boshlanishi (kunlik soat)',
     overtimeMultiplier: 'Qo‘shimcha ish koeffitsiyenti',

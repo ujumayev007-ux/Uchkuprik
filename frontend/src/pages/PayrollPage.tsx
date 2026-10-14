@@ -16,6 +16,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { TeamBonusForm } from './TeamBonusForm';
 import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 
@@ -29,6 +30,8 @@ type Employee = {
   perOrder?: number;
   perCustomer?: number;
   salesPercentBp?: number;
+  qualityBonus?: number;
+  qualityMinRating?: number;
 };
 type Period = {
   id: string;
@@ -78,6 +81,8 @@ function EmployeeRate({ employee }: { employee: Employee }) {
     perOrder: (employee.perOrder ?? 0) as number | null,
     perCustomer: (employee.perCustomer ?? 0) as number | null,
     percent: String((employee.salesPercentBp ?? 0) / 100),
+    qualityBonus: (employee.qualityBonus ?? 0) as number | null,
+    qualityMinRating: String(employee.qualityMinRating ?? 4.5),
   });
   return (
     <tr>
@@ -132,6 +137,22 @@ function EmployeeRate({ employee }: { employee: Employee }) {
             setForm({ ...form, percent: e.target.value.replace(',', '.') })
           }
         />
+        <MoneyField
+          label={t.hr.qualityBonus}
+          value={form.qualityBonus}
+          onChange={(qualityBonus) => setForm({ ...form, qualityBonus })}
+        />
+        <TextField
+          label={t.hr.qualityMin}
+          inputMode="decimal"
+          value={form.qualityMinRating}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              qualityMinRating: e.target.value.replace(',', '.'),
+            })
+          }
+        />
       </td>
       <td className="right">
         <Button
@@ -146,6 +167,11 @@ function EmployeeRate({ employee }: { employee: Employee }) {
                   rate: form.rate ?? 0,
                   perOrder: form.perOrder ?? 0,
                   perCustomer: form.perCustomer ?? 0,
+                  qualityBonus: form.qualityBonus ?? 0,
+                  qualityMinRating: Math.min(
+                    5,
+                    Math.max(1, Number(form.qualityMinRating) || 4.5),
+                  ),
                   salesPercentBp: Math.round(
                     Math.min(50, Math.max(0, Number(form.percent) || 0)) * 100,
                   ),
@@ -536,6 +562,9 @@ export function PayrollPage() {
             {t.hr.addAdjustment}
           </Button>
         </form>
+      )}
+      {hr && (employees.data ?? []).length > 1 && (
+        <TeamBonusForm employees={employees.data ?? []} />
       )}
       {selected && (
         <PeriodDetail id={selected} onClose={() => setSelected(null)} />

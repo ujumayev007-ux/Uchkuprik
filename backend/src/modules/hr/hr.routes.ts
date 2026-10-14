@@ -56,6 +56,8 @@ export function hrRouter(services: Services) {
           perOrder: profile?.perOrder ?? 0,
           perCustomer: profile?.perCustomer ?? 0,
           salesPercentBp: profile?.salesPercentBp ?? 0,
+          qualityBonus: profile?.qualityBonus ?? 0,
+          qualityMinRating: profile?.qualityMinRating ?? 4.5,
           hireDate: profile?.hireDate ?? null,
         };
       }),
@@ -79,6 +81,8 @@ export function hrRouter(services: Services) {
           perCustomer: z.number().int().min(0).max(10_000_000).default(0),
           // Share of net sales in basis points (500 = 5%).
           salesPercentBp: z.number().int().min(0).max(5000).default(0),
+          qualityBonus: z.number().int().min(0).max(100_000_000).default(0),
+          qualityMinRating: z.number().min(1).max(5).default(4.5),
           hireDate: isoDate.nullable().optional(),
         }),
         req.body,
@@ -94,6 +98,8 @@ export function hrRouter(services: Services) {
         perOrder: input.perOrder,
         perCustomer: input.perCustomer,
         salesPercentBp: input.salesPercentBp,
+        qualityBonus: input.qualityBonus,
+        qualityMinRating: input.qualityMinRating,
         hireDate: input.hireDate ? dayStart(input.hireDate) : null,
       };
       await db.employeeProfile.upsert({
@@ -420,6 +426,105 @@ export function hrRouter(services: Services) {
         });
       });
       res.status(201).json({ ok: true });
+    },
+  );
+
+  // Team bonus: one amount split equally or by each member's net sales.
+  router.post(
+    '/payroll/team-bonus',
+    ...hr,
+    requireRecentAuth(services),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(
+        z.object({
+          userIds: z.array(z.uuid()).min(1).max(100),
+          amount: z.number().int().min(1).max(1_000_000_000),
+          split: z.enum(['EQUAL', 'SALES']),
+          date: isoDate,
+          from: isoDate.optional(),
+          to: isoDate.optional(),
+          reason: z.string().trim().min(3).max(200),
+        }),
+        req.body,
+      );
+      const ids = [...new Set(input.userIds)];
+      const shares = await db.$transaction(async (tx) => {
+        const users = await tx.user.findMany({
+          where: { id: { in: ids }, tenantId: auth.tenantId },
+          select: { id: true },
+        });
+        if (users.length !== ids.length)
+          throw errors.validation([{ path: 'userIds' }]);
+        await assertOpenPeriod(tx, auth.tenantId, dayStart(input.date));
+        let weights = ids.map(() => 1);
+        if (input.split === 'SALES') {
+          const from = dayStart(input.from ?? input.date);
+          const to = new Date(
+            dayStart(input.to ?? input.date).getTime() + 86_400_000,
+          );
+          const sales = await tx.order.groupBy({
+            by: ['createdById'],
+            where: {
+              tenantId: auth.tenantId,
+              status: 'COMPLETED',
+              createdById: { in: ids },
+              completedAt: { gte: from, lt: to },
+            },
+            _sum: { total: true, refundedTotal: true },
+          });
+          weights = ids.map((id) => {
+            const row = sales.find((item) => item.createdById === id);
+            return Math.max(
+              0,
+              (row?._sum.total ?? 0) - (row?._sum.refundedTotal ?? 0),
+            );
+          });
+          if (weights.every((weight) => weight === 0))
+            weights = ids.map(() => 1);
+        }
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        // Largest remainders keep the split exact to the so‘m.
+        const raw = weights.map((w) => (input.amount * w) / totalWeight);
+        const shares = raw.map(Math.floor);
+        let left = input.amount - shares.reduce((a, b) => a + b, 0);
+        for (const index of raw
+          .map((value, i) => [value - Math.floor(value), i] as const)
+          .sort((a, b) => b[0] - a[0])
+          .map(([, i]) => i)) {
+          if (left <= 0) break;
+          shares[index]! += 1;
+          left -= 1;
+        }
+        for (const [index, userId] of ids.entries())
+          if (shares[index]! > 0)
+            await tx.payrollAdjustment.create({
+              data: {
+                tenantId: auth.tenantId,
+                userId,
+                type: 'BONUS',
+                amount: shares[index]!,
+                date: dayStart(input.date),
+                reason: `Jamoa bonusi: ${input.reason}`.slice(0, 200),
+                createdById: auth.userId,
+              },
+            });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'payroll.team_bonus',
+          data: {
+            amount: input.amount,
+            split: input.split,
+            userIds: ids,
+            shares,
+          },
+        });
+        return shares;
+      });
+      res.status(201).json({
+        shares: ids.map((userId, index) => ({ userId, amount: shares[index] })),
+      });
     },
   );
 
