@@ -148,6 +148,7 @@ export function LicenseDetails({ license }: { license: License }) {
           <strong>{l.installId}</strong>
           <p className="secret-box">{license.installId}</p>
           <p className="muted small">{l.installIdHint}</p>
+          <p className="muted small">ℹ {t.vendorInstalls.disclosure}</p>
           <div>
             <Button
               size="sm"

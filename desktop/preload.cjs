@@ -27,4 +27,6 @@ contextBridge.exposeInMainWorld('fastfoodVendor', {
     ipcRenderer.invoke('vendor:blockInstall', installId, blocked),
   telegram: (token) => ipcRenderer.invoke('vendor:telegram', token),
   telegramOff: () => ipcRenderer.invoke('vendor:telegramOff'),
+  installs: () => ipcRenderer.invoke('vendor:installs'),
+  checkReports: () => ipcRenderer.invoke('vendor:checkReports'),
 });

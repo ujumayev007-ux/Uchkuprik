@@ -74,9 +74,16 @@ if (existsSync(apk)) {
 // Remote licence control: customers' apps poll the vendor's signed status document.
 const vendorState = join(homedir(), '.fastfood', 'vendor.json');
 if (existsSync(vendorState)) {
-  const { statusUrl } = JSON.parse(readFileSync(vendorState, 'utf8'));
+  const { statusUrl, report } = JSON.parse(readFileSync(vendorState, 'utf8'));
   if (statusUrl)
     writeFileSync(join(server, 'license-status-url.txt'), statusUrl);
+  // Install reports: topic and the vendor's public encryption key (no secrets).
+  if (report?.topic && report?.publicKey)
+    writeFileSync(
+      join(server, 'report.json'),
+      JSON.stringify({ topic: report.topic, publicKey: report.publicKey }),
+    );
+  else console.warn('Report key missing: open the vendor app once, then rebuild.');
 }
 
 // PostgreSQL 17 binaries for Windows (bin, lib, share).
@@ -108,6 +115,7 @@ await build({
       'preload.cjs',
       'updates.cjs',
       'vendor-alerts.cjs',
+      'reports.cjs',
       'loading.html',
       'package.json',
     ],

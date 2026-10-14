@@ -20,6 +20,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { registerUpdates } = require('./updates.cjs');
 const alerts = require('./vendor-alerts.cjs');
+const reports = require('./reports.cjs');
 
 const APP_PORT = 8787;
 const PG_PORT = 54330;
@@ -688,6 +689,45 @@ const paymentWatch = alerts.createPaymentWatch({
   log,
 });
 
+const reportWatch = reports.createReportWatch({
+  vendorDir: VENDOR_DIR,
+  vendorState,
+  saveVendorState,
+  log,
+});
+
+/** Every install that reported in (demo and paid), newest first. */
+ipcMain.handle('vendor:installs', () => {
+  const state = vendorState();
+  const installs = Object.values(state.installs ?? {});
+  return installs
+    .map((item) => ({
+      installId: item.installId,
+      version: item.version,
+      installedAt: item.installedAt,
+      firstSeen: item.firstSeen,
+      lastSeen: item.lastSeen,
+      license: item.license ?? null,
+      business: item.business ?? null,
+      paid: !!state.customers[item.installId],
+      blocked:
+        !!state.blockedInstalls?.[item.installId] ||
+        !!state.customers[item.installId]?.blocked,
+      sameMachine: item.machine
+        ? installs
+            .filter(
+              (other) =>
+                other.machine === item.machine &&
+                other.installId !== item.installId,
+            )
+            .map((other) => other.installId)
+        : [],
+    }))
+    .sort((a, b) => String(b.firstSeen).localeCompare(String(a.firstSeen)));
+});
+
+ipcMain.handle('vendor:checkReports', () => reportWatch.poll());
+
 /** Blocks or unblocks any install by its ID (e.g. a demo that has no licence). */
 ipcMain.handle('vendor:blockInstall', async (_event, installId, blocked) => {
   const id = String(installId || '').trim().toUpperCase();
@@ -967,7 +1007,25 @@ async function boot() {
   await migrate(keys.dbPassword);
   await ensureVendorLicense(keys);
   startServer(keys);
-  if (isVendorComputer()) paymentWatch.start();
+  if (isVendorComputer()) {
+    paymentWatch.start();
+    const state = vendorState();
+    if (reports.ensureReportKeys(VENDOR_DIR, state)) saveVendorState(state);
+    reportWatch.start();
+  } else
+    reports.startReporting({
+      configFile: path.join(SERVER, 'report.json'),
+      keys,
+      version: VERSION,
+      dbConfig: {
+        host: '127.0.0.1',
+        port: PG_PORT,
+        user: 'fastfood',
+        password: keys.dbPassword,
+        database: 'fastfood',
+      },
+      log,
+    });
   if (!(await waitFor(`http://127.0.0.1:${APP_PORT}/api/health/ready`, 60)))
     throw new Error('Server ishga tushmadi. Jurnallarni tekshiring.');
   win.loadURL(`http://localhost:${APP_PORT}/`);

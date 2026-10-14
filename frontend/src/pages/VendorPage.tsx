@@ -12,6 +12,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { VendorAlerts, type AlertsBridge } from './VendorAlerts';
+import { VendorInstalls, type InstallsBridge } from './VendorInstalls';
 import {
   CustomerSettingsDialog,
   type CustomerSettings,
@@ -42,24 +43,25 @@ type VendorState = {
 type Publish = { published?: boolean; error?: string };
 
 /** Bridge from the desktop app; only the vendor's computer reports isVendor. */
-export type VendorBridge = AlertsBridge & {
-  isVendor: boolean;
-  state: () => Promise<VendorState>;
-  connect: (token: string) => Promise<VendorState>;
-  sign: (payload: object) => Promise<{ key: string } & Publish>;
-  extend: (
-    installId: string,
-    months: number,
-  ) => Promise<{ key: string; expiresAt: string } & Publish>;
-  update: (
-    installId: string,
-    changes: CustomerSettings,
-  ) => Promise<{ key: string } & Publish>;
-  block: (installId: string, blocked: boolean) => Promise<Publish>;
-  publishUpdate: (
-    notes: string,
-  ) => Promise<{ cancelled?: boolean; version?: string; apk?: boolean }>;
-};
+export type VendorBridge = AlertsBridge &
+  InstallsBridge & {
+    isVendor: boolean;
+    state: () => Promise<VendorState>;
+    connect: (token: string) => Promise<VendorState>;
+    sign: (payload: object) => Promise<{ key: string } & Publish>;
+    extend: (
+      installId: string,
+      months: number,
+    ) => Promise<{ key: string; expiresAt: string } & Publish>;
+    update: (
+      installId: string,
+      changes: CustomerSettings,
+    ) => Promise<{ key: string } & Publish>;
+    block: (installId: string, blocked: boolean) => Promise<Publish>;
+    publishUpdate: (
+      notes: string,
+    ) => Promise<{ cancelled?: boolean; version?: string; apk?: boolean }>;
+  };
 export const vendor = (window as unknown as { fastfoodVendor?: VendorBridge })
   .fastfoodVendor;
 export const isVendorComputer = () => !!vendor?.isVendor;
@@ -192,8 +194,21 @@ export function VendorPage() {
         blockedInstalls={state?.blockedInstalls ?? []}
         onChange={reload}
       />
+      <VendorInstalls
+        bridge={vendor}
+        onLicense={(install) => {
+          setForm({
+            ...form,
+            customer: install.business?.name ?? '',
+            installId: install.installId,
+          });
+          document
+            .getElementById('new-customer')
+            ?.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
 
-      <section className="card stack">
+      <section className="card stack" id="new-customer">
         <h2 className="section-title">{v.newCustomer}</h2>
         <div className="form-grid">
           <TextField

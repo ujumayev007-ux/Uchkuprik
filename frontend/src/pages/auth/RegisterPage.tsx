@@ -165,6 +165,9 @@ export function RegisterPage() {
             checked={accepted}
             onChange={setAccepted}
           />
+          {'fastfoodDesktop' in window && (
+            <p className="muted small">ℹ {t.vendorInstalls.disclosure}</p>
+          )}
           <FormError error={error} />
           <Button
             type="submit"
