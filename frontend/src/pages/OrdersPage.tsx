@@ -39,6 +39,26 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
   return <Badge tone={tone[status]}>{t.orders.statuses[status]}</Badge>;
 }
 
+/**
+ * Payment state, independent of the kitchen status: an order can be ready and
+ * unpaid, or paid before cooking starts.
+ */
+export function PaymentBadge({
+  order,
+}: {
+  order: { total: number; due: number; status: OrderStatus };
+}) {
+  if (order.status === 'CANCELLED' || order.total === 0) return null;
+  if (order.due <= 0) return <Badge tone="success">✓ {t.payStatus.paid}</Badge>;
+  if (order.due < order.total)
+    return (
+      <Badge tone="warning">
+        {t.payStatus.partial} · {formatMoney(order.due)}
+      </Badge>
+    );
+  return <Badge tone="danger">{t.payStatus.unpaid}</Badge>;
+}
+
 type Action = 'cancel' | 'refund' | 'discount' | 'pay' | null;
 
 function OrderDetail({
@@ -134,7 +154,7 @@ function OrderDetail({
       >
         <div className="stack">
           <div className="badges">
-            <StatusBadge status={o.status} />
+            <StatusBadge status={o.status} /> <PaymentBadge order={o} />
             {o.table && (
               <Badge>
                 {t.pos.table}: {o.table.name}
@@ -447,8 +467,11 @@ function OrderDetail({
               )}
             {open && o.due > 0 && can(me, 'payments.accept') && (
               <Button variant="primary" onClick={() => setAction('pay')}>
-                {t.orders.payRemaining}
+                {o.due < o.total ? t.orders.payRemaining : t.payStatus.accept}
               </Button>
+            )}
+            {o.total > 0 && o.due <= 0 && o.status !== 'CANCELLED' && (
+              <Badge tone="success">✓ {t.payStatus.paid}</Badge>
             )}
             {open &&
               o.status !== 'DRAFT' &&
@@ -528,6 +551,7 @@ export function OrdersPage() {
                 <th>{t.orders.number}</th>
                 <th>{t.orders.type}</th>
                 <th>{t.common.status}</th>
+                <th>{t.payStatus.column}</th>
                 <th>{t.orders.time}</th>
                 <th className="right">{t.pos.total}</th>
                 <th className="right">{t.pos.due}</th>
@@ -557,6 +581,9 @@ export function OrdersPage() {
                   </td>
                   <td>
                     <StatusBadge status={order.status} />
+                  </td>
+                  <td>
+                    <PaymentBadge order={order} />
                   </td>
                   <td className="nowrap">{formatDateTime(order.createdAt)}</td>
                   <td className="right nowrap">{formatMoney(order.total)}</td>

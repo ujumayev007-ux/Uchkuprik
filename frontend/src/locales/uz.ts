@@ -506,7 +506,7 @@ export const uz = {
     statuses: {
       DRAFT: 'Qoralama',
       PENDING: 'Kassir tasdig‘i kutilmoqda',
-      PLACED: 'Qabul qilindi',
+      PLACED: 'Buyurtma berildi',
       PREPARING: 'Tayyorlanmoqda',
       READY: 'Tayyor',
       SERVED: 'Berildi',
@@ -663,6 +663,13 @@ export const uz = {
     fallbackCopy: 'Zaxira printerga nusxa',
     agentNote:
       'Printerlar API serveri ulana oladigan mahalliy tarmoqda bo‘lishi kerak. Bulutli o‘rnatishda mahalliy chop etish agenti keyingi bosqichda qo‘shiladi.',
+  },
+  payStatus: {
+    column: 'To‘lov',
+    paid: 'To‘langan',
+    partial: 'Qisman, qoldi',
+    unpaid: 'To‘lanmagan',
+    accept: 'To‘lov qabul qilish',
   },
   orderSettings: {
     title: 'Buyurtma jarayoni',
@@ -1870,6 +1877,7 @@ export const uz = {
     opened: 'AnyDesk ochildi.',
   },
   waiter: {
+    activeOrders: 'Faol buyurtmalar',
     title: 'Stollar',
     free: 'Bo‘sh',
     busy: 'Band',

@@ -9,6 +9,8 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { api } from '../lib/api';
+import type { OrderStatus } from '../lib/orders';
+import { PaymentBadge, StatusBadge } from './OrdersPage';
 
 type Floor = {
   rooms: {
@@ -19,8 +21,12 @@ type Floor = {
 };
 type ActiveOrder = {
   id: string;
+  number: number;
+  status: OrderStatus;
+  total: number;
+  due: number;
   tableId: string | null;
-  table?: { id: string } | null;
+  table?: { id: string; name: string } | null;
 };
 
 /** Waiter panel: tap a table to take its order on the POS screen. */
@@ -63,6 +69,31 @@ export function WaiterPage() {
           {t.waiter.takeaway}
         </button>
       </div>
+      {(orders.data ?? []).length > 0 && (
+        <section className="stack">
+          <h2 className="section-title">{t.waiter.activeOrders}</h2>
+          <div className="table-grid">
+            {(orders.data ?? []).map((order) => (
+              <button
+                key={order.id}
+                className="table-tile busy"
+                onClick={() =>
+                  navigate(
+                    order.tableId
+                      ? `/kassa?stol=${order.tableId}`
+                      : '/buyurtmalar',
+                  )
+                }
+              >
+                <strong>№{order.number}</strong>
+                <span>{order.table?.name ?? '—'}</span>
+                <StatusBadge status={order.status} />
+                <PaymentBadge order={order} />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {floor.data.rooms.length === 0 ? (
         <EmptyState />
       ) : (
