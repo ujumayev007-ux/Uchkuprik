@@ -25,6 +25,8 @@ type CourierOrder = {
     'ASSIGNED' | 'PICKED_UP' | 'ON_THE_WAY' | 'DELIVERED' | 'FAILED';
   address: string | null;
   landmark?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   customerName: string | null;
   customerPhone: string | null;
   note: string | null;
@@ -168,10 +170,14 @@ export function CourierPage() {
                   {t.delivery.call}
                 </a>
               )}
-              {order.address && (
+              {(order.address || order.lat) && (
                 <a
                   className="btn btn-secondary btn-lg"
-                  href={`https://yandex.uz/maps/?text=${encodeURIComponent(order.address)}`}
+                  href={
+                    order.lat && order.lng
+                      ? `https://yandex.uz/maps/?rtext=~${order.lat},${order.lng}&rtt=auto`
+                      : `https://yandex.uz/maps/?text=${encodeURIComponent(order.address ?? '')}`
+                  }
                   target="_blank"
                   rel="noreferrer"
                 >

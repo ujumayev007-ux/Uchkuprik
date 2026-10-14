@@ -102,6 +102,7 @@ export const messages = {
   handoffRequired:
     'Buyurtmani olish uchun kassirga topshirish kodini ko‘rsating.',
   cashMismatch: 'Summa kuryer yig‘gan pulga mos emas.',
+  deliveryOutOfRange: 'Manzil yetkazib berish masofasidan tashqarida.',
   codeMissing: 'Bu buyurtma uchun faol kod yo‘q. Yangi kod yarating.',
   codeExpired: 'Kodning muddati tugagan. Yangi kod yarating.',
   codeLocked:

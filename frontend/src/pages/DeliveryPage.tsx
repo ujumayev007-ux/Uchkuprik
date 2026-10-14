@@ -19,7 +19,10 @@ import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 
+import { DeliveryPricingCard, parsePoint } from './DeliveryPricingCard';
+
 const c = t.courierCodes;
+const gps = t.deliveryGps;
 
 export type Zone = {
   id: string;
@@ -43,6 +46,7 @@ type BoardOrder = {
   due: number;
   createdAt: string;
   failReason: string | null;
+  distanceM?: number | null;
   cashCollected?: number;
   cashReconciled?: boolean;
   telegram?: boolean;
@@ -250,6 +254,46 @@ function Board() {
                             🔐 {c.handoff}
                           </Button>
                         )}
+                      {!['DELIVERED', 'RETURNED'].includes(
+                        order.deliveryStatus,
+                      ) && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const point = parsePoint(
+                              window.prompt(gps.orderPrompt) ?? '',
+                            );
+                            if (!point) return;
+                            void act(async () => {
+                              const result = await post<{
+                                deliveryFee: number;
+                                distanceM: number | null;
+                              }>(
+                                `/orders/${order.id}/delivery-location`,
+                                point,
+                              );
+                              toast(
+                                result.distanceM !== null
+                                  ? gps.priced
+                                      .replace(
+                                        '{km}',
+                                        (result.distanceM / 1000).toFixed(1),
+                                      )
+                                      .replace(
+                                        '{fee}',
+                                        formatMoney(result.deliveryFee),
+                                      )
+                                  : gps.saved,
+                              );
+                            });
+                          }}
+                        >
+                          📍 {gps.setPoint}
+                          {order.distanceM
+                            ? ` · ${(order.distanceM / 1000).toFixed(1)} km`
+                            : ''}
+                        </Button>
+                      )}
                       {!['DELIVERED', 'RETURNED'].includes(
                         order.deliveryStatus,
                       ) && (
@@ -599,7 +643,12 @@ export function DeliveryPage() {
         ))}
       </div>
       {tab === 'board' && <Board />}
-      {tab === 'zones' && <Zones />}
+      {tab === 'zones' && (
+        <>
+          <DeliveryPricingCard />
+          <Zones />
+        </>
+      )}
       {tab === 'report' && <Report />}
     </>
   );

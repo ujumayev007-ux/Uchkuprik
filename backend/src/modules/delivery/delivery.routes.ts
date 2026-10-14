@@ -1,3 +1,10 @@
+import {
+  applyDeliveryLocation,
+  deliveryPricingOf,
+  deliveryPricingSchema,
+  latitude,
+  longitude,
+} from './distance.js';
 import { issueOrderCode, verifyOrderCode } from '../orders/codes.js';
 import { loadOrderSettings } from '../orders/settings.js';
 import { telegramApi } from '../telegram/bot.js';
@@ -299,6 +306,9 @@ export function deliveryRouter(services: Services) {
           zones.find((zone) => zone.id === order.deliveryZoneId)?.name ?? null,
         address: order.deliveryAddress,
         landmark: order.deliveryLandmark,
+        lat: order.deliveryLat,
+        lng: order.deliveryLng,
+        distanceM: order.deliveryDistanceM,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         total: order.total,
@@ -360,6 +370,9 @@ export function deliveryRouter(services: Services) {
         deliveryStatus: order.deliveryStatus,
         address: order.deliveryAddress,
         landmark: order.deliveryLandmark,
+        lat: order.deliveryLat,
+        lng: order.deliveryLng,
+        distanceM: order.deliveryDistanceM,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         note: order.note,
@@ -388,6 +401,103 @@ export function deliveryRouter(services: Services) {
     });
     await notify(id);
   };
+
+  // --- GPS and distance pricing ------------------------------------------------
+
+  router.get('/delivery/pricing', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const { branchId } = parse(
+      z.object({ branchId: z.uuid().optional() }),
+      req.query,
+    );
+    const branch = await resolveBranch(db, auth, branchId);
+    const profile = await db.tenantProfile.findUnique({
+      where: { tenantId: auth.tenantId },
+    });
+    res.json({
+      pricing: deliveryPricingOf(profile?.deliveryPricing),
+      branch: { id: branch.id, lat: branch.lat, lng: branch.lng },
+    });
+  });
+
+  router.put('/delivery/pricing', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(
+      z.object({
+        pricing: deliveryPricingSchema,
+        branch: z
+          .object({
+            id: z.uuid(),
+            lat: latitude.nullable(),
+            lng: longitude.nullable(),
+          })
+          .optional(),
+      }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      if (input.branch) {
+        const branch = await resolveBranch(tx, auth, input.branch.id);
+        await tx.branch.update({
+          where: { id: branch.id },
+          data: { lat: input.branch.lat, lng: input.branch.lng },
+        });
+      }
+      await tx.tenantProfile.upsert({
+        where: { tenantId: auth.tenantId },
+        update: { deliveryPricing: input.pricing },
+        create: { tenantId: auth.tenantId, deliveryPricing: input.pricing },
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'delivery.pricing.update',
+        data: { pricing: input.pricing, branch: input.branch ?? null },
+      });
+    });
+    res.json({ ok: true });
+  });
+
+  // Customer point (GPS or map link) on a delivery order; recomputes the fee.
+  router.post(
+    '/orders/:id/delivery-location',
+    requireAuth(),
+    async (req, res) => {
+      const auth = getAuth(res);
+      if (
+        !auth.permissions.has('delivery.manage') &&
+        !auth.permissions.has('orders.create')
+      )
+        throw errors.forbidden();
+      const id = parse(z.uuid(), req.params.id);
+      const point = parse(
+        z.object({ lat: latitude, lng: longitude }),
+        req.body,
+      );
+      await db.$transaction(async (tx) => {
+        const order = await lockOrder(tx, auth.tenantId, id);
+        await resolveBranch(tx, auth, order.branchId);
+        if (!editableStatuses.includes(order.status))
+          throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+        await applyDeliveryLocation(tx, auth.tenantId, id, point);
+        await addEvent(
+          tx,
+          auth.tenantId,
+          id,
+          auth.userId,
+          'delivery_location',
+          {},
+        );
+      });
+      await notify(id);
+      const fresh = await db.order.findUniqueOrThrow({ where: { id } });
+      res.json({
+        deliveryFee: fresh.deliveryFee,
+        distanceM: fresh.deliveryDistanceM,
+        total: fresh.total,
+      });
+    },
+  );
 
   // --- Two-stage verification (cashier -> courier -> customer) ----------------
 

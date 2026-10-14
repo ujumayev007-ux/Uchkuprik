@@ -74,6 +74,9 @@ model Branch {
   code         String
   name         String
   address      String?
+  // Kitchen location for distance-based delivery pricing.
+  lat          Float?
+  lng          Float?
   phone        String?
   timezone     String    @default("Asia/Tashkent")
   currency     String    @default("UZS")
@@ -301,6 +304,8 @@ model TenantProfile {
   loyaltyRules            Json     @default("{}")
   // Expenses above this amount need approval (null = no limit).
   expenseApprovalLimit    Int?
+  // Distance pricing: base fee, per-km fee, minimum, max distance, free-from subtotal.
+  deliveryPricing         Json     @default("{}")
   // Configurable labour rules (review for the applicable jurisdiction).
   overtimeAfterMinutes    Int      @default(480)
   overtimeMultiplierBp    Int      @default(15000)
@@ -634,6 +639,10 @@ model Order {
   deliveryAddress    String?
   // Address details / landmark ("mo‘ljal"), printed only on the courier handoff sheet.
   deliveryLandmark   String?
+  // Customer point (GPS / map link) and the distance used for the fee.
+  deliveryLat        Float?
+  deliveryLng        Float?
+  deliveryDistanceM  Int?
   note               String?
   subtotal           Int             @default(0)
   // Discount rule: percentage (basis points) and/or fixed amount, recomputed on change.

@@ -14,6 +14,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { parsePoint } from './DeliveryPricingCard';
 import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import {
@@ -272,6 +273,7 @@ export function PosPage() {
     phone: '',
     address: '',
     landmark: '',
+    point: '',
   });
   const [paying, setPaying] = useState<Order | null>(null);
   // Optional loyalty customer and promo code applied right after the order is created.
@@ -365,7 +367,13 @@ export function PosPage() {
         })),
       });
       setCart([]);
-      setCustomer({ name: '', phone: '', address: '', landmark: '' });
+      setCustomer({
+        name: '',
+        phone: '',
+        address: '',
+        landmark: '',
+        point: '',
+      });
       let current = order;
       const loyaltyPhone =
         extras.phone.trim() ||
@@ -382,6 +390,8 @@ export function PosPage() {
           });
         if (type === 'DELIVERY' && zoneId)
           await post(`/orders/${order.id}/delivery-zone`, { zoneId });
+        const point = type === 'DELIVERY' ? parsePoint(customer.point) : null;
+        if (point) await post(`/orders/${order.id}/delivery-location`, point);
       } catch (caught) {
         // The order exists; the cashier can still take payment without the extra.
         toast(
@@ -547,6 +557,14 @@ export function PosPage() {
               value={customer.landmark}
               onChange={(e) =>
                 setCustomer({ ...customer, landmark: e.target.value })
+              }
+            />
+            <TextField
+              label={t.deliveryGps.customerPoint}
+              hint={t.deliveryGps.pointHint}
+              value={customer.point}
+              onChange={(e) =>
+                setCustomer({ ...customer, point: e.target.value })
               }
             />
             {(zones.data ?? []).some((zone) => zone.isActive) && (

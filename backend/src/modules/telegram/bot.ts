@@ -1,3 +1,5 @@
+import { AppError } from '../../http/errors.js';
+import { applyDeliveryLocation, parsePoint } from '../delivery/distance.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -507,80 +509,98 @@ export async function handleTelegramUpdate(
     });
     if (existing) return;
     const now = services.now?.() ?? new Date();
-    const order = await db.$transaction(async (tx) => {
-      const priced = await priceItems(
-        tx,
-        tenantId,
-        branchId,
-        lines.map((line) => ({
-          variantId: line.v,
-          quantity: line.q,
-          modifierOptionIds: [],
-          note: null,
-        })),
-      );
-      const date = businessDate(now, branch.timezone);
-      const number = await nextOrderNumber(tx, branchId, date);
-      const subtotal = priced.reduce((sum, item) => sum + item.lineTotal, 0);
-      const customer = await upsertCustomer(
-        tx,
-        tenantId,
-        chat.phone!,
-        chat.name ?? 'Telegram',
-      );
-      const created = await tx.order.create({
-        data: {
+    let order;
+    try {
+      order = await placeTx();
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'OUT_OF_RANGE')
+        return send(
+          '😔 Afsuski, bu manzil yetkazib berish masofasidan tashqarida. Olib ketishni tanlashingiz mumkin.',
+          MAIN_KEYBOARD,
+        );
+      throw error;
+    }
+    async function placeTx() {
+      return db.$transaction(async (tx) => {
+        const priced = await priceItems(
+          tx,
           tenantId,
           branchId,
-          customerId: customer?.id ?? null,
-          number,
-          businessDate: date,
-          type: state.type!,
-          channel: 'TELEGRAM',
-          status: 'PENDING',
-          customerName: chat.name ?? null,
-          customerPhone: chat.phone,
-          deliveryAddress:
-            state.type === 'DELIVERY' ? (state.address ?? null) : null,
-          subtotal,
-          ...computeTotals({
+          lines.map((line) => ({
+            variantId: line.v,
+            quantity: line.q,
+            modifierOptionIds: [],
+            note: null,
+          })),
+        );
+        const date = businessDate(now, branch.timezone);
+        const number = await nextOrderNumber(tx, branchId, date);
+        const subtotal = priced.reduce((sum, item) => sum + item.lineTotal, 0);
+        const customer = await upsertCustomer(
+          tx,
+          tenantId,
+          chat.phone!,
+          chat.name ?? 'Telegram',
+        );
+        const created = await tx.order.create({
+          data: {
+            tenantId,
+            branchId,
+            customerId: customer?.id ?? null,
+            number,
+            businessDate: date,
+            type: state.type!,
+            channel: 'TELEGRAM',
+            status: 'PENDING',
+            customerName: chat.name ?? null,
+            customerPhone: chat.phone,
+            deliveryAddress:
+              state.type === 'DELIVERY' ? (state.address ?? null) : null,
             subtotal,
-            discountBp: 0,
-            discountFixed: 0,
-            serviceChargeBp: 0,
-          }),
-          idempotencyKey,
-          telegramChatId: chatId,
-        },
+            ...computeTotals({
+              subtotal,
+              discountBp: 0,
+              discountFixed: 0,
+              serviceChargeBp: 0,
+            }),
+            idempotencyKey,
+            telegramChatId: chatId,
+          },
+        });
+        await tx.orderItem.createMany({
+          data: priced.map((item) =>
+            itemCreateData(tenantId, created.id, null, item),
+          ),
+        });
+        const point =
+          state.type === 'DELIVERY' && state.address
+            ? parsePoint(state.address)
+            : null;
+        if (point) await applyDeliveryLocation(tx, tenantId, created.id, point);
+        await addEvent(tx, tenantId, created.id, null, 'created', {
+          status: 'PENDING',
+          channel: 'TELEGRAM',
+          items: priced.length,
+        });
+        await emitWebhook(tx, tenantId, 'order.online_created', {
+          id: created.id,
+          number: created.number,
+          branchId,
+          total: created.total,
+        });
+        await notifyOnlineOrder(tx, {
+          tenantId,
+          branchId,
+          number: created.number,
+          total: created.total,
+        });
+        await tx.telegramChat.update({
+          where: { id: chat.id },
+          data: { state: { step: 'idle', cart: [] }, lastOrderAt: now },
+        });
+        return tx.order.findUniqueOrThrow({ where: { id: created.id } });
       });
-      await tx.orderItem.createMany({
-        data: priced.map((item) =>
-          itemCreateData(tenantId, created.id, null, item),
-        ),
-      });
-      await addEvent(tx, tenantId, created.id, null, 'created', {
-        status: 'PENDING',
-        channel: 'TELEGRAM',
-        items: priced.length,
-      });
-      await emitWebhook(tx, tenantId, 'order.online_created', {
-        id: created.id,
-        number: created.number,
-        branchId,
-        total: created.total,
-      });
-      await notifyOnlineOrder(tx, {
-        tenantId,
-        branchId,
-        number: created.number,
-        total: created.total,
-      });
-      await tx.telegramChat.update({
-        where: { id: chat.id },
-        data: { state: { step: 'idle', cart: [] }, lastOrderAt: now },
-      });
-      return created;
-    });
+    }
     services.events?.publish({
       type: 'order.changed',
       tenantId,
