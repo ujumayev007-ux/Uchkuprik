@@ -496,6 +496,17 @@ function signLicense(input, statusUrl) {
     hiddenMenus: Array.isArray(input.hiddenMenus)
       ? input.hiddenMenus.map(String).filter((item) => /^\/[a-z0-9/-]*$/.test(item))
       : [],
+    // Locked restaurant settings and permissions removed for everyone (SUPER_OWNER).
+    settings: {
+      orders: Object.fromEntries(
+        Object.entries(input.settings?.orders ?? {}).filter(
+          ([key, value]) => /^[a-zA-Z]{1,40}$/.test(key) && typeof value === 'boolean',
+        ),
+      ),
+    },
+    deniedPermissions: Array.isArray(input.deniedPermissions)
+      ? input.deniedPermissions.map(String).filter((key) => /^[a-z]+\.[a-z.]+$/.test(key))
+      : [],
   };
   const body = Buffer.from(JSON.stringify(payload));
   const signature = crypto.sign(
@@ -590,6 +601,8 @@ function vendorView(state) {
         maxUsers: customer.maxUsers ?? null,
         maxDevices: customer.maxDevices ?? null,
         hiddenMenus: customer.hiddenMenus ?? [],
+        settings: customer.settings ?? { orders: {} },
+        deniedPermissions: customer.deniedPermissions ?? [],
         key: customer.key ?? null,
       }))
       .sort((a, b) => String(a.customer).localeCompare(String(b.customer))),
@@ -671,6 +684,8 @@ ipcMain.handle('vendor:update', async (_event, installId, changes) => {
       ...customer,
       features: changes.features ?? customer.features,
       hiddenMenus: changes.hiddenMenus ?? customer.hiddenMenus,
+      settings: changes.settings ?? customer.settings,
+      deniedPermissions: changes.deniedPermissions ?? customer.deniedPermissions,
       maxBranches: changes.maxBranches !== undefined ? changes.maxBranches : customer.maxBranches,
       maxUsers: changes.maxUsers !== undefined ? changes.maxUsers : customer.maxUsers,
       maxDevices: changes.maxDevices !== undefined ? changes.maxDevices : customer.maxDevices,

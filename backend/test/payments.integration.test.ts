@@ -5,7 +5,8 @@ import { createTenant, createTestContext, login, ORIGIN } from './helpers.js';
 const ctx = createTestContext();
 afterAll(() => ctx.close());
 const PAYME_KEY = 'paycom-test-key-1234';
-const run = Date.now().toString().slice(-9);
+// Never starts with 0: ids are compared as numbers by Click.
+const run = String(100_000_000 + (Date.now() % 900_000_000));
 const pm = (name: string) => `${name}-${run}`;
 const clickId = (n: number) => `${run}${n}`;
 const CLICK_SECRET = 'click-secret-key-5678';

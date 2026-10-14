@@ -1,4 +1,6 @@
 import { createPublicKey, verify } from 'node:crypto';
+import { setDeniedPermissions } from '../auth/permissions.js';
+import { setLockedOrderSettings } from '../orders/settings.js';
 import type { Services } from '../../context.js';
 import {
   planFeatures,
@@ -31,6 +33,10 @@ export type LicensePayload = {
   statusUrl?: string;
   // Menu entries (paths) the vendor switched off for this customer.
   hiddenMenus?: string[];
+  // Settings the vendor fixed (restaurant admins cannot change them).
+  settings?: { orders?: Record<string, boolean> };
+  // Permissions removed from every user of this install.
+  deniedPermissions?: string[];
 };
 
 export type LicenseStatus = {
@@ -134,6 +140,10 @@ export async function licenseStatus(
     };
     if (row?.key && daysLeft > 0) value.status = 'TRIAL';
   }
+  // Vendor locks and permission switches follow the current licence.
+  const applied = payload && payload.installId === installId ? payload : null;
+  setLockedOrderSettings(applied?.settings?.orders ?? {});
+  setDeniedPermissions(applied?.deniedPermissions ?? []);
   // The vendor blocked this install remotely (e.g. unpaid month).
   if (row?.remoteBlocked) value.status = 'BLOCKED';
   cache = { at: now.getTime(), value };
@@ -242,7 +252,8 @@ export async function syncLicense(services: Services) {
 
 export function startLicenseSync(
   services: Services,
-  intervalMs = 3 * 60 * 60_000,
+  // Vendor changes reach installs within minutes.
+  intervalMs = 10 * 60_000,
 ) {
   const tick = () =>
     void syncLicense(services).catch(() =>

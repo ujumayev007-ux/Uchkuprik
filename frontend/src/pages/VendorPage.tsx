@@ -30,6 +30,8 @@ type Customer = {
   maxUsers: number | null;
   maxDevices: number | null;
   hiddenMenus: string[];
+  settings?: { orders?: Record<string, boolean> };
+  deniedPermissions?: string[];
   key: string | null;
 };
 type VendorState = {
@@ -55,7 +57,9 @@ export type VendorBridge = AlertsBridge &
     ) => Promise<{ key: string; expiresAt: string } & Publish>;
     update: (
       installId: string,
-      changes: CustomerSettings,
+      changes: CustomerSettings & {
+        settings: { orders: Record<string, boolean> };
+      },
     ) => Promise<{ key: string } & Publish>;
     block: (installId: string, blocked: boolean) => Promise<Publish>;
     publishUpdate: (
@@ -465,6 +469,8 @@ export function VendorPage() {
           initial={{
             features: configuring.features,
             hiddenMenus: configuring.hiddenMenus ?? [],
+            lockedOrders: configuring.settings?.orders ?? {},
+            deniedPermissions: configuring.deniedPermissions ?? [],
             maxBranches: configuring.maxBranches,
             maxUsers: configuring.maxUsers,
             maxDevices: configuring.maxDevices,
@@ -472,10 +478,10 @@ export function VendorPage() {
           onClose={() => setConfiguring(null)}
           onSave={(settings) =>
             run(async () => {
-              const result = await vendor.update(
-                configuring.installId,
-                settings,
-              );
+              const result = await vendor.update(configuring.installId, {
+                ...settings,
+                settings: { orders: settings.lockedOrders },
+              });
               setLastKey(result.key);
               report(result, v.settingsSaved);
               setConfiguring(null);

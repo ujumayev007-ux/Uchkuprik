@@ -1879,6 +1879,15 @@ export const uz = {
     sendManually:
       'Kalitni mijozga o‘zingiz yuboring (masofaviy boshqaruv yoqilmagan).',
     configure: 'Sozlash',
+    locksTitle: 'Buyurtma jarayoni (qulflash)',
+    locksHint:
+      '“Restoran o‘zi tanlaydi” — admin o‘zgartira oladi. 🔒 tanlansa, sizning qiymatingiz majburiy bo‘ladi va restoran admini uni o‘zgartira olmaydi.',
+    lockFree: 'Restoran o‘zi tanlaydi',
+    lockOn: 'Majburan yoqilgan',
+    lockOff: 'Majburan o‘chirilgan',
+    permsTitle: 'Xodim huquqlari',
+    permsHint:
+      'Belgisi olib tashlangan huquq bu restoranda hech kimda (egasida ham) ishlamaydi — tugma va bo‘limlar yo‘qoladi, server ham rad etadi. Ma’lumotlar o‘chmaydi.',
     settingsTitle: 'Mijoz sozlamalari',
     settingsHint:
       'Belgilanganlar mijoz dasturida ko‘rinadi va ishlaydi. Muddat o‘zgarmaydi. O‘zgarish internet orqali yetib boradi.',

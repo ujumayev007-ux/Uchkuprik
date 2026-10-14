@@ -14,6 +14,7 @@ import {
   isPermission,
   privilegedPermissions,
   type Permission,
+  isDenied,
 } from './permissions.js';
 
 const MINUTE = 60_000;
@@ -191,6 +192,9 @@ export async function authenticate(
     for (const key of role.permissions)
       if (isPermission(key)) permissions.add(key);
   }
+  // Vendor-level switches win over roles (SUPER_OWNER control).
+  for (const key of [...permissions])
+    if (isDenied(key)) permissions.delete(key);
   const isPrivileged = privilegedPermissions.some((key) =>
     permissions.has(key),
   );

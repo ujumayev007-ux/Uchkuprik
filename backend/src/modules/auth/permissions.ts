@@ -50,6 +50,23 @@ export const permissionCatalog = {
 export type Permission = keyof typeof permissionCatalog;
 export const allPermissions = Object.keys(permissionCatalog) as Permission[];
 
+/**
+ * Permissions the vendor (SUPER_OWNER) switched off for this whole install through
+ * the licence. They are removed from every user, owners included.
+ */
+let denied = new Set<string>();
+export function setDeniedPermissions(keys: unknown) {
+  denied = new Set(
+    Array.isArray(keys) ? keys.filter((key) => typeof key === 'string') : [],
+  );
+}
+export function isDenied(key: string) {
+  return denied.has(key);
+}
+export function deniedPermissions() {
+  return [...denied];
+}
+
 export function isPermission(value: string): value is Permission {
   return Object.hasOwn(permissionCatalog, value);
 }

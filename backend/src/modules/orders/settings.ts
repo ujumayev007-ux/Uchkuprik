@@ -35,12 +35,19 @@ export function orderSettingsOf(value: unknown): OrderSettings {
 let lockedOrderSettings: Partial<OrderSettings> = {};
 
 export function setLockedOrderSettings(value: unknown) {
-  const parsed = orderSettingsSchema.partial().safeParse(value ?? {});
-  lockedOrderSettings = parsed.success
-    ? Object.fromEntries(
-        Object.entries(parsed.data).filter(([, v]) => v !== undefined),
-      )
-    : {};
+  // Only keys the licence actually sets are locked (defaults must not lock).
+  const keys = Object.keys(
+    orderSettingsSchema.shape,
+  ) as (keyof OrderSettings)[];
+  const source =
+    value && typeof value === 'object'
+      ? (value as Record<string, unknown>)
+      : {};
+  lockedOrderSettings = Object.fromEntries(
+    keys
+      .filter((key) => typeof source[key] === 'boolean')
+      .map((key) => [key, source[key] as boolean]),
+  );
 }
 
 export function lockedOrderSettingKeys() {
