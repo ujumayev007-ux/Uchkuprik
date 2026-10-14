@@ -1,8 +1,11 @@
 import { Socket } from 'node:net';
 import type { Services } from '../context.js';
+import { loadOrderSettings } from '../modules/orders/settings.js';
 import { kitchenTicket } from './escpos.js';
 
 const MAX_ATTEMPTS = 6;
+// Failed attempts before a copy of the ticket goes to the fallback printer.
+const FALLBACK_AFTER = 2;
 const typeLabels = {
   DINE_IN: 'Zalda',
   TAKEAWAY: 'Olib ketish',
@@ -31,9 +34,11 @@ export function sendToPrinter(
 }
 
 /**
- * Queues kitchen tickets for items of a placed order that were not printed yet. Each
- * active kitchen printer of the branch receives the items of its station; printers
- * without a station receive every item. Items are marked so they print only once.
+ * Queues kitchen tickets for a placed order: new items that were not printed yet and
+ * items cancelled after they were printed ("DIQQAT! CHEK YANGILANDI"). Each active
+ * kitchen printer of the branch receives the items of its station; printers without
+ * a station receive every item. Items are marked inside the same transaction, so a
+ * ticket is queued exactly once even when several panels trigger printing at once.
  */
 export async function enqueueKitchenTickets(
   services: Services,
@@ -47,16 +52,84 @@ export async function enqueueKitchenTickets(
       include: {
         table: { select: { name: true } },
         branch: { select: { timezone: true } },
-        items: { where: { status: 'ACTIVE', kitchenPrintedAt: null } },
+        items: {
+          where: {
+            OR: [
+              { status: 'ACTIVE', kitchenPrintedAt: null },
+              {
+                status: 'CANCELLED',
+                kitchenPrintedAt: { not: null },
+                cancelPrintedAt: null,
+              },
+            ],
+          },
+        },
       },
     });
     if (
       !order ||
       order.status === 'DRAFT' ||
-      order.status === 'CANCELLED' ||
+      order.status === 'PENDING' ||
       order.items.length === 0
     )
       return;
+    const fresh =
+      order.status === 'CANCELLED'
+        ? []
+        : order.items.filter((item) => item.status === 'ACTIVE');
+    // A cancelled order still tells the kitchen to stop (all printed items removed).
+    const removed = order.items.filter((item) => item.status === 'CANCELLED');
+    if (order.status === 'CANCELLED' && removed.length === 0) return;
+    const printedBefore =
+      removed.length > 0 ||
+      (await tx.orderItem.count({
+        where: { orderId, kitchenPrintedAt: { not: null } },
+      })) > 0;
+    const settings = await loadOrderSettings(tx, order.tenantId);
+    const people = await tx.user.findMany({
+      where: {
+        tenantId: order.tenantId,
+        id: {
+          in: [
+            order.createdById,
+            ...order.items.map((item) => item.createdById),
+          ].filter((id): id is string => !!id),
+        },
+      },
+      select: { id: true, displayName: true },
+    });
+    const nameOf = (id: string | null) =>
+      people.find((person) => person.id === id)?.displayName ?? null;
+    const lastChange = await tx.orderEvent.findFirst({
+      where: { orderId },
+      orderBy: { id: 'desc' },
+      select: { actorId: true, createdAt: true },
+    });
+    const changedBy =
+      lastChange?.actorId &&
+      !people.some((person) => person.id === lastChange.actorId)
+        ? ((
+            await tx.user.findFirst({
+              where: { id: lastChange.actorId, tenantId: order.tenantId },
+              select: { displayName: true },
+            })
+          )?.displayName ?? null)
+        : nameOf(lastChange?.actorId ?? null);
+    const toLine = (item: (typeof order.items)[number]) => ({
+      quantity: item.quantity,
+      name: `${item.productName}${item.variantName === 'Standart' ? '' : ` (${item.variantName})`}`,
+      modifiers: [
+        ...(item.modifiers as { name: string }[]).map(
+          (modifier) => modifier.name,
+        ),
+        // Set contents are listed for the cook.
+        ...(item.components as { name: string; quantity: number }[]).map(
+          (part) => `${part.quantity}× ${part.name}`,
+        ),
+      ],
+      note: item.note,
+      ...(settings.kitchenPrices ? { price: item.lineTotal } : {}),
+    });
     const printers = await tx.printer.findMany({
       where: {
         tenantId: order.tenantId,
@@ -66,20 +139,29 @@ export async function enqueueKitchenTickets(
       },
       include: { station: true },
     });
-    for (const printer of printers) {
-      const items = order.items.filter(
+    const forPrinter = (
+      printer: (typeof printers)[number],
+      items: typeof order.items,
+    ) =>
+      items.filter(
         (item) =>
           !printer.stationId ||
           !item.stationId ||
           item.stationId === printer.stationId,
       );
-      if (items.length === 0) continue;
+    const now = services.now?.() ?? new Date();
+    for (const printer of printers) {
+      const items = forPrinter(printer, fresh);
+      const cancelled = forPrinter(printer, removed);
+      if (items.length === 0 && cancelled.length === 0) continue;
+      const update = printedBefore;
       await tx.printJob.create({
         data: {
           tenantId: order.tenantId,
           printerId: printer.id,
           orderId: order.id,
           kind: 'KITCHEN',
+          purpose: update ? 'UPDATE' : 'NEW',
           payload: kitchenTicket({
             stationName: printer.station?.name ?? null,
             number: order.number,
@@ -89,28 +171,28 @@ export async function enqueueKitchenTickets(
             priority: order.priority,
             createdAt: order.placedAt ?? order.createdAt,
             timezone: order.branch.timezone,
-            items: items.map((item) => ({
-              quantity: item.quantity,
-              name: `${item.productName}${item.variantName === 'Standart' ? '' : ` (${item.variantName})`}`,
-              modifiers: [
-                ...(item.modifiers as { name: string }[]).map(
-                  (modifier) => modifier.name,
-                ),
-                // Set contents are listed for the cook.
-                ...(
-                  item.components as { name: string; quantity: number }[]
-                ).map((part) => `${part.quantity}× ${part.name}`),
-              ],
-              note: item.note,
-            })),
+            items: items.map(toLine),
+            cancelled: cancelled.map(toLine),
+            delivery: order.type === 'DELIVERY',
+            update,
+            version: order.version,
+            waiter: nameOf(order.createdById),
+            changedBy: update ? changedBy : null,
+            changedAt: update ? (lastChange?.createdAt ?? now) : now,
           }),
         },
       });
     }
-    await tx.orderItem.updateMany({
-      where: { id: { in: order.items.map((item) => item.id) } },
-      data: { kitchenPrintedAt: services.now?.() ?? new Date() },
-    });
+    if (fresh.length)
+      await tx.orderItem.updateMany({
+        where: { id: { in: fresh.map((item) => item.id) } },
+        data: { kitchenPrintedAt: now },
+      });
+    if (removed.length)
+      await tx.orderItem.updateMany({
+        where: { id: { in: removed.map((item) => item.id) } },
+        data: { cancelPrintedAt: now },
+      });
   });
 }
 
@@ -156,6 +238,31 @@ export async function processPrintJobs(services: Services, limit = 20) {
       sent++;
     } catch (error) {
       const attempts = job.attempts + 1;
+      if (
+        attempts === FALLBACK_AFTER &&
+        job.printer.fallbackPrinterId &&
+        !job.fallbackFromId
+      ) {
+        const fallback = await db.printer.findFirst({
+          where: {
+            id: job.printer.fallbackPrinterId,
+            tenantId: job.tenantId,
+            isActive: true,
+          },
+        });
+        if (fallback)
+          await db.printJob.create({
+            data: {
+              tenantId: job.tenantId,
+              printerId: fallback.id,
+              orderId: job.orderId,
+              kind: job.kind,
+              purpose: job.purpose,
+              payload: job.payload,
+              fallbackFromId: job.id,
+            },
+          });
+      }
       await db.printJob.update({
         where: { id: job.id },
         data: {

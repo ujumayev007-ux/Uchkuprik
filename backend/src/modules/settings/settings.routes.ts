@@ -1,3 +1,9 @@
+import {
+  lockedOrderSettingKeys,
+  loadOrderSettings,
+  orderSettingsOf,
+  orderSettingsSchema,
+} from '../orders/settings.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -141,6 +147,52 @@ export function settingsRouter(services: Services) {
         });
       });
       res.json({ ok: true });
+    },
+  );
+
+  // Order workflow; keys locked by the vendor (licence) are reported and not editable.
+  router.get('/settings/orders', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    if (auth.tenantKind !== 'BUSINESS') throw errors.forbidden();
+    res.json({
+      settings: await loadOrderSettings(db, auth.tenantId),
+      locked: lockedOrderSettingKeys(),
+    });
+  });
+
+  router.put(
+    '/settings/orders',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(orderSettingsSchema, req.body);
+      const locked = lockedOrderSettingKeys();
+      await db.$transaction(async (tx) => {
+        const profile = await tx.tenantProfile.findUnique({
+          where: { tenantId: auth.tenantId },
+        });
+        const current = orderSettingsOf(profile?.orderSettings);
+        // Locked keys keep their stored value; the vendor's value applies anyway.
+        const next = { ...input };
+        for (const key of locked)
+          (next as Record<string, unknown>)[key] = current[key];
+        await tx.tenantProfile.upsert({
+          where: { tenantId: auth.tenantId },
+          update: { orderSettings: next },
+          create: { tenantId: auth.tenantId, orderSettings: next },
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'settings.orders.update',
+          data: { before: current, after: next },
+        });
+      });
+      res.json({
+        settings: await loadOrderSettings(db, auth.tenantId),
+        locked,
+      });
     },
   );
 

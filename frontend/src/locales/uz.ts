@@ -505,7 +505,7 @@ export const uz = {
     time: 'Vaqti',
     statuses: {
       DRAFT: 'Qoralama',
-      PENDING: 'Tasdiqlash kutilmoqda',
+      PENDING: 'Kassir tasdig‘i kutilmoqda',
       PLACED: 'Qabul qilindi',
       PREPARING: 'Tayyorlanmoqda',
       READY: 'Tayyor',
@@ -655,8 +655,36 @@ export const uz = {
     statuses: { PENDING: 'Kutilmoqda', SENT: 'Yuborildi', FAILED: 'Xato' },
     attempts: 'Urinishlar',
     retry: 'Qayta yuborish',
+    fallback: 'Zaxira printer',
+    fallbackHint:
+      'Bu printer 2 marta ishlamasa, chek bir marta zaxira printerga chiqadi.',
+    noFallback: 'Zaxira yo‘q',
+    updateTicket: 'Yangilangan chek',
+    fallbackCopy: 'Zaxira printerga nusxa',
     agentNote:
       'Printerlar API serveri ulana oladigan mahalliy tarmoqda bo‘lishi kerak. Bulutli o‘rnatishda mahalliy chop etish agenti keyingi bosqichda qo‘shiladi.',
+  },
+  orderSettings: {
+    title: 'Buyurtma jarayoni',
+    hint: 'Buyurtma oshxonaga qanday yetib borishi va kim nimani o‘zgartira olishi. 🔒 belgisi bor sozlamalarni dastur sotuvchisi qulflagan.',
+    locked: 'Sotuvchi tomonidan qulflangan',
+    labels: {
+      requireCashierConfirm:
+        'Ofitsiant buyurtmasi avval kassir tasdig‘idan o‘tsin',
+      kitchenPrices: 'Oshxona chekida narxlar ko‘rinsin',
+      waiterCanEditPlaced: 'Ofitsiant yuborilgan buyurtmani o‘zgartira olsin',
+      cancelPreparingNeedsAck:
+        'Tayyorlanayotgan taomni bekor qilish uchun oshxona roziligi kerak',
+    },
+    hints: {
+      requireCashierConfirm:
+        'Yoqilsa, ofitsiant yuborgan buyurtma kassada “Tasdiqlash kutilmoqda” ro‘yxatiga tushadi va kassir tasdiqlagach oshxonaga chop etiladi.',
+      kitchenPrices: 'Odatda oshxona chekida narx chiqmaydi.',
+      waiterCanEditPlaced:
+        'O‘chirilsa, oshxonaga yuborilgan buyurtmani faqat kassir yoki admin o‘zgartiradi.',
+      cancelPreparingNeedsAck:
+        'Oshxona “tayyorlanmoqda” deb belgilagan taomni bekor qilishda oshpaz tasdiqlaydi yoki menejer ruxsat beradi.',
+    },
   },
   live: {
     online: 'Jonli ulanish',

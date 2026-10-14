@@ -14,6 +14,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { api, patch } from '../lib/api';
+import { OrderSettingsCard } from './OrderSettingsCard';
 
 type Settings = {
   name: string;
@@ -269,6 +270,7 @@ export function SettingsPage() {
           </div>
         )}
       </form>
+      <OrderSettingsCard editable={editable} />
     </>
   );
 }

@@ -35,6 +35,8 @@ const printerInput = z.object({
   host: z.string().trim().refine(isAllowedPrinterHost),
   port: z.number().int().min(9100).max(9109).default(9100),
   isActive: z.boolean().default(true),
+  // Kitchen tickets that keep failing are copied once to this printer.
+  fallbackPrinterId: z.uuid().nullable().optional(),
 });
 
 export function printersRouter(services: Services) {
@@ -55,11 +57,21 @@ export function printersRouter(services: Services) {
     });
     res.json({
       printers: printers.map(
-        ({ id, name, kind, stationId, host, port, isActive }) => ({
+        ({
           id,
           name,
           kind,
           stationId,
+          host,
+          port,
+          isActive,
+          fallbackPrinterId,
+        }) => ({
+          id,
+          name,
+          kind,
+          stationId,
+          fallbackPrinterId,
           host,
           port,
           isActive,
@@ -78,7 +90,14 @@ export function printersRouter(services: Services) {
       });
       if (!station) throw errors.validation([{ path: 'stationId' }]);
     }
+    if (input.fallbackPrinterId) {
+      const fallback = await db.printer.findFirst({
+        where: { id: input.fallbackPrinterId, tenantId },
+      });
+      if (!fallback) throw errors.validation([{ path: 'fallbackPrinterId' }]);
+    }
     return {
+      fallbackPrinterId: input.fallbackPrinterId ?? null,
       branchId: input.branchId,
       name: input.name,
       kind: input.kind,
@@ -183,6 +202,8 @@ export function printersRouter(services: Services) {
         id: job.id,
         printer: job.printer.name,
         kind: job.kind,
+        purpose: job.purpose,
+        fallback: !!job.fallbackFromId,
         orderId: job.orderId,
         status: job.status,
         attempts: job.attempts,

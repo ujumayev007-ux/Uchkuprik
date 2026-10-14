@@ -37,6 +37,7 @@ import {
   syncKitchenStatus,
 } from './engine.js';
 import { completeOrder } from './complete.js';
+import { placementStatus } from './settings.js';
 
 const amount = z.number().int().min(1).max(1_000_000_000);
 const itemSchema = z.object({
@@ -324,6 +325,9 @@ export function ordersRouter(services: Services) {
             discountFixed: 0,
             serviceChargeBp,
           });
+          const placing = input.place
+            ? await placementStatus(tx, auth.tenantId, auth.permissions)
+            : 'DRAFT';
           const order = await tx.order.create({
             data: {
               tenantId: auth.tenantId,
@@ -332,8 +336,8 @@ export function ordersRouter(services: Services) {
               businessDate: date,
               type: input.type,
               channel: 'POS',
-              status: input.place ? 'PLACED' : 'DRAFT',
-              placedAt: input.place ? now() : null,
+              status: placing,
+              placedAt: placing === 'PLACED' ? now() : null,
               tableId,
               customerName: input.customerName ?? null,
               customerPhone: input.customerPhone ?? null,
@@ -631,17 +635,23 @@ export function ordersRouter(services: Services) {
       }
       if (to === 'COMPLETED')
         return completeOrder(tx, order, auth.userId, now());
+      // Cashier confirmation: staff without approval rights send the order to the
+      // cashier first; it reaches the kitchen only after approval.
+      const status =
+        to === 'PLACED'
+          ? await placementStatus(tx, auth.tenantId, auth.permissions)
+          : to;
       await tx.order.update({
         where: { id },
         data: {
-          status: to,
+          status,
           version: { increment: 1 },
           ...(to === 'PLACED' ? { placedAt: now() } : { completedAt: now() }),
         },
       });
       await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
         from: order.status,
-        to,
+        to: status,
       });
     });
   };

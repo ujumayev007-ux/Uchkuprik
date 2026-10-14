@@ -978,7 +978,11 @@ export function inventoryRouter(services: Services) {
             lineTotal: line.lineTotal,
           },
         });
-        lines.push({ stockItemId: stockItemId!, baseQuantity, lineTotal: line.lineTotal });
+        lines.push({
+          stockItemId: stockItemId!,
+          baseQuantity,
+          lineTotal: line.lineTotal,
+        });
       }
       for (const line of [...lines].sort((a, b) =>
         a.stockItemId.localeCompare(b.stockItemId),
@@ -1025,7 +1029,10 @@ export function inventoryRouter(services: Services) {
       });
       return { id: purchase.id, total };
     });
-    services.events?.publish({ type: 'inventory.changed', tenantId: auth.tenantId });
+    services.events?.publish({
+      type: 'inventory.changed',
+      tenantId: auth.tenantId,
+    });
     res.status(201).json(result);
   });
 

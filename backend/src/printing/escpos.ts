@@ -72,36 +72,84 @@ export type KitchenTicket = {
   priority: number;
   createdAt: Date;
   timezone: string;
-  items: {
-    quantity: number;
-    name: string;
-    modifiers: string[];
-    note: string | null;
-  }[];
+  items: KitchenTicketItem[];
+  // Delivery orders get a prominent "! DOSTAVKA !" banner.
+  delivery?: boolean;
+  // Changed order: "DIQQAT! CHEK YANGILANDI", version and removed items.
+  update?: boolean;
+  version?: number;
+  waiter?: string | null;
+  changedBy?: string | null;
+  changedAt?: Date;
+  cancelled?: KitchenTicketItem[];
 };
 
+export type KitchenTicketItem = {
+  quantity: number;
+  name: string;
+  modifiers: string[];
+  note: string | null;
+  // Shown only when the restaurant enabled prices on kitchen tickets.
+  price?: number | null;
+};
+
+const money = (value: number) =>
+  value.toLocaleString('en-US').replace(/,/g, ' ');
+
 export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
-  const time = new Intl.DateTimeFormat('uz-UZ', {
-    timeZone: ticket.timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ticket.createdAt);
+  const clock = (date: Date) =>
+    new Intl.DateTimeFormat('uz-UZ', {
+      timeZone: ticket.timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  const time = clock(ticket.createdAt);
   const doc = new EscPos().align('center');
+  if (ticket.delivery)
+    doc.size(2, 2).bold(true).line('! DOSTAVKA !').size(1, 1).bold(false);
+  if (ticket.update)
+    doc
+      .bold(true)
+      .rule('*')
+      .line('DIQQAT! CHEK YANGILANDI')
+      .rule('*')
+      .bold(false);
   if (ticket.stationName) doc.line(ticket.stationName.toUpperCase());
   if (ticket.priority > 0)
     doc.bold(true).line('*** SHOSHILINCH ***').bold(false);
   doc.size(2, 2).bold(true).line(`N ${ticket.number}`).size(1, 1).bold(false);
+  if (ticket.version && ticket.version > 1)
+    doc.line(`Versiya ${ticket.version}`);
   doc.line(
     `${ticket.typeLabel}${ticket.table ? ` - ${ticket.table}` : ''} - ${time}`,
   );
+  if (ticket.waiter) doc.line(`Ofitsiant: ${ticket.waiter}`);
+  if (ticket.update && ticket.changedAt)
+    doc.line(
+      `O'zgartirildi: ${clock(ticket.changedAt)}${ticket.changedBy ? ` - ${ticket.changedBy}` : ''}`,
+    );
   doc.align('left').rule();
+  if (ticket.cancelled?.length) {
+    doc.bold(true).line('OLIB TASHLANDI:').bold(false);
+    for (const item of ticket.cancelled) {
+      // Thermal printers have no strikethrough: the line is crossed with dashes.
+      const text = `${item.quantity} x ${item.name}`;
+      doc
+        .size(1, 2)
+        .line(`--${toPrintable(text).replace(/ /g, '-')}-- BEKOR`)
+        .size(1, 1);
+    }
+    doc.rule();
+    if (ticket.items.length)
+      doc.bold(true).line("YANGI / QO'SHILDI:").bold(false);
+  }
   for (const item of ticket.items) {
-    doc
-      .size(1, 2)
-      .bold(true)
-      .line(`${item.quantity} x ${item.name}`)
-      .size(1, 1)
-      .bold(false);
+    const text = `${item.quantity} x ${item.name}`;
+    doc.size(1, 2).bold(true);
+    if (item.price !== undefined && item.price !== null)
+      doc.pair(text, money(item.price));
+    else doc.line(text);
+    doc.size(1, 1).bold(false);
     for (const modifier of item.modifiers) doc.line(`   + ${modifier}`);
     if (item.note) doc.line(`   ! ${item.note}`);
   }

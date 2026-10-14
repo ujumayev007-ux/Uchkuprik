@@ -9,8 +9,9 @@ import { priceVariants } from '../menu/pricing.js';
  */
 
 export const transitions: Record<OrderStatus, OrderStatus[]> = {
-  DRAFT: ['PLACED', 'CANCELLED'],
-  // Online orders: approved by staff (PLACED) or rejected (CANCELLED).
+  // PENDING when the restaurant requires cashier confirmation of waiter orders.
+  DRAFT: ['PLACED', 'PENDING', 'CANCELLED'],
+  // Online/waiter orders: approved by staff (PLACED) or rejected (CANCELLED).
   PENDING: ['PLACED', 'CANCELLED'],
   PLACED: ['PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'],
   PREPARING: ['READY', 'SERVED', 'COMPLETED'],

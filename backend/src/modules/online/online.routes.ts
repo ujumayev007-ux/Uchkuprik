@@ -494,6 +494,12 @@ export function onlineRouter(services: Services) {
       const to = approve ? 'PLACED' : 'CANCELLED';
       if (order.status !== 'PENDING')
         throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      // Staff orders waiting for cashier confirmation are approved by the cashier.
+      if (
+        (order.channel === 'POS' || order.channel === 'WAITER') &&
+        !auth.permissions.has('payments.accept')
+      )
+        throw errors.forbidden();
       assertTransition(order.status, to);
       const updated = await tx.order.update({
         where: { id },
@@ -501,7 +507,8 @@ export function onlineRouter(services: Services) {
           ? {
               status: 'PLACED',
               placedAt: now(),
-              createdById: auth.userId,
+              // Waiter orders keep their waiter; online orders get the approver.
+              createdById: order.createdById ?? auth.userId,
               version: { increment: 1 },
             }
           : {

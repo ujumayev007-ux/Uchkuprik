@@ -25,6 +25,7 @@ type Printer = {
   name: string;
   kind: 'RECEIPT' | 'KITCHEN';
   stationId: string | null;
+  fallbackPrinterId: string | null;
   host: string;
   port: number;
   isActive: boolean;
@@ -33,6 +34,8 @@ type Job = {
   id: string;
   printer: string;
   kind: string;
+  purpose: string;
+  fallback: boolean;
   status: 'PENDING' | 'SENT' | 'FAILED';
   attempts: number;
   lastError: string | null;
@@ -42,10 +45,12 @@ type Job = {
 function PrinterForm({
   printer,
   branchId,
+  others,
   onDone,
 }: {
   printer: Printer | null;
   branchId: string;
+  others: Printer[];
   onDone: () => void;
 }) {
   const stations = useStations();
@@ -53,6 +58,7 @@ function PrinterForm({
     name: printer?.name ?? '',
     kind: printer?.kind ?? ('KITCHEN' as const),
     stationId: printer?.stationId ?? '',
+    fallbackPrinterId: printer?.fallbackPrinterId ?? '',
     host: printer?.host ?? '',
     port: printer?.port ?? 9100,
     isActive: printer?.isActive ?? true,
@@ -66,7 +72,12 @@ function PrinterForm({
         event.preventDefault();
         setBusy(true);
         setError(null);
-        const body = { ...form, branchId, stationId: form.stationId || null };
+        const body = {
+          ...form,
+          branchId,
+          stationId: form.stationId || null,
+          fallbackPrinterId: form.fallbackPrinterId || null,
+        };
         try {
           if (printer) await patch(`/printers/${printer.id}`, body);
           else await post('/printers', body);
@@ -109,6 +120,23 @@ function PrinterForm({
             ))}
           </SelectField>
         )}
+        <SelectField
+          label={t.printers.fallback}
+          hint={t.printers.fallbackHint}
+          value={form.fallbackPrinterId}
+          onChange={(e) =>
+            setForm({ ...form, fallbackPrinterId: e.target.value })
+          }
+        >
+          <option value="">{t.printers.noFallback}</option>
+          {others
+            .filter((other) => other.id !== printer?.id)
+            .map((other) => (
+              <option key={other.id} value={other.id}>
+                {other.name}
+              </option>
+            ))}
+        </SelectField>
         <TextField
           label={t.printers.host}
           hint={t.printers.hostHint}
@@ -275,7 +303,19 @@ export function PrintersPage() {
               {jobs.data.map((job) => (
                 <tr key={job.id}>
                   <td>{formatDateTime(job.createdAt)}</td>
-                  <td>{job.printer}</td>
+                  <td>
+                    {job.printer}
+                    {job.purpose === 'UPDATE' && (
+                      <small className="muted block">
+                        {t.printers.updateTicket}
+                      </small>
+                    )}
+                    {job.fallback && (
+                      <small className="muted block">
+                        {t.printers.fallbackCopy}
+                      </small>
+                    )}
+                  </td>
                   <td>
                     <Badge
                       tone={
@@ -323,6 +363,7 @@ export function PrintersPage() {
           <PrinterForm
             printer={editing === 'new' ? null : editing}
             branchId={branchId}
+            others={printers.data ?? []}
             onDone={async () => {
               setEditing(null);
               toast(t.common.saved);
