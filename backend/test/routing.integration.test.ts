@@ -14,7 +14,16 @@ import {
 } from './helpers.js';
 
 const ctx = createTestContext();
-afterAll(() => ctx.close());
+const TEST_PRINTERS = ['Grill printer', 'Somsa printer', 'Zaxira'];
+// Jobs for unreachable test printers would otherwise stay PENDING and crowd the
+// shared print queue used by other test files.
+afterAll(async () => {
+  await ctx.db.printJob.updateMany({
+    where: { status: 'PENDING', printer: { name: { in: TEST_PRINTERS } } },
+    data: { status: 'FAILED' },
+  });
+  await ctx.close();
+});
 
 type Agent = ReturnType<typeof ctx.agent>;
 const post = (agent: Agent, path: string, body: object = {}) =>

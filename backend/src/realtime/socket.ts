@@ -80,7 +80,9 @@ export function attachRealtime(
         orderId: event.orderId,
         ...(event.type === 'order.changed'
           ? { number: event.number, status: event.status }
-          : {}),
+          : event.type === 'order.updated'
+            ? { number: event.number, version: event.version }
+            : {}),
       });
   });
 

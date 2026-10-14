@@ -37,6 +37,7 @@ type Ticket = {
     kitchenStatus: KitchenStatus;
     prepTimeMinutes: number | null;
     prepStartedAt: string | null;
+    cancelRequested?: { reason: string | null } | null;
   }[];
 };
 export type Station = {
@@ -270,6 +271,43 @@ export function KitchenPage() {
                           {t.kitchen.items[item.kitchenStatus]}
                         </span>
                       </button>
+                      {item.cancelRequested && (
+                        <div className="cancel-request" role="alert">
+                          <strong>⚠ {t.orderEdit.cookTitle}</strong>
+                          {item.cancelRequested.reason && (
+                            <span> — {item.cancelRequested.reason}</span>
+                          )}
+                          <div className="toolbar">
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() =>
+                                void run(() =>
+                                  post(
+                                    `/kitchen/items/${item.id}/cancel-request`,
+                                    { accept: true },
+                                  ),
+                                )
+                              }
+                            >
+                              {t.orderEdit.accept}
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                void run(() =>
+                                  post(
+                                    `/kitchen/items/${item.id}/cancel-request`,
+                                    { accept: false },
+                                  ),
+                                )
+                              }
+                            >
+                              {t.orderEdit.refuse}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

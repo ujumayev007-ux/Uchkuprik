@@ -28,6 +28,9 @@ export type OrderItem = {
   note: string | null;
   status: 'ACTIVE' | 'CANCELLED';
   cancelReason: string | null;
+  kitchenStatus?: 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
+  // Waiting for the cook to confirm the cancellation.
+  cancelRequested?: { reason: string | null } | null;
 };
 
 export type Order = {
@@ -60,6 +63,7 @@ export type Order = {
   placedAt: string | null;
   completedAt: string | null;
   cancelReason: string | null;
+  version?: number;
   items: OrderItem[];
   payments: {
     id: string;

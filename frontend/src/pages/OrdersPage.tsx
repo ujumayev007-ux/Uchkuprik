@@ -17,9 +17,9 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
-import { api, post } from '../lib/api';
+import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
-import type { Order, OrderStatus } from '../lib/orders';
+import type { Order, OrderItem, OrderStatus } from '../lib/orders';
 
 const tone: Record<
   OrderStatus,
@@ -121,6 +121,21 @@ function OrderDetail({
     }
   };
 
+  // Before sending: edited in place. After sending: a reason is asked and the kitchen
+  // gets an updated ticket with the old line crossed out.
+  const changeItem = (item: OrderItem, quantity: number) => {
+    const o = order.data!;
+    const sent = o.status !== 'DRAFT';
+    const why = sent ? (window.prompt(t.orderEdit.reason) ?? '') : '';
+    if (sent && why.trim().length < 3) return;
+    void run(() =>
+      patch(`/orders/${o.id}/items/${item.id}`, {
+        quantity,
+        ...(sent ? { reason: why } : {}),
+      }),
+    );
+  };
+
   if (order.isPending)
     return (
       <Dialog open title={t.orders.details} onClose={onClose}>
@@ -161,6 +176,11 @@ function OrderDetail({
               </Badge>
             )}
             <Badge>{formatDateTime(o.createdAt)}</Badge>
+            {o.version && o.version > 1 && o.status !== 'DRAFT' && (
+              <Badge tone="accent">
+                {t.orderEdit.version.replace('{n}', String(o.version))}
+              </Badge>
+            )}
           </div>
           {(o.customerName || o.customerPhone || o.deliveryAddress) && (
             <p className="muted">
@@ -189,15 +209,48 @@ function OrderDetail({
                         {t.orders.cancelled}: {item.cancelReason}
                       </small>
                     )}
+                    {item.note && (
+                      <small className="block note">! {item.note}</small>
+                    )}
+                    {item.cancelRequested && (
+                      <Badge tone="warning">⏳ {t.orderEdit.waitingCook}</Badge>
+                    )}
                   </td>
-                  <td className="right nowrap">× {item.quantity}</td>
+                  <td className="right nowrap">
+                    {open &&
+                    item.status === 'ACTIVE' &&
+                    !item.cancelRequested &&
+                    o.status !== 'PENDING' ? (
+                      <span className="qty-edit">
+                        <button
+                          className="icon-button"
+                          aria-label={t.orderEdit.less}
+                          disabled={busy || item.quantity <= 1}
+                          onClick={() => changeItem(item, item.quantity - 1)}
+                        >
+                          −
+                        </button>
+                        × {item.quantity}
+                        <button
+                          className="icon-button"
+                          aria-label={t.orderEdit.more}
+                          disabled={busy}
+                          onClick={() => changeItem(item, item.quantity + 1)}
+                        >
+                          +
+                        </button>
+                      </span>
+                    ) : (
+                      <>× {item.quantity}</>
+                    )}
+                  </td>
                   <td className="right nowrap">
                     {formatMoney(item.lineTotal)}
                   </td>
                   <td className="right">
                     {open &&
                       item.status === 'ACTIVE' &&
-                      (o.status === 'DRAFT' || can(me, 'orders.cancel')) && (
+                      !item.cancelRequested && (
                         <button
                           className="text-link"
                           onClick={() => {
@@ -207,11 +260,23 @@ function OrderDetail({
                                 : (window.prompt(t.orders.cancelReason) ?? '');
                             if (o.status !== 'DRAFT' && why.trim().length < 3)
                               return;
-                            void run(() =>
-                              post(`/orders/${o.id}/items/${item.id}/cancel`, {
+                            const cooking =
+                              item.kitchenStatus === 'PREPARING' ||
+                              item.kitchenStatus === 'READY';
+                            const override =
+                              cooking &&
+                              can(me, 'orders.cancel') &&
+                              window.confirm(t.orderEdit.overrideAsk);
+                            void run(async () => {
+                              const result = await post<{
+                                cancelRequested?: boolean;
+                              }>(`/orders/${o.id}/items/${item.id}/cancel`, {
                                 reason: why,
-                              }),
-                            );
+                                override,
+                              });
+                              if (result?.cancelRequested)
+                                toast(t.orderEdit.requestSent);
+                            });
                           }}
                         >
                           {t.orders.cancelItem}
@@ -454,7 +519,9 @@ function OrderDetail({
                 {t.orders.refund}
               </Button>
             )}
-            {['DRAFT', 'PLACED'].includes(o.status) &&
+            {['DRAFT', 'PLACED', 'PREPARING', 'READY', 'SERVED'].includes(
+              o.status,
+            ) &&
               can(me, 'orders.cancel') && (
                 <Button
                   variant="danger"

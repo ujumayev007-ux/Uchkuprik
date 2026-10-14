@@ -684,6 +684,19 @@ export const uz = {
     staffReady: '{n}-raqamli buyurtma tayyor',
     staffUpdated: '{n}-sonli buyurtma yangilandi!',
   },
+  orderEdit: {
+    version: 'Versiya {n}',
+    waitingCook: 'Bekor qilish oshpaz tasdig‘ini kutmoqda',
+    less: 'Kamaytirish',
+    more: 'Ko‘paytirish',
+    reason: 'O‘zgartirish sababi (oshxona chekida ko‘rinadi):',
+    overrideAsk:
+      'Taom oshxonada tayyorlanmoqda. Oshpaz tasdig‘isiz, menejer sifatida darhol bekor qilinsinmi? (Bekor tugmasini bossangiz, oshpazga so‘rov yuboriladi)',
+    requestSent: 'Oshpazga bekor qilish so‘rovi yuborildi.',
+    cookTitle: 'Bekor qilish so‘raldi',
+    accept: 'Tasdiqlash',
+    refuse: 'Rad etish',
+  },
   payStatus: {
     column: 'To‘lov',
     paid: 'To‘langan',
@@ -702,6 +715,8 @@ export const uz = {
       waiterCanEditPlaced: 'Ofitsiant yuborilgan buyurtmani o‘zgartira olsin',
       cancelPreparingNeedsAck:
         'Tayyorlanayotgan taomni bekor qilish uchun oshxona roziligi kerak',
+      staffCanCancelPlaced:
+        'Ofitsiant va kassir yuborilgan taomni bekor qila olsin',
     },
     hints: {
       requireCashierConfirm:
@@ -711,6 +726,8 @@ export const uz = {
         'O‘chirilsa, oshxonaga yuborilgan buyurtmani faqat kassir yoki admin o‘zgartiradi.',
       cancelPreparingNeedsAck:
         'Oshxona “tayyorlanmoqda” deb belgilagan taomni bekor qilishda oshpaz tasdiqlaydi yoki menejer ruxsat beradi.',
+      staffCanCancelPlaced:
+        'O‘chiq bo‘lsa, oshxonaga yuborilgan taomni faqat menejer bekor qiladi yoki kamaytiradi (tushum himoyasi).',
     },
   },
   live: {

@@ -99,6 +99,8 @@ export const messages = {
     'Litsenziya kaliti noto‘g‘ri yoki boshqa kompyuter uchun berilgan.',
   approvalRequired: 'Bu xarajat uchun tasdiq kerak. So‘rov yuborildi.',
   monthNotFinished: 'Oy hali tugamagan. Hisobni oy tugagach chiqaring.',
+  itemInPreparation:
+    'Bu taom oshxonada tayyorlanmoqda. Avval uni bekor qilishni so‘rang — oshpaz tasdiqlaydi.',
 } as const;
 
 export type MessageKey = keyof typeof messages;

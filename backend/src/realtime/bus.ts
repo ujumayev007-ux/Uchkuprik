@@ -21,6 +21,14 @@ export type RealtimeEvent =
       branchId: string;
       orderId: string;
     }
+  | {
+      type: 'order.updated';
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      number: number;
+      version: number;
+    }
   | { type: 'menu.changed'; tenantId: string }
   | { type: 'inventory.changed'; tenantId: string };
 

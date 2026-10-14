@@ -677,36 +677,40 @@ model Order {
 }
 
 model OrderItem {
-  id               String          @id @default(uuid(7)) @db.Uuid
-  tenantId         String          @db.Uuid
-  orderId          String          @db.Uuid
-  variantId        String          @db.Uuid
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  tenantId            String          @db.Uuid
+  orderId             String          @db.Uuid
+  variantId           String          @db.Uuid
   // Snapshots: later menu changes never alter historical orders.
-  productName      String
-  variantName      String
-  unitPrice        Int
-  unitCost         Int?
-  modifiers        Json            @default("[]")
-  modifiersTotal   Int             @default(0)
+  productName         String
+  variantName         String
+  unitPrice           Int
+  unitCost            Int?
+  modifiers           Json            @default("[]")
+  modifiersTotal      Int             @default(0)
   // Set (combo) contents snapshot: [{ name, quantity }].
-  components       Json            @default("[]")
-  quantity         Int
-  lineTotal        Int
-  note             String?
-  status           OrderItemStatus @default(ACTIVE)
+  components          Json            @default("[]")
+  quantity            Int
+  lineTotal           Int
+  note                String?
+  status              OrderItemStatus @default(ACTIVE)
   // Kitchen routing snapshot and preparation progress.
-  stationId        String?         @db.Uuid
-  prepTimeMinutes  Int?
-  kitchenStatus    KitchenStatus   @default(QUEUED)
-  prepStartedAt    DateTime?
-  readyAt          DateTime?
+  stationId           String?         @db.Uuid
+  prepTimeMinutes     Int?
+  kitchenStatus       KitchenStatus   @default(QUEUED)
+  prepStartedAt       DateTime?
+  readyAt             DateTime?
   // Set when a kitchen ticket was queued for this item, so items print exactly once.
-  kitchenPrintedAt DateTime?
+  kitchenPrintedAt    DateTime?
   // A cancelled item that was already printed gets a "DIQQAT! CHEK YANGILANDI" ticket once.
-  cancelPrintedAt  DateTime?
-  cancelReason     String?
-  createdById      String?         @db.Uuid
-  createdAt        DateTime        @default(now())
+  cancelPrintedAt     DateTime?
+  // Cancelling an item the kitchen already started waits for the cook to confirm.
+  cancelRequestedAt   DateTime?
+  cancelRequestedById String?         @db.Uuid
+  cancelRequestReason String?
+  cancelReason        String?
+  createdById         String?         @db.Uuid
+  createdAt           DateTime        @default(now())
 
   order   Order          @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Restrict)
   variant ProductVariant @relation(fields: [tenantId, variantId], references: [tenantId, id], onDelete: Restrict)

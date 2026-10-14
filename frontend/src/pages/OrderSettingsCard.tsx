@@ -11,6 +11,7 @@ export type OrderSettings = {
   kitchenPrices: boolean;
   waiterCanEditPlaced: boolean;
   cancelPreparingNeedsAck: boolean;
+  staffCanCancelPlaced: boolean;
 };
 type Response = { settings: OrderSettings; locked: (keyof OrderSettings)[] };
 
@@ -26,6 +27,7 @@ const KEYS: (keyof OrderSettings)[] = [
   'kitchenPrices',
   'waiterCanEditPlaced',
   'cancelPreparingNeedsAck',
+  'staffCanCancelPlaced',
 ];
 
 /** Order workflow switches; switches locked by the vendor are shown read-only. */

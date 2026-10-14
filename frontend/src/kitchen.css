@@ -325,3 +325,18 @@
 .queue-columns .ready .queue-numbers span {
   color: #fff;
 }
+
+/* Cancellation waiting for the cook. */
+.cancel-request {
+  margin-top: 6px;
+  padding: 10px;
+  border: 2px dashed var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  font-weight: 600;
+}
+.qty-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

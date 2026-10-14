@@ -12,6 +12,8 @@ export const orderSettingsSchema = z.object({
   kitchenPrices: z.boolean().default(false),
   // Waiters may add/cancel items after the order was sent to the kitchen.
   waiterCanEditPlaced: z.boolean().default(true),
+  // Staff without the cancel permission may cancel/reduce sent items (revenue risk).
+  staffCanCancelPlaced: z.boolean().default(false),
   // Cancelling an item that the kitchen is already preparing needs kitchen
   // acknowledgement or a manager override.
   cancelPreparingNeedsAck: z.boolean().default(true),

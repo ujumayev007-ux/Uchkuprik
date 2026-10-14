@@ -20,6 +20,7 @@ import {
   assertTransition,
   businessDate,
   lockOrder,
+  recalculate,
   syncKitchenStatus,
 } from '../orders/engine.js';
 
@@ -221,6 +222,9 @@ export function kitchenRouter(services: Services) {
               kitchenStatus: item.kitchenStatus,
               prepTimeMinutes: item.prepTimeMinutes,
               prepStartedAt: item.prepStartedAt,
+              cancelRequested: item.cancelRequestedAt
+                ? { reason: item.cancelRequestReason }
+                : null,
               readyAt: item.readyAt,
             })),
           })),
@@ -292,6 +296,77 @@ export function kitchenRouter(services: Services) {
       });
       if (!item) throw errors.notFound();
       await setItems(auth, item.orderId, [id], undefined, status);
+      await notify(item.orderId);
+      res.json({ ok: true });
+    },
+  );
+
+  // The cook confirms (or refuses) cancelling an item that is already being prepared.
+  router.post(
+    '/kitchen/items/:id/cancel-request',
+    requireAuth(),
+    requirePermission('kitchen.access'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const { accept } = parse(z.object({ accept: z.boolean() }), req.body);
+      const item = await db.orderItem.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!item) throw errors.notFound();
+      await db.$transaction(async (tx) => {
+        const order = await lockOrder(tx, auth.tenantId, item.orderId);
+        await resolveBranch(tx, auth, order.branchId);
+        const fresh = await tx.orderItem.findFirst({
+          where: { id, status: 'ACTIVE', cancelRequestedAt: { not: null } },
+        });
+        if (!fresh)
+          throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+        await tx.orderItem.update({
+          where: { id },
+          data: accept
+            ? {
+                status: 'CANCELLED',
+                cancelReason: fresh.cancelRequestReason,
+                cancelRequestedAt: null,
+              }
+            : {
+                cancelRequestedAt: null,
+                cancelRequestedById: null,
+                cancelRequestReason: null,
+              },
+        });
+        if (accept) {
+          await recalculate(tx, item.orderId);
+          await syncKitchenStatus(tx, item.orderId, now());
+        } else
+          await tx.order.update({
+            where: { id: item.orderId },
+            data: { version: { increment: 1 } },
+          });
+        await addEvent(
+          tx,
+          auth.tenantId,
+          item.orderId,
+          auth.userId,
+          accept ? 'item_cancelled' : 'item_cancel_refused',
+          { itemId: id, reason: fresh.cancelRequestReason, byKitchen: true },
+        );
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: order.branchId,
+          actorUserId: auth.userId,
+          action: accept ? 'order.item.cancel' : 'order.item.cancel_refused',
+          entityType: 'order',
+          entityId: item.orderId,
+          data: {
+            itemId: id,
+            reason: fresh.cancelRequestReason,
+            requestedBy: fresh.cancelRequestedById,
+            lineTotal: fresh.lineTotal,
+          },
+        });
+      });
       await notify(item.orderId);
       res.json({ ok: true });
     },

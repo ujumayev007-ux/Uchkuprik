@@ -37,7 +37,7 @@ import {
   syncKitchenStatus,
 } from './engine.js';
 import { completeOrder } from './complete.js';
-import { placementStatus } from './settings.js';
+import { loadOrderSettings, placementStatus } from './settings.js';
 
 const amount = z.number().int().min(1).max(1_000_000_000);
 const itemSchema = z.object({
@@ -111,6 +111,10 @@ function serialize(order: OrderWithRelations, auth: AuthContext) {
         note: item.note,
         status: item.status,
         cancelReason: item.cancelReason,
+        kitchenStatus: item.kitchenStatus,
+        cancelRequested: item.cancelRequestedAt
+          ? { reason: item.cancelRequestReason }
+          : null,
         ...(showCost ? { unitCost: item.unitCost } : {}),
       })),
     payments: order.payments.map((payment) => ({
@@ -164,7 +168,11 @@ export function ordersRouter(services: Services) {
     serialize(await load(auth, id), auth);
 
   /** After a committed change: notify kitchen/POS screens, then return the order. */
-  const respondChanged = async (auth: AuthContext, id: string) => {
+  const respondChanged = async (
+    auth: AuthContext,
+    id: string,
+    updated = false,
+  ) => {
     const order = await load(auth, id);
     await services.afterOrderChange?.(order.id);
     services.events?.publish({
@@ -175,6 +183,16 @@ export function ordersRouter(services: Services) {
       number: order.number,
       status: order.status,
     });
+    // "123-sonli buyurtma yangilandi!" on cashier, kitchen and admin panels.
+    if (updated && order.status !== 'DRAFT')
+      services.events?.publish({
+        type: 'order.updated',
+        tenantId: order.tenantId,
+        branchId: order.branchId,
+        orderId: order.id,
+        number: order.number,
+        version: order.version,
+      });
     return serialize(order, auth);
   };
 
@@ -401,6 +419,7 @@ export function ordersRouter(services: Services) {
       await mutate(auth, id, async (tx, order) => {
         if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+        await assertCanEditPlaced(tx, auth, order);
         const priced = await priceItems(
           tx,
           auth.tenantId,
@@ -428,11 +447,54 @@ export function ordersRouter(services: Services) {
           },
         );
       });
-      res.json(await respondChanged(auth, id));
+      res.json(await respondChanged(auth, id, true));
     },
   );
 
-  // Quantity changes are allowed before the order is sent; afterwards items are cancelled instead.
+  /**
+   * Who may change an order that already went to the kitchen: managers and cashiers
+   * always, waiters when the restaurant allows it (Sozlamalar → Buyurtma jarayoni).
+   */
+  const assertCanEditPlaced = async (
+    tx: Tx,
+    auth: AuthContext,
+    order: { status: string },
+  ) => {
+    if (order.status === 'DRAFT' || order.status === 'PENDING') return;
+    if (
+      auth.permissions.has('orders.cancel') ||
+      auth.permissions.has('payments.accept')
+    )
+      return;
+    if (!(await loadOrderSettings(tx, auth.tenantId)).waiterCanEditPlaced)
+      throw errors.forbidden();
+  };
+
+  // Cancelling or reducing a sent item lowers the bill: managers only, unless the
+  // restaurant explicitly allows staff to do it.
+  const assertCanCancelPlaced = async (tx: Tx, auth: AuthContext) => {
+    if (auth.permissions.has('orders.cancel')) return;
+    if (!(await loadOrderSettings(tx, auth.tenantId)).staffCanCancelPlaced)
+      throw errors.forbidden();
+  };
+
+  // Kitchen already working on it: the cook confirms the cancellation, unless a
+  // manager overrides.
+  const needsKitchenAck = async (
+    tx: Tx,
+    auth: AuthContext,
+    item: { kitchenStatus: string },
+    override: boolean,
+  ) =>
+    (item.kitchenStatus === 'PREPARING' || item.kitchenStatus === 'READY') &&
+    !(override && auth.permissions.has('orders.cancel')) &&
+    (await loadOrderSettings(tx, auth.tenantId)).cancelPreparingNeedsAck;
+
+  /**
+   * Changes quantity or note of an item. Before sending it is edited in place; after
+   * sending the old line is cancelled and a new one added, so the kitchen gets a
+   * "DIQQAT! CHEK YANGILANDI" ticket with the old line crossed out.
+   */
   router.patch(
     '/orders/:id/items/:itemId',
     requireAuth(),
@@ -441,32 +503,104 @@ export function ordersRouter(services: Services) {
       const auth = getAuth(res);
       const id = parse(z.uuid(), req.params.id);
       const itemId = parse(z.uuid(), req.params.itemId);
-      const { quantity } = parse(
-        z.object({ quantity: z.number().int().min(1).max(999) }),
+      const input = parse(
+        z
+          .object({
+            quantity: z.number().int().min(1).max(999).optional(),
+            note: z.string().trim().max(200).nullable().optional(),
+            reason: z.string().trim().max(200).default(''),
+            override: z.boolean().default(false),
+          })
+          .refine(
+            (value) => value.quantity !== undefined || value.note !== undefined,
+          ),
         req.body,
       );
+      let placedChange = false;
       await mutate(auth, id, async (tx, order) => {
-        if (order.status !== 'DRAFT')
+        if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
         const item = await tx.orderItem.findFirst({
           where: { id: itemId, orderId: id, status: 'ACTIVE' },
         });
         if (!item) throw errors.notFound();
-        await tx.orderItem.update({
-          where: { id: itemId },
-          data: {
-            quantity,
-            lineTotal: (item.unitPrice + item.modifiersTotal) * quantity,
-          },
-        });
+        const quantity = input.quantity ?? item.quantity;
+        const note = input.note !== undefined ? input.note || null : item.note;
+        if (order.status === 'DRAFT' || !item.kitchenPrintedAt) {
+          await tx.orderItem.update({
+            where: { id: itemId },
+            data: {
+              quantity,
+              note,
+              lineTotal: (item.unitPrice + item.modifiersTotal) * quantity,
+            },
+          });
+          if (order.status !== 'DRAFT') {
+            await tx.order.update({
+              where: { id },
+              data: { version: { increment: 1 } },
+            });
+            placedChange = true;
+          }
+        } else {
+          await assertCanEditPlaced(tx, auth, order);
+          if (quantity < item.quantity) await assertCanCancelPlaced(tx, auth);
+          if (input.reason.length < 3)
+            throw errors.validation([{ path: 'reason' }]);
+          if (await needsKitchenAck(tx, auth, item, input.override))
+            throw new AppError(409, 'ITEM_IN_PREPARATION', 'itemInPreparation');
+          await tx.orderItem.update({
+            where: { id: itemId },
+            data: { status: 'CANCELLED', cancelReason: input.reason },
+          });
+          const { id: _old, createdAt: _at, ...copy } = item;
+          await tx.orderItem.create({
+            data: {
+              ...copy,
+              modifiers: item.modifiers as Prisma.InputJsonValue,
+              components: item.components as Prisma.InputJsonValue,
+              quantity,
+              note,
+              lineTotal: (item.unitPrice + item.modifiersTotal) * quantity,
+              status: 'ACTIVE',
+              kitchenStatus: 'QUEUED',
+              prepStartedAt: null,
+              readyAt: null,
+              kitchenPrintedAt: null,
+              cancelPrintedAt: null,
+              cancelReason: null,
+              cancelRequestedAt: null,
+              cancelRequestedById: null,
+              cancelRequestReason: null,
+              createdById: auth.userId,
+            },
+          });
+          placedChange = true;
+          await audit(tx, req, {
+            tenantId: auth.tenantId,
+            branchId: order.branchId,
+            actorUserId: auth.userId,
+            action: 'order.item.change',
+            entityType: 'order',
+            entityId: id,
+            data: {
+              itemId,
+              from: { quantity: item.quantity, note: item.note },
+              to: { quantity, note },
+              reason: input.reason,
+            },
+          });
+        }
         await recalculate(tx, id);
-        await addEvent(tx, auth.tenantId, id, auth.userId, 'item_quantity', {
+        await syncKitchenStatus(tx, id, now());
+        await addEvent(tx, auth.tenantId, id, auth.userId, 'item_changed', {
           itemId,
-          from: item.quantity,
-          to: quantity,
+          from: { quantity: item.quantity, note: item.note },
+          to: { quantity, note },
+          ...(input.reason ? { reason: input.reason } : {}),
         });
       });
-      res.json(await respondChanged(auth, id));
+      res.json(await respondChanged(auth, id, placedChange));
     },
   );
 
@@ -478,22 +612,51 @@ export function ordersRouter(services: Services) {
       const auth = getAuth(res);
       const id = parse(z.uuid(), req.params.id);
       const itemId = parse(z.uuid(), req.params.itemId);
-      const { reason } = parse(
-        z.object({ reason: z.string().trim().max(200).default('') }),
+      const { reason, override } = parse(
+        z.object({
+          reason: z.string().trim().max(200).default(''),
+          override: z.boolean().default(false),
+        }),
         req.body,
       );
+      let requested = false;
       await mutate(auth, id, async (tx, order) => {
         if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
-        // Items already sent to the kitchen need cancellation rights and a reason.
+        // Items already sent to the kitchen need edit rights and a reason.
         if (order.status !== 'DRAFT') {
-          if (!auth.permissions.has('orders.cancel')) throw errors.forbidden();
+          await assertCanEditPlaced(tx, auth, order);
+          await assertCanCancelPlaced(tx, auth);
           if (reason.length < 3) throw errors.validation([{ path: 'reason' }]);
         }
         const item = await tx.orderItem.findFirst({
           where: { id: itemId, orderId: id, status: 'ACTIVE' },
         });
         if (!item) throw errors.notFound();
+        if (await needsKitchenAck(tx, auth, item, override)) {
+          await tx.orderItem.update({
+            where: { id: itemId },
+            data: {
+              cancelRequestedAt: now(),
+              cancelRequestedById: auth.userId,
+              cancelRequestReason: reason,
+            },
+          });
+          await tx.order.update({
+            where: { id },
+            data: { version: { increment: 1 } },
+          });
+          await addEvent(
+            tx,
+            auth.tenantId,
+            id,
+            auth.userId,
+            'item_cancel_requested',
+            { itemId, reason },
+          );
+          requested = true;
+          return;
+        }
         await tx.orderItem.update({
           where: { id: itemId },
           data: { status: 'CANCELLED', cancelReason: reason || null },
@@ -503,6 +666,7 @@ export function ordersRouter(services: Services) {
         await addEvent(tx, auth.tenantId, id, auth.userId, 'item_cancelled', {
           itemId,
           reason,
+          ...(override ? { override: true } : {}),
         });
         if (order.status !== 'DRAFT')
           await audit(tx, req, {
@@ -512,10 +676,19 @@ export function ordersRouter(services: Services) {
             action: 'order.item.cancel',
             entityType: 'order',
             entityId: id,
-            data: { itemId, reason, lineTotal: item.lineTotal },
+            data: {
+              itemId,
+              reason,
+              lineTotal: item.lineTotal,
+              ...(override ? { override: true } : {}),
+            },
           });
       });
-      res.json(await respondChanged(auth, id));
+      const changed = await respondChanged(auth, id, true);
+      res.status(requested ? 202 : 200).json({
+        ...changed,
+        ...(requested ? { cancelRequested: true } : {}),
+      });
     },
   );
 
@@ -695,6 +868,12 @@ export function ordersRouter(services: Services) {
         assertTransition(order.status, 'CANCELLED');
         if (netPaid(order) > 0)
           throw new AppError(409, 'PAID_ORDER', 'paidOrderCancel');
+        // Every line is cancelled so the kitchen receives a "BEKOR" ticket for what
+        // it already printed. Stock is only consumed on completion: nothing to reverse.
+        await tx.orderItem.updateMany({
+          where: { orderId: id, status: 'ACTIVE' },
+          data: { status: 'CANCELLED', cancelReason: reason },
+        });
         await tx.order.update({
           where: { id },
           data: {

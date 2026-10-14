@@ -14,10 +14,11 @@ export const transitions: Record<OrderStatus, OrderStatus[]> = {
   // Online/waiter orders: approved by staff (PLACED) or rejected (CANCELLED).
   PENDING: ['PLACED', 'CANCELLED'],
   PLACED: ['PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'],
-  PREPARING: ['READY', 'SERVED', 'COMPLETED'],
+  // Unpaid orders can still be cancelled while cooking (refund first if paid).
+  PREPARING: ['READY', 'SERVED', 'COMPLETED', 'CANCELLED'],
   // New items added to a ready/served order send it back to the kitchen.
-  READY: ['PREPARING', 'SERVED', 'COMPLETED'],
-  SERVED: ['PREPARING', 'READY', 'COMPLETED'],
+  READY: ['PREPARING', 'SERVED', 'COMPLETED', 'CANCELLED'],
+  SERVED: ['PREPARING', 'READY', 'COMPLETED', 'CANCELLED'],
   COMPLETED: [],
   CANCELLED: [],
 };
