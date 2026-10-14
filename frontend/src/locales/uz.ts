@@ -662,6 +662,29 @@ export const uz = {
     online: 'Jonli ulanish',
     offline: 'Jonli ulanish uzildi — qayta ulanmoqda',
   },
+  vendorAlerts: {
+    telegramTitle: 'Telegram xabarnomalar',
+    on: 'Ulangan',
+    off: 'Ulanmagan',
+    telegramHow:
+      '1) Telegram’da @BotFather ni oching → /newbot → botga nom bering → u bergan tokenni nusxalang.\n2) Tokenni pastga qo‘yib “Ulash” ni bosing.\n3) O‘zingizning yangi botingizni oching va /start yozing, so‘ng “/start yubordim — tekshirish” ni bosing.\nShundan keyin mijozning to‘lov muddatiga 5 kun qolganda va muddat tugaganda (har kuni bir marta) botga xabar keladi. Dastur ochiq turgan bo‘lishi kerak.',
+    botToken: 'Bot tokeni (@BotFather’dan)',
+    connect: 'Ulash',
+    checkStart: '/start yubordim — tekshirish',
+    sendStart:
+      'Endi Telegram’da {bot} ni oching, /start yozing va “tekshirish” tugmasini bosing.',
+    connected: 'Telegram ulandi. Botga sinov xabari yuborildi.',
+    disconnect: 'Uzish',
+    disconnected: 'Telegram uzildi.',
+    blockTitle: 'Demo yoki istalgan dasturni ID bo‘yicha bloklash',
+    blockHow:
+      'Mijoz litsenziyasiz demoni ishlatayotgan bo‘lsa, uning dasturidagi Litsenziya sahifasidan O‘rnatish ID ni so‘rang (yoki AnyDesk orqali ko‘ring) va shu yerga yozing. Dastur internetga ulanganda 3 soat ichida yopiladi. Qayta o‘rnatish demoni yangidan boshlamaydi: birinchi o‘rnatish sanasi kompyuterda saqlanadi.',
+    installId: 'O‘rnatish ID',
+    block: 'Bloklash',
+    blocked: 'Bloklandi.',
+    unblock: 'Blokdan chiqarish',
+    unblocked: 'Blokdan chiqarildi.',
+  },
   updates: {
     available: 'Dasturning yangi versiyasi bor: {version}',
     install: 'Yangilash',

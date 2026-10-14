@@ -19,6 +19,7 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { registerUpdates } = require('./updates.cjs');
+const alerts = require('./vendor-alerts.cjs');
 
 const APP_PORT = 8787;
 const PG_PORT = 54330;
@@ -79,6 +80,12 @@ function secrets() {
   }
   if (!value.installedAt) {
     value.installedAt = new Date().toISOString();
+    changed = true;
+  }
+  // A reinstall (even after deleting the data folder) keeps the first demo date.
+  const first = alerts.firstInstallDate(value.installedAt);
+  if (first !== value.installedAt) {
+    value.installedAt = first;
     changed = true;
   }
   if (changed)
@@ -529,6 +536,8 @@ const STATUS_FILE = 'fastfood-licenses.txt';
 async function publishStatus(state) {
   if (!state.githubToken || !state.gistId) return { published: false };
   const entries = {};
+  for (const installId of Object.keys(state.blockedInstalls ?? {}))
+    entries[installId] = { blocked: true };
   for (const [installId, customer] of Object.entries(state.customers))
     entries[installId] = {
       blocked: !!customer.blocked,
@@ -561,6 +570,11 @@ function vendorView(state) {
   return {
     connected: !!state.gistId,
     statusUrl: state.statusUrl ?? null,
+    telegram: {
+      connected: !!state.telegram?.chatId,
+      bot: state.telegram?.bot ?? null,
+    },
+    blockedInstalls: Object.keys(state.blockedInstalls ?? {}),
     update: state.update
       ? { version: state.update.version, publishedAt: state.update.publishedAt }
       : null,
@@ -666,6 +680,64 @@ ipcMain.handle('vendor:update', async (_event, installId, changes) => {
   saveVendorState(state);
   const result = await publishStatus(state).catch((error) => ({ published: false, error: error.message }));
   return { key, ...result };
+});
+
+const paymentWatch = alerts.createPaymentWatch({
+  vendorState,
+  saveVendorState,
+  log,
+});
+
+/** Blocks or unblocks any install by its ID (e.g. a demo that has no licence). */
+ipcMain.handle('vendor:blockInstall', async (_event, installId, blocked) => {
+  const id = String(installId || '').trim().toUpperCase();
+  if (!/^FF-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(id))
+    throw new Error('O‘rnatish ID noto‘g‘ri (FF-XXXX-XXXX-XXXX)');
+  const state = vendorState();
+  if (state.customers[id]) state.customers[id].blocked = !!blocked;
+  else {
+    state.blockedInstalls ??= {};
+    if (blocked) state.blockedInstalls[id] = new Date().toISOString();
+    else delete state.blockedInstalls[id];
+  }
+  saveVendorState(state);
+  return publishStatus(state).catch((error) => ({
+    published: false,
+    error: error.message,
+  }));
+});
+
+/** Connects the vendor's Telegram bot; the chat is found from the vendor's /start. */
+ipcMain.handle('vendor:telegram', async (_event, token) => {
+  const state = vendorState();
+  if (token && String(token).trim()) {
+    state.telegram = { token: String(token).trim() };
+    const me = await alerts.telegram(state, 'getMe');
+    state.telegram.bot = me.username;
+    saveVendorState(state);
+  }
+  if (!state.telegram?.token) throw new Error('Bot tokenini kiriting');
+  const updates = await alerts.telegram(state, 'getUpdates', { timeout: 0 });
+  const chat = [...updates]
+    .reverse()
+    .map((update) => update.message?.chat)
+    .find((item) => item && item.type === 'private');
+  if (!chat) return { connected: false, bot: state.telegram.bot ?? null };
+  state.telegram.chatId = chat.id;
+  saveVendorState(state);
+  await alerts.telegram(state, 'sendMessage', {
+    chat_id: chat.id,
+    text: '✅ FastFood sotuvchi paneli ulandi. Mijozlarning to‘lov muddati yaqinlashganda yoki tugaganda shu yerga xabar keladi.',
+  });
+  void paymentWatch.check();
+  return { connected: true, bot: state.telegram.bot ?? null };
+});
+
+ipcMain.handle('vendor:telegramOff', () => {
+  const state = vendorState();
+  delete state.telegram;
+  saveVendorState(state);
+  return true;
 });
 
 ipcMain.handle('vendor:block', async (_event, installId, blocked) => {
@@ -895,6 +967,7 @@ async function boot() {
   await migrate(keys.dbPassword);
   await ensureVendorLicense(keys);
   startServer(keys);
+  if (isVendorComputer()) paymentWatch.start();
   if (!(await waitFor(`http://127.0.0.1:${APP_PORT}/api/health/ready`, 60)))
     throw new Error('Server ishga tushmadi. Jurnallarni tekshiring.');
   win.loadURL(`http://localhost:${APP_PORT}/`);

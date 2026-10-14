@@ -23,4 +23,8 @@ contextBridge.exposeInMainWorld('fastfoodVendor', {
     ipcRenderer.invoke('vendor:block', installId, blocked),
   history: () => ipcRenderer.invoke('vendor:history'),
   publishUpdate: (notes) => ipcRenderer.invoke('vendor:publishUpdate', notes),
+  blockInstall: (installId, blocked) =>
+    ipcRenderer.invoke('vendor:blockInstall', installId, blocked),
+  telegram: (token) => ipcRenderer.invoke('vendor:telegram', token),
+  telegramOff: () => ipcRenderer.invoke('vendor:telegramOff'),
 });

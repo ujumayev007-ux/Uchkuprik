@@ -11,6 +11,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { VendorAlerts, type AlertsBridge } from './VendorAlerts';
 import {
   CustomerSettingsDialog,
   type CustomerSettings,
@@ -34,12 +35,14 @@ type VendorState = {
   connected: boolean;
   statusUrl: string | null;
   update: { version: string; publishedAt: string } | null;
+  telegram?: { connected: boolean; bot: string | null };
+  blockedInstalls?: string[];
   customers: Customer[];
 };
 type Publish = { published?: boolean; error?: string };
 
 /** Bridge from the desktop app; only the vendor's computer reports isVendor. */
-export type VendorBridge = {
+export type VendorBridge = AlertsBridge & {
   isVendor: boolean;
   state: () => Promise<VendorState>;
   connect: (token: string) => Promise<VendorState>;
@@ -183,6 +186,12 @@ export function VendorPage() {
           </div>
         </details>
       </section>
+      <VendorAlerts
+        bridge={vendor}
+        telegram={state?.telegram}
+        blockedInstalls={state?.blockedInstalls ?? []}
+        onChange={reload}
+      />
 
       <section className="card stack">
         <h2 className="section-title">{v.newCustomer}</h2>
