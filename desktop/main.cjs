@@ -25,7 +25,10 @@ const reports = require('./reports.cjs');
 const APP_PORT = 8787;
 const PG_PORT = 54330;
 const VERSION = app.getVersion();
-const DATA = path.join(app.getPath('appData'), 'FastFood-Data');
+// FASTFOOD_DATA_DIR / FASTFOOD_VENDOR_DIR point a run at other folders (support, testing).
+const DATA =
+  process.env.FASTFOOD_DATA_DIR ||
+  path.join(app.getPath('appData'), 'FastFood-Data');
 const PGDATA = path.join(DATA, 'pgdata');
 const BACKUPS = path.join(DATA, 'backups');
 const LOGS = path.join(DATA, 'logs');
@@ -423,7 +426,8 @@ ipcMain.handle('anydesk:open', async () => {
 // --------------------------------------------------- vendor licence panel
 
 // Present only on the vendor's computer; customers' installs never have it.
-const VENDOR_DIR = path.join(os.homedir(), '.fastfood');
+const VENDOR_DIR =
+  process.env.FASTFOOD_VENDOR_DIR || path.join(os.homedir(), '.fastfood');
 const VENDOR_KEY = path.join(VENDOR_DIR, 'vendor-license-private.pem');
 const VENDOR_HISTORY = path.join(VENDOR_DIR, 'licenses-issued.json');
 const VENDOR_STATE = path.join(VENDOR_DIR, 'vendor.json');
