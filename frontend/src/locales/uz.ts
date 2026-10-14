@@ -795,6 +795,24 @@ export const uz = {
     online: 'Jonli ulanish',
     offline: 'Jonli ulanish uzildi — qayta ulanmoqda',
   },
+  vendorTools: {
+    title: 'Shablonlar va tarix',
+    apply: 'Shablonni qo‘llash',
+    applied: 'Shablon qo‘llandi — saqlashni unutmang.',
+    save: 'Shablon sifatida saqlash',
+    namePrompt: 'Shablon nomi (masalan: “Oddiy fast food”):',
+    saved: 'Shablon saqlandi.',
+    delete: 'Shablonni o‘chirish',
+    deletePrompt: 'O‘chiriladigan shablon nomini yozing:',
+    alsoFor: 'Shu sozlamani boshqa mijozlarga ham qo‘llash',
+    history: 'O‘zgarishlar tarixi',
+    summary:
+      '{f} funksiya, {m} yashirin menyu, {p} o‘chirilgan huquq, {l} qulf',
+    rollback: 'Shu holatga qaytarish',
+    rollbackConfirm:
+      'Sozlamalar shu holatga qaytarilsinmi? To‘lov muddati o‘zgarmaydi.',
+    rolledBack: 'Sozlamalar qaytarildi va yuborildi.',
+  },
   vendorInstalls: {
     title: 'O‘rnatilgan dasturlar (demo va pullik)',
     hint: 'Har bir o‘rnatilgan dastur internetga ulanganda har 3 soatda bu yerga ma’lumot yuboradi. Yangi demo, ro‘yxatdan o‘tish va demo tugashi haqida Telegram’ga ham xabar keladi.',

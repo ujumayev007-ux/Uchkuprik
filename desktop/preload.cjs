@@ -22,6 +22,16 @@ contextBridge.exposeInMainWorld('fastfoodVendor', {
   block: (installId, blocked) =>
     ipcRenderer.invoke('vendor:block', installId, blocked),
   history: () => ipcRenderer.invoke('vendor:history'),
+  bulkUpdate: (installIds, changes) =>
+    ipcRenderer.invoke('vendor:bulkUpdate', installIds, changes),
+  templates: () => ipcRenderer.invoke('vendor:templates'),
+  saveTemplate: (name, config) =>
+    ipcRenderer.invoke('vendor:saveTemplate', name, config),
+  deleteTemplate: (name) => ipcRenderer.invoke('vendor:deleteTemplate', name),
+  customerHistory: (installId) =>
+    ipcRenderer.invoke('vendor:customerHistory', installId),
+  rollback: (installId, issuedAt) =>
+    ipcRenderer.invoke('vendor:rollback', installId, issuedAt),
   publishUpdate: (notes) => ipcRenderer.invoke('vendor:publishUpdate', notes),
   blockInstall: (installId, blocked) =>
     ipcRenderer.invoke('vendor:blockInstall', installId, blocked),

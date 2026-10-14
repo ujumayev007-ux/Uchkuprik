@@ -62,6 +62,10 @@ export type VendorBridge = AlertsBridge &
       },
     ) => Promise<{ key: string } & Publish>;
     block: (installId: string, blocked: boolean) => Promise<Publish>;
+    bulkUpdate: (
+      installIds: string[],
+      changes: object,
+    ) => Promise<{ updated: number } & Publish>;
     publishUpdate: (
       notes: string,
     ) => Promise<{ cancelled?: boolean; version?: string; apk?: boolean }>;
@@ -476,12 +480,27 @@ export function VendorPage() {
             maxDevices: configuring.maxDevices,
           }}
           onClose={() => setConfiguring(null)}
-          onSave={(settings) =>
+          installId={configuring.installId}
+          customers={state?.customers ?? []}
+          onSave={(settings, alsoFor) =>
             run(async () => {
-              const result = await vendor.update(configuring.installId, {
+              const changes = {
                 ...settings,
                 settings: { orders: settings.lockedOrders },
-              });
+              };
+              if (alsoFor.length) {
+                const bulk = await vendor.bulkUpdate(
+                  [configuring.installId, ...alsoFor],
+                  changes,
+                );
+                report(bulk, v.settingsSaved);
+                setConfiguring(null);
+                return;
+              }
+              const result = await vendor.update(
+                configuring.installId,
+                changes,
+              );
               setLastKey(result.key);
               report(result, v.settingsSaved);
               setConfiguring(null);

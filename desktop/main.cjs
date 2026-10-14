@@ -684,38 +684,103 @@ ipcMain.handle('vendor:extend', async (_event, installId, months) => {
 });
 
 /** Changes a customer's features, menus and limits without touching the paid period. */
-ipcMain.handle('vendor:update', async (_event, installId, changes) => {
-  const state = vendorState();
+// Configuration keys a template / rollback carries (never the paid period).
+const CONFIG_KEYS = [
+  'features',
+  'hiddenMenus',
+  'settings',
+  'deniedPermissions',
+  'maxBranches',
+  'maxUsers',
+  'maxDevices',
+];
+const pickConfig = (source) =>
+  Object.fromEntries(
+    CONFIG_KEYS.filter((key) => source[key] !== undefined).map((key) => [
+      key,
+      source[key],
+    ]),
+  );
+
+/** Re-signs one customer with configuration changes (state saved by the caller). */
+function resign(state, installId, changes) {
   const customer = state.customers[installId];
   if (!customer) throw new Error('Mijoz topilmadi');
   const { payload, key } = signLicense(
-    {
-      ...customer,
-      features: changes.features ?? customer.features,
-      hiddenMenus: changes.hiddenMenus ?? customer.hiddenMenus,
-      settings: changes.settings ?? customer.settings,
-      deniedPermissions:
-        changes.deniedPermissions ?? customer.deniedPermissions,
-      maxBranches:
-        changes.maxBranches !== undefined
-          ? changes.maxBranches
-          : customer.maxBranches,
-      maxUsers:
-        changes.maxUsers !== undefined ? changes.maxUsers : customer.maxUsers,
-      maxDevices:
-        changes.maxDevices !== undefined
-          ? changes.maxDevices
-          : customer.maxDevices,
-    },
+    { ...customer, ...pickConfig(changes) },
     state.statusUrl,
   );
   state.customers[installId] = { ...customer, ...payload, key };
-  saveVendorState(state);
-  const result = await publishStatus(state).catch((error) => ({
+  return key;
+}
+
+const publishSafe = (state) =>
+  publishStatus(state).catch((error) => ({
     published: false,
     error: error.message,
   }));
-  return { key, ...result };
+
+ipcMain.handle('vendor:update', async (_event, installId, changes) => {
+  const state = vendorState();
+  const key = resign(state, installId, changes);
+  saveVendorState(state);
+  return { key, ...(await publishSafe(state)) };
+});
+
+/** Same configuration for several customers at once (one publish). */
+ipcMain.handle('vendor:bulkUpdate', async (_event, installIds, changes) => {
+  const state = vendorState();
+  const ids = [...new Set((installIds ?? []).map(String))];
+  if (!ids.length) throw new Error('Mijoz tanlanmagan');
+  for (const id of ids) resign(state, id, changes);
+  saveVendorState(state);
+  return { updated: ids.length, ...(await publishSafe(state)) };
+});
+
+// Named configuration templates ("Oddiy fast food", "Faqat kassa", ...).
+ipcMain.handle('vendor:templates', () => vendorState().templates ?? {});
+ipcMain.handle('vendor:saveTemplate', (_event, name, config) => {
+  const state = vendorState();
+  const title = String(name || '')
+    .trim()
+    .slice(0, 60);
+  if (!title) throw new Error('Shablon nomini kiriting');
+  state.templates = { ...(state.templates ?? {}), [title]: pickConfig(config) };
+  saveVendorState(state);
+  return state.templates;
+});
+ipcMain.handle('vendor:deleteTemplate', (_event, name) => {
+  const state = vendorState();
+  if (state.templates) delete state.templates[name];
+  saveVendorState(state);
+  return state.templates ?? {};
+});
+
+/** Every licence signed for a customer, newest first (configuration history). */
+ipcMain.handle('vendor:customerHistory', (_event, installId) =>
+  vendorHistory()
+    .filter((row) => row.installId === installId)
+    .map((row) => ({
+      issuedAt: row.issuedAt,
+      expiresAt: row.expiresAt,
+      features: row.features ?? [],
+      hiddenMenus: row.hiddenMenus ?? [],
+      deniedPermissions: row.deniedPermissions ?? [],
+      locked: Object.keys(row.settings?.orders ?? {}),
+    }))
+    .reverse(),
+);
+
+/** Restores an earlier configuration; the current paid period is kept. */
+ipcMain.handle('vendor:rollback', async (_event, installId, issuedAt) => {
+  const row = vendorHistory().find(
+    (item) => item.installId === installId && item.issuedAt === issuedAt,
+  );
+  if (!row) throw new Error('Tarixdagi holat topilmadi');
+  const state = vendorState();
+  const key = resign(state, installId, row);
+  saveVendorState(state);
+  return { key, ...(await publishSafe(state)) };
 });
 
 const paymentWatch = alerts.createPaymentWatch({

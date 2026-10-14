@@ -10,6 +10,7 @@ import {
   TextField,
 } from '../components/ui';
 import { t } from '../i18n';
+import { VendorConfigTools } from './VendorConfigTools';
 
 const v = t.vendor;
 
@@ -35,16 +36,21 @@ export type CustomerSettings = {
 /** Vendor's remote switchboard for one customer: menus, features and limits. */
 export function CustomerSettingsDialog({
   name,
+  installId,
+  customers,
   initial,
   onSave,
   onClose,
 }: {
   name: string;
+  installId: string;
+  customers: { installId: string; customer: string }[];
   initial: CustomerSettings;
-  onSave: (settings: CustomerSettings) => Promise<void>;
+  onSave: (settings: CustomerSettings, alsoFor: string[]) => Promise<void>;
   onClose: () => void;
 }) {
   const [form, setForm] = useState(initial);
+  const [alsoFor, setAlsoFor] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const features = Object.keys(v.features) as (keyof typeof v.features)[];
   const menus = configurableMenus();
@@ -75,7 +81,7 @@ export function CustomerSettingsDialog({
             onClick={async () => {
               setBusy(true);
               try {
-                await onSave(form);
+                await onSave(form, alsoFor);
               } finally {
                 setBusy(false);
               }
@@ -87,6 +93,15 @@ export function CustomerSettingsDialog({
       }
     >
       <div className="stack">
+        <VendorConfigTools
+          installId={installId}
+          form={form}
+          setForm={setForm}
+          customers={customers}
+          alsoFor={alsoFor}
+          setAlsoFor={setAlsoFor}
+          onRolledBack={onClose}
+        />
         <fieldset>
           <legend>{v.menusTitle}</legend>
           <div className="toolbar">
