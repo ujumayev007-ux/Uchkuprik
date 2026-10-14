@@ -230,7 +230,8 @@ describe('finance', () => {
       }).expect(201);
       await post(s.owner, `/orders/${order.body.id}/complete`).expect(200);
     }
-    const today = iso(new Date());
+    // Business dates follow Tashkent time (UTC+5), not the UTC calendar day.
+    const today = iso(new Date(Date.now() + 5 * 3_600_000));
     await post(s.owner, '/expenses', {
       category: 'Ijara',
       amount: 10000,
