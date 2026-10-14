@@ -120,6 +120,23 @@ export function KitchenPage() {
     known.current = ids;
   }, [tickets.data]);
 
+  // Overdue alert: one double chime when a ticket passes its preparation time.
+  const late = useRef(new Set<string>());
+  useEffect(() => {
+    for (const ticket of tickets.data?.tickets ?? []) {
+      if (ticket.status === 'READY' || late.current.has(ticket.orderId))
+        continue;
+      const limit =
+        Math.max(...ticket.items.map((item) => item.prepTimeMinutes ?? 15)) *
+        60_000;
+      if (now + skew - new Date(ticket.placedAt).getTime() > limit) {
+        late.current.add(ticket.orderId);
+        chime();
+        setTimeout(chime, 700);
+      }
+    }
+  }, [now, skew, tickets.data]);
+
   const run = async (fn: () => Promise<unknown>) => {
     try {
       await fn();
