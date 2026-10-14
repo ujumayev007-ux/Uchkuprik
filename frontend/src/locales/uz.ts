@@ -1647,6 +1647,20 @@ export const uz = {
     notPublished: 'Internet orqali yuborib bo‘lmadi',
     sendManually:
       'Kalitni mijozga o‘zingiz yuboring (masofaviy boshqaruv yoqilmagan).',
+    configure: 'Sozlash',
+    settingsTitle: 'Mijoz sozlamalari',
+    settingsHint:
+      'Belgilanganlar mijoz dasturida ko‘rinadi va ishlaydi. Muddat o‘zgarmaydi. O‘zgarish internet orqali yetib boradi.',
+    menusTitle: 'Menyu bandlari',
+    showAll: 'Hammasini yoqish',
+    hideAll: 'Hammasini o‘chirish',
+    featuresHint:
+      'O‘chirilgan funksiya server tomonidan ham to‘liq bloklanadi.',
+    saveAndSend: 'Saqlash va yuborish',
+    settingsSaved: 'Sozlamalar saqlandi.',
+    menuOffTitle: 'Bu bo‘lim o‘chirilgan',
+    menuOffText:
+      'Bu bo‘lim sizning dasturingizda yoqilmagan. Kerak bo‘lsa, dastur sotuvchisiga murojaat qiling.',
     howTitle: 'Qanday ishlaydi',
     how: '• Har bir mijozga kalit 1 oyga beriladi. Muddat tugashi bilan dastur o‘zi qulflanadi (ma’lumotlar saqlanadi).\n• Mijoz to‘lasa — “+1 oy (to‘ladi)” ni bosing: yangi muddat mijozga internet orqali o‘zi yetib boradi.\n• To‘lamasa — hech narsa qilmang: muddat tugaganda dastur qulflanadi. Darhol to‘xtatish kerak bo‘lsa — “Bloklash”.\n• “Blokdan chiqarish” yoki “+1 oy” — dasturni qayta ochadi.\n• Mijozda internet bo‘lmasa, kalitni nusxalab Telegram orqali yuboring, u Litsenziya bo‘limiga qo‘yadi.',
   },

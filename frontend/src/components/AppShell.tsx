@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { can, hasFeature, meKey, useMe, type Me } from '../auth/session';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
@@ -479,6 +479,7 @@ export function AppShell() {
   const client = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const pwa = usePwa();
+  const location = useLocation();
   const toast = useToast();
   const license = useLicense(me?.tenantKind === 'BUSINESS');
   useDeviceHeartbeat();
@@ -486,7 +487,15 @@ export function AppShell() {
     me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
   );
   if (!me) return null;
-  const items = navItems.filter((item) => item.visible(me));
+  // Menus the vendor switched off for this install (via the licence).
+  const hidden = license.data?.hiddenMenus ?? [];
+  const items = navItems.filter(
+    (item) => item.visible(me) && !hidden.includes(item.to),
+  );
+  const menuDisabled = hidden.some(
+    (path) =>
+      location.pathname === path || location.pathname.startsWith(`${path}/`),
+  );
   const compact = isFrontLine(me);
 
   const logout = async () => {
@@ -663,6 +672,11 @@ export function AppShell() {
           <BillingBanner me={me} />
           {licenseBlocks(license.data) ? (
             <LicenseLock license={license.data!} />
+          ) : menuDisabled ? (
+            <div className="state">
+              <h1>{t.vendor.menuOffTitle}</h1>
+              <p>{t.vendor.menuOffText}</p>
+            </div>
           ) : (
             <Outlet />
           )}

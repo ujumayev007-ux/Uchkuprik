@@ -11,6 +11,10 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import {
+  CustomerSettingsDialog,
+  type CustomerSettings,
+} from './CustomerSettingsDialog';
 
 const v = t.vendor;
 
@@ -23,6 +27,7 @@ type Customer = {
   maxBranches: number | null;
   maxUsers: number | null;
   maxDevices: number | null;
+  hiddenMenus: string[];
   key: string | null;
 };
 type VendorState = {
@@ -42,6 +47,10 @@ export type VendorBridge = {
     installId: string,
     months: number,
   ) => Promise<{ key: string; expiresAt: string } & Publish>;
+  update: (
+    installId: string,
+    changes: CustomerSettings,
+  ) => Promise<{ key: string } & Publish>;
   block: (installId: string, blocked: boolean) => Promise<Publish>;
 };
 export const vendor = (window as unknown as { fastfoodVendor?: VendorBridge })
@@ -91,6 +100,7 @@ export function VendorPage() {
     maxDevices: '',
   });
   const [lastKey, setLastKey] = useState<string | null>(null);
+  const [configuring, setConfiguring] = useState<Customer | null>(null);
 
   const reload = useCallback(() => {
     void vendor?.state().then(setState);
@@ -361,6 +371,9 @@ export function VendorPage() {
                   >
                     {customer.blocked ? v.unblock : v.block}
                   </Button>
+                  <Button size="sm" onClick={() => setConfiguring(customer)}>
+                    ⚙ {v.configure}
+                  </Button>
                   {customer.key && (
                     <Button
                       size="sm"
@@ -380,6 +393,30 @@ export function VendorPage() {
         <h2 className="section-title">{v.howTitle}</h2>
         <p className="sop-body small">{v.how}</p>
       </section>
+      {configuring && (
+        <CustomerSettingsDialog
+          name={configuring.customer}
+          initial={{
+            features: configuring.features,
+            hiddenMenus: configuring.hiddenMenus ?? [],
+            maxBranches: configuring.maxBranches,
+            maxUsers: configuring.maxUsers,
+            maxDevices: configuring.maxDevices,
+          }}
+          onClose={() => setConfiguring(null)}
+          onSave={(settings) =>
+            run(async () => {
+              const result = await vendor.update(
+                configuring.installId,
+                settings,
+              );
+              setLastKey(result.key);
+              report(result, v.settingsSaved);
+              setConfiguring(null);
+            })
+          }
+        />
+      )}
       {element}
     </div>
   );

@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('fastfoodVendor', {
   sign: (payload) => ipcRenderer.invoke('vendor:sign', payload),
   extend: (installId, months) =>
     ipcRenderer.invoke('vendor:extend', installId, months),
+  update: (installId, changes) =>
+    ipcRenderer.invoke('vendor:update', installId, changes),
   block: (installId, blocked) =>
     ipcRenderer.invoke('vendor:block', installId, blocked),
   history: () => ipcRenderer.invoke('vendor:history'),

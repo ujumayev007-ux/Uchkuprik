@@ -29,6 +29,8 @@ export type LicensePayload = {
   maxDevices: number | null;
   // Where the vendor publishes signed remote updates (renewals, blocking).
   statusUrl?: string;
+  // Menu entries (paths) the vendor switched off for this customer.
+  hiddenMenus?: string[];
 };
 
 export type LicenseStatus = {
@@ -45,6 +47,7 @@ export type LicenseStatus = {
   daysLeft: number | null;
   installId: string;
   features: PlanFeature[] | null;
+  hiddenMenus: string[];
 };
 
 /** Parses and verifies `<base64url payload>.<base64url signature>`. */
@@ -110,6 +113,9 @@ export async function licenseStatus(
       features: payload.features.filter((key): key is PlanFeature =>
         (planFeatures as readonly string[]).includes(key),
       ),
+      hiddenMenus: (payload.hiddenMenus ?? []).filter((path) =>
+        /^\/[a-z0-9/-]*$/.test(path),
+      ),
     };
   } else {
     // No (or foreign) licence: free trial from the first installation.
@@ -124,6 +130,7 @@ export async function licenseStatus(
       daysLeft: Math.max(0, daysLeft),
       installId,
       features: null,
+      hiddenMenus: [],
     };
     if (row?.key && daysLeft > 0) value.status = 'TRIAL';
   }

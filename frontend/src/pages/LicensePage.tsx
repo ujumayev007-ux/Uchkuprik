@@ -22,6 +22,7 @@ export type License = {
   expiresAt?: string | null;
   daysLeft?: number | null;
   installId?: string;
+  hiddenMenus?: string[];
 };
 
 export function useLicense(enabled = true) {

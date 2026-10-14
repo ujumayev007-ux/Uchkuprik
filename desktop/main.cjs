@@ -484,6 +484,9 @@ function signLicense(input, statusUrl) {
     maxUsers: input.maxUsers ?? null,
     maxDevices: input.maxDevices ?? null,
     ...(statusUrl ? { statusUrl } : {}),
+    hiddenMenus: Array.isArray(input.hiddenMenus)
+      ? input.hiddenMenus.map(String).filter((item) => /^\/[a-z0-9/-]*$/.test(item))
+      : [],
   };
   const body = Buffer.from(JSON.stringify(payload));
   const signature = crypto.sign(
@@ -562,6 +565,7 @@ function vendorView(state) {
         maxBranches: customer.maxBranches ?? null,
         maxUsers: customer.maxUsers ?? null,
         maxDevices: customer.maxDevices ?? null,
+        hiddenMenus: customer.hiddenMenus ?? [],
         key: customer.key ?? null,
       }))
       .sort((a, b) => String(a.customer).localeCompare(String(b.customer))),
@@ -631,6 +635,28 @@ ipcMain.handle('vendor:extend', async (_event, installId, months) => {
     error: error.message,
   }));
   return { key, expiresAt: payload.expiresAt, ...result };
+});
+
+/** Changes a customer's features, menus and limits without touching the paid period. */
+ipcMain.handle('vendor:update', async (_event, installId, changes) => {
+  const state = vendorState();
+  const customer = state.customers[installId];
+  if (!customer) throw new Error('Mijoz topilmadi');
+  const { payload, key } = signLicense(
+    {
+      ...customer,
+      features: changes.features ?? customer.features,
+      hiddenMenus: changes.hiddenMenus ?? customer.hiddenMenus,
+      maxBranches: changes.maxBranches !== undefined ? changes.maxBranches : customer.maxBranches,
+      maxUsers: changes.maxUsers !== undefined ? changes.maxUsers : customer.maxUsers,
+      maxDevices: changes.maxDevices !== undefined ? changes.maxDevices : customer.maxDevices,
+    },
+    state.statusUrl,
+  );
+  state.customers[installId] = { ...customer, ...payload, key };
+  saveVendorState(state);
+  const result = await publishStatus(state).catch((error) => ({ published: false, error: error.message }));
+  return { key, ...result };
 });
 
 ipcMain.handle('vendor:block', async (_event, installId, blocked) => {
