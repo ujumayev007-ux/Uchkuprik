@@ -17,7 +17,9 @@ import {
 export const PASSWORD = 'Xavfsiz-parol-2026';
 export const ORIGIN = 'http://localhost:5173';
 
-export function createTestContext() {
+export function createTestContext(
+  options: { control?: Services['control']; selfHosted?: boolean } = {},
+) {
   const config = loadConfig();
   const db = createPrisma(config.DATABASE_URL);
   const probe = createDatabase(config.DATABASE_URL);
@@ -27,6 +29,8 @@ export function createTestContext() {
     secrets: createSecretBox(config.APP_SECRET_KEY),
     logger: createLogger('silent'),
     secureCookies: false,
+    ...(options.control ? { control: options.control } : {}),
+    ...(options.selfHosted ? { selfHosted: true } : {}),
     now: () => new Date(Date.now() + clock.offsetMs),
     limits: {
       credentialsPerMinute: 10_000,

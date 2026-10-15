@@ -42,8 +42,9 @@ const positive = quantity.refine((value) => value.isPositive());
 const amount = z.number().int().min(0).max(1_000_000_000);
 
 const canSeeCost = (auth: AuthContext) =>
-  auth.permissions.has('inventory.manage') ||
-  auth.permissions.has('finance.view');
+  (auth.permissions.has('inventory.manage') ||
+    auth.permissions.has('finance.view')) &&
+  auth.financial.cost;
 
 const itemInput = z.object({
   name: z.string().trim().min(1).max(100),

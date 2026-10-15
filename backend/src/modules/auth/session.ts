@@ -4,6 +4,15 @@ import type { Tx } from '../../db.js';
 import type { AuthMethod } from '../../generated/prisma/client.js';
 import { AppError, errors } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
+import { featureCatalog } from '../control/catalog.js';
+import {
+  evaluateFeature,
+  evaluateKey,
+  financialVisibility,
+  isCashierClass,
+  type FinancialVisibility,
+} from '../control/policy.js';
+import { unlinkedView } from '../control/view.js';
 import {
   entitlementsOf,
   entitlementsOverride,
@@ -47,6 +56,17 @@ export type AuthContext = {
   reauthAt: Date | null;
   // Plan features and limits; enforced server-side for business tenants.
   entitlements: Entitlements;
+  // Cost price / margin / net profit visibility decided by SUPER_OWNER's policy;
+  // Cashier-class users see none of them unless explicitly enabled.
+  financial: FinancialVisibility;
+  // Report columns SUPER_OWNER switched on or off for the whole restaurant.
+  reportFields: { cost: boolean; margin: boolean; netProfit: boolean };
+  // Central control state: online, offline (grant), expired or blocked.
+  control: {
+    mode: string;
+    reason: string | null;
+    offlineUntil: Date | null;
+  };
 };
 
 export function cookieNames(secure: boolean) {
@@ -195,6 +215,37 @@ export async function authenticate(
   // Vendor-level switches win over roles (SUPER_OWNER control).
   for (const key of [...permissions])
     if (isDenied(key)) permissions.delete(key);
+  // SUPER_OWNER feature switches and financial visibility (backend-enforced).
+  const roleKeys = user.roles.map(({ role }) => role.systemKey ?? role.id);
+  const view = services.controlView
+    ? await services.controlView(session.tenantId)
+    : unlinkedView();
+  for (const def of featureCatalog) {
+    if (!def.permission || !permissions.has(def.permission)) continue;
+    const evaluation = evaluateFeature(
+      view.policy,
+      def,
+      roleKeys,
+      view.adminSettings,
+    );
+    if (!(view.mode === 'OFFLINE' ? evaluation.offline : evaluation.online))
+      permissions.delete(def.permission);
+  }
+  const hasPos = permissions.has('pos.access');
+  const financial = financialVisibility(
+    view.policy,
+    roleKeys,
+    hasPos,
+    view.adminSettings,
+  );
+  if (!financial.cost) permissions.delete('menu.cost.view');
+  if (
+    isCashierClass(roleKeys, hasPos) &&
+    !(financial.margin || financial.profit)
+  )
+    permissions.delete('finance.view');
+  const fieldOn = (key: string) =>
+    evaluateKey(view.policy, key, roleKeys, view.adminSettings)?.online ?? true;
   const isPrivileged = privilegedPermissions.some((key) =>
     permissions.has(key),
   );
@@ -208,7 +259,7 @@ export async function authenticate(
     isPlatformAdmin: user.isPlatformAdmin && session.tenant.kind === 'PLATFORM',
     authMethod: session.authMethod,
     permissions,
-    roleKeys: user.roles.map(({ role }) => role.systemKey ?? role.id),
+    roleKeys,
     allBranches: user.allBranches,
     branchIds: user.branches.map(({ branchId }) => branchId),
     activeBranchId: session.branchId,
@@ -225,6 +276,17 @@ export async function authenticate(
     entitlements: entitlementsOverride()
       ? await entitlementsOverride()!()
       : entitlementsOf(session.tenant.subscription),
+    financial,
+    reportFields: {
+      cost: fieldOn('field.report.cost'),
+      margin: fieldOn('field.report.margin'),
+      netProfit: fieldOn('field.report.netProfit'),
+    },
+    control: {
+      mode: view.mode,
+      reason: view.reason,
+      offlineUntil: view.offlineUntil,
+    },
   };
   // Sliding idle expiry; written at most once a minute to limit database load.
   if (
@@ -300,6 +362,16 @@ export function requirePermission(...required: Permission[]) {
       !required.every((key) => auth.permissions.has(key))
     )
       throw errors.forbidden();
+    next();
+  };
+}
+
+/** Money visibility gate: cost, margin or net profit must be visible to the caller. */
+export function requireFinancial(kind: keyof FinancialVisibility) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    const auth = getAuth(res);
+    const reportOff = kind === 'profit' && !auth.reportFields.netProfit;
+    if (!auth.financial[kind] || reportOff) throw errors.forbidden();
     next();
   };
 }

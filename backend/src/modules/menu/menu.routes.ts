@@ -87,7 +87,7 @@ const groupInput = z
   });
 
 const canSeeCost = (auth: AuthContext) =>
-  auth.permissions.has('menu.cost.view');
+  auth.permissions.has('menu.cost.view') && auth.financial.cost;
 
 async function assertCategoryParent(
   tx: Tx,

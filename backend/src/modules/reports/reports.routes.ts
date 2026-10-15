@@ -111,7 +111,11 @@ export function reportsRouter(services: Services) {
       let profit:
         | { costOfGoods: number; grossProfit: number; marginBp: number }
         | undefined;
-      if (auth.permissions.has('finance.view')) {
+      if (
+        auth.permissions.has('finance.view') &&
+        auth.financial.margin &&
+        auth.reportFields.margin
+      ) {
         const rows = await db.$queryRaw<{ cost: bigint | null }[]>`
         SELECT SUM(COALESCE(i."unitCost", 0) * i.quantity)::bigint AS cost
         FROM order_items i JOIN orders o ON o.id = i."orderId"

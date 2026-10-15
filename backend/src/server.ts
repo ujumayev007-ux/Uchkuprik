@@ -23,6 +23,13 @@ import { startMaintenanceWorker } from './modules/assets/assets.routes.js';
 import { startNotificationWorker } from './modules/notifications/notify.js';
 import { startWebhookWorker } from './modules/developer/webhooks.js';
 import { createLogger } from './logger.js';
+import { createControlRuntime } from './modules/control/runtime.js';
+import { cloudViewProvider } from './modules/control/view.js';
+import {
+  exportPublicKey,
+  publicKeyOf,
+  readPem,
+} from './modules/control/keys.js';
 
 /** Same rule as the frontend build: the deployed commit, else the package version. */
 function appVersion() {
@@ -74,11 +81,45 @@ async function main(): Promise<void> {
     ...(config.LICENSE_STATUS_URL
       ? { licenseStatusUrl: config.LICENSE_STATUS_URL }
       : {}),
+    control: (() => {
+      const signingKeyPem = config.CONTROL_SIGNING_KEY
+        ? readPem(config.CONTROL_SIGNING_KEY)
+        : undefined;
+      const trustedKeys = [
+        ...(signingKeyPem ? [exportPublicKey(publicKeyOf(signingKeyPem))] : []),
+        ...(config.CONTROL_PUBLIC_KEY?.split(',')
+          .map((value) => value.trim())
+          .filter(Boolean) ?? []),
+      ];
+      return {
+        plane: config.CONTROL_PLANE,
+        ...(signingKeyPem ? { signingKeyPem } : {}),
+        trustedKeys,
+        ...(config.CONTROL_URL ? { url: config.CONTROL_URL } : {}),
+        ...(config.CONTROL_DEVICE_KEY
+          ? { deviceKeyPem: readPem(config.CONTROL_DEVICE_KEY) }
+          : {}),
+      };
+    })(),
     limits: {
       credentialsPerMinute: config.CREDENTIAL_RATE_LIMIT,
       signupsPerHour: config.SIGNUP_RATE_LIMIT,
     },
   } as Services;
+  services.appVersion = appVersion();
+  // Control channel: installs report to the central server; the cloud edition reads
+  // customer policies straight from its own tables.
+  if (config.SELF_HOSTED && !config.CONTROL_PLANE) {
+    services.controlRuntime = createControlRuntime(services);
+    services.controlView = services.controlRuntime.view;
+  } else
+    services.controlView = cloudViewProvider(
+      prisma,
+      () => services.now?.() ?? new Date(),
+    );
+  const stopControl = services.controlRuntime
+    ? services.controlRuntime.start()
+    : () => undefined;
   services.afterOrderChange = async (orderId) => {
     await enqueueKitchenTickets(services, orderId);
     await notifyTelegramCustomer(services, orderId).catch(() =>
@@ -148,6 +189,7 @@ async function main(): Promise<void> {
     stopWebhooks();
     stopTelegram();
     stopLicenseSync();
+    stopControl();
     server.close(() => {
       void Promise.all([database.close(), prisma.$disconnect()])
         .then(() => {

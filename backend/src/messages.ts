@@ -110,6 +110,33 @@ export const messages = {
   codeLocked:
     'Juda ko‘p noto‘g‘ri urinish. Kod bloklandi — yangi kod yarating.',
   codeInvalid: 'Kod noto‘g‘ri.',
+  ownerDeviceRequired:
+    'Bu qurilma egasi (SUPER_OWNER) qurilmasi sifatida tasdiqlanmagan.',
+  ownerDevicePending:
+    'Qurilma tasdiqlash kutilmoqda. Tasdiqlangan qurilmadan ruxsat bering.',
+  ownerDeviceRevoked: 'Bu qurilma bloklangan.',
+  ownerMfaSetup: 'Avval ikki bosqichli himoyani yoqing.',
+  featureDisabled: 'Bu imkoniyat dastur egasi tomonidan o‘chirilgan.',
+  offlineNotAllowed:
+    'Internet yo‘qligida bu amalga ruxsat berilmagan. Aloqa tiklanishini kuting.',
+  offlineExpired:
+    'Oflayn ruxsat muddati tugadi. Yangi amallar internet tiklanguncha to‘xtatildi, saqlangan ma’lumotlar o‘zgarmadi.',
+  onlineRequired:
+    'Bu dastur faqat internet bilan ishlaydi. Aloqa tiklanguncha yangi amallar to‘xtatildi, saqlangan ma’lumotlar o‘zgarmadi.',
+  deviceBlocked:
+    'Qurilma dastur egasi tomonidan bloklangan. Sotuvchiga murojaat qiling.',
+  cashierPanelOnly:
+    'Oflayn rejimda buyurtmani faqat Kassa panelidan yaratish mumkin.',
+  localDeviceRequired:
+    'Oflayn rejimda faqat ro‘yxatdan o‘tgan qurilmalar ulanishi mumkin.',
+  updateRequired:
+    'Dasturning yangi versiyasini o‘rnatish shart. Joriy savdo tugagach yangilang.',
+  clockRollback:
+    'Soat orqaga surilgani aniqlandi. Davom etish uchun internetga ulaning.',
+  licenseKeyInvalid: 'Litsenziya kaliti noto‘g‘ri yoki yaroqsiz.',
+  activationLimit:
+    'Bu litsenziya uchun kompyuterlar soni limitiga yetildi. Qurilmani almashtirish kerak.',
+  controlSignatureInvalid: 'Qurilma imzosi noto‘g‘ri.',
   itemInPreparation:
     'Bu taom oshxonada tayyorlanmoqda. Avval uni bekor qilishni so‘rang — oshpaz tasdiqlaydi.',
 } as const;

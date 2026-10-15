@@ -32,6 +32,11 @@ import {
   licenseRouter,
 } from './modules/license/license.routes.js';
 import { loadSession } from './modules/auth/session.js';
+import { deviceRouter } from './modules/control/device.routes.js';
+import { enforceControl } from './modules/control/enforce.js';
+import { controlInstallRouter } from './modules/control/install.routes.js';
+import { manageRouter } from './modules/control/manage.routes.js';
+import { ownerRouter } from './modules/control/owner.routes.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
 import { crmRouter } from './modules/crm/crm.routes.js';
@@ -199,6 +204,7 @@ export function createApp({
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
     app.use('/api', enforceLicense(services));
+    app.use('/api', enforceControl(services));
     app.use('/api', enforcePlanFeatures());
     for (const router of [
       authRouter,
@@ -224,6 +230,7 @@ export function createApp({
       financeRouter,
       billingRouter,
       licenseRouter,
+      controlInstallRouter,
       brandsRouter,
       franchiseRouter,
       operationsRouter,
@@ -231,6 +238,10 @@ export function createApp({
       peopleRouter,
     ])
       app.use('/api', router(services));
+    // Central control plane (SUPER_OWNER): owner sign-in, management, device channel.
+    if (services.control?.plane)
+      for (const router of [ownerRouter, manageRouter, deviceRouter])
+        app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));
     app.use('/api', notificationsRouter(services, config.APP_ORIGIN));
     app.use('/api', developerRouter(services));

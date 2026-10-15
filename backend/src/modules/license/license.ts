@@ -2,6 +2,7 @@ import { createPublicKey, verify } from 'node:crypto';
 import { setDeniedPermissions } from '../auth/permissions.js';
 import { setLockedOrderSettings } from '../orders/settings.js';
 import type { Services } from '../../context.js';
+import { hiddenMenuPaths } from '../control/policy.js';
 import {
   planFeatures,
   type Entitlements,
@@ -144,6 +145,31 @@ export async function licenseStatus(
   const applied = payload && payload.installId === installId ? payload : null;
   setLockedOrderSettings(applied?.settings?.orders ?? {});
   setDeniedPermissions(applied?.deniedPermissions ?? []);
+  // Linked to the central server: its grant defines term, modules and hidden menus
+  // (blocking and offline rules are enforced by the control layer itself).
+  const linked = await services.controlRuntime?.state();
+  if (linked && linked.mode !== 'UNLINKED' && linked.grant) {
+    const end = new Date(linked.grant.licenseExpiresAt).getTime();
+    const daysLeft = Math.ceil((end - effective.getTime()) / DAY);
+    value = {
+      ...value,
+      customer: linked.grant.customerName,
+      expiresAt: linked.grant.licenseExpiresAt.slice(0, 10),
+      daysLeft: Math.max(0, daysLeft),
+      status:
+        daysLeft <= 0
+          ? 'EXPIRED'
+          : daysLeft <= WARN_DAYS
+            ? 'EXPIRING'
+            : 'VALID',
+      features: linked.grant.features.filter((key): key is PlanFeature =>
+        (planFeatures as readonly string[]).includes(key),
+      ),
+      hiddenMenus: [
+        ...new Set([...value.hiddenMenus, ...hiddenMenuPaths(linked.policy)]),
+      ],
+    };
+  }
   // The vendor blocked this install remotely (e.g. unpaid month).
   if (row?.remoteBlocked) value.status = 'BLOCKED';
   cache = { at: now.getTime(), value };
@@ -163,6 +189,15 @@ export async function licenseEntitlements(
   services: Services,
 ): Promise<Entitlements> {
   const status = await licenseStatus(services);
+  // A central grant overrides the locally entered key's modules and limits.
+  const linked = await services.controlRuntime?.state();
+  if (linked && linked.mode !== 'UNLINKED' && linked.grant)
+    return {
+      planCode: 'CENTRAL',
+      status: status.status,
+      features: status.features,
+      limits: linked.grant.limits,
+    };
   const row = await services.db.appLicense.findUnique({ where: { id: 1 } });
   const payload = row?.key ? verifyLicense(row.key) : null;
   const valid =

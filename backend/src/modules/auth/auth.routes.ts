@@ -59,6 +59,12 @@ export function publicAuth(auth: AuthContext) {
     mfaSetupRequired: auth.mfaPolicyRequired && !auth.mfaEnabled,
     mustChangePassword: auth.mustChangePassword,
     entitlements: auth.entitlements,
+    financial: auth.financial,
+    control: {
+      mode: auth.control.mode,
+      reason: auth.control.reason,
+      offlineUntil: auth.control.offlineUntil,
+    },
   };
 }
 

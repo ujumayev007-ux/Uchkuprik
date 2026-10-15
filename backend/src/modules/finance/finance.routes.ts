@@ -15,6 +15,7 @@ import {
   getAuth,
   requireAuth,
   requirePermission,
+  requireFinancial,
   requireRecentAuth,
   type AuthContext,
 } from '../auth/session.js';
@@ -467,34 +468,45 @@ export function financeRouter(services: Services) {
     };
   };
 
-  router.get('/reports/pnl', ...view, async (req, res) => {
-    const auth = getAuth(res);
-    const query = parse(range, req.query);
-    const branch = await resolveBranch(db, auth, query.branchId);
-    res.json(await pnl(auth, branch.id, query.from, query.to));
-  });
+  router.get(
+    '/reports/pnl',
+    ...view,
+    requireFinancial('profit'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const query = parse(range, req.query);
+      const branch = await resolveBranch(db, auth, query.branchId);
+      res.json(await pnl(auth, branch.id, query.from, query.to));
+    },
+  );
 
-  router.get('/reports/pnl.csv', ...view, async (req, res) => {
-    const auth = getAuth(res);
-    const query = parse(range, req.query);
-    const branch = await resolveBranch(db, auth, query.branchId);
-    const report = await pnl(auth, branch.id, query.from, query.to);
-    csv(
-      res,
-      `foyda-zarar-${query.from}-${query.to}.csv`,
-      ['modda', 'summa'],
-      [
-        ['Tushum', report.revenue],
-        ['Tannarx', report.cogs],
-        ['Yalpi foyda', report.grossProfit],
-        ...report.expenses.map(
-          (row) => [`Xarajat: ${row.category}`, row.amount] as [string, number],
-        ),
-        ['Ish haqi', report.payroll],
-        ['Sof foyda', report.netProfit],
-      ],
-    );
-  });
+  router.get(
+    '/reports/pnl.csv',
+    ...view,
+    requireFinancial('profit'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const query = parse(range, req.query);
+      const branch = await resolveBranch(db, auth, query.branchId);
+      const report = await pnl(auth, branch.id, query.from, query.to);
+      csv(
+        res,
+        `foyda-zarar-${query.from}-${query.to}.csv`,
+        ['modda', 'summa'],
+        [
+          ['Tushum', report.revenue],
+          ['Tannarx', report.cogs],
+          ['Yalpi foyda', report.grossProfit],
+          ...report.expenses.map(
+            (row) =>
+              [`Xarajat: ${row.category}`, row.amount] as [string, number],
+          ),
+          ['Ish haqi', report.payroll],
+          ['Sof foyda', report.netProfit],
+        ],
+      );
+    },
+  );
 
   // --- Branch comparison and kitchen performance ----------------------------------
 
@@ -524,7 +536,11 @@ export function financeRouter(services: Services) {
         _sum: { total: true },
         _count: true,
       });
-      const costs = auth.permissions.has('finance.view');
+      const costs =
+        auth.permissions.has('finance.view') &&
+        auth.financial.margin &&
+        auth.reportFields.margin;
+      const showNet = auth.financial.profit && auth.reportFields.netProfit;
       const result = [];
       for (const branch of branches) {
         const row = rows.find((item) => item.branchId === branch.id);
@@ -540,7 +556,7 @@ export function financeRouter(services: Services) {
             ? await pnl(auth, branch.id, query.from, query.to).then((p) => ({
                 cogs: p.cogs,
                 grossProfit: p.grossProfit,
-                netProfit: p.netProfit,
+                ...(showNet ? { netProfit: p.netProfit } : {}),
               }))
             : {}),
         });

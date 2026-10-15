@@ -82,6 +82,19 @@ const schema = z
     INSTALL_ID: z.string().max(100).optional(),
     INSTALLED_AT: z.coerce.date().optional(),
     LICENSE_STATUS_URL: z.string().url().max(500).optional(),
+    // Central control plane (SUPER_OWNER): this process is the central server.
+    CONTROL_PLANE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    // Ed25519 private key (PEM, or base64 of the PEM) that signs grants. Server only.
+    CONTROL_SIGNING_KEY: z.string().min(40).max(4000).optional(),
+    // Trusted central public keys (comma separated SPKI, base64url or PEM-base64).
+    CONTROL_PUBLIC_KEY: z.string().min(20).max(4000).optional(),
+    // Address of the central server an install reports to.
+    CONTROL_URL: z.string().url().max(500).optional(),
+    // Install device key (PEM) handed over by the launcher from OS secure storage.
+    CONTROL_DEVICE_KEY: z.string().min(40).max(4000).optional(),
     // Bearer token for the Prometheus /api/metrics endpoint; unset disables it.
     METRICS_TOKEN: z.string().min(32).max(200).optional(),
     // Self-service sign-ups per IP per hour; 0 disables public registration.
@@ -91,6 +104,12 @@ const schema = z
       .default('info'),
   })
   .superRefine((value, ctx) => {
+    if (value.CONTROL_PLANE && !value.CONTROL_SIGNING_KEY)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CONTROL_SIGNING_KEY'],
+        message: 'The control plane needs its signing key.',
+      });
     if (value.NODE_ENV !== 'production') return;
     if (!value.APP_ORIGIN.startsWith('https://')) {
       ctx.addIssue({

@@ -62,7 +62,10 @@ type OrderWithRelations = Prisma.OrderGetPayload<{
 }>;
 
 function serialize(order: OrderWithRelations, auth: AuthContext) {
-  const showCost = auth.permissions.has('finance.view');
+  const showCost =
+    auth.permissions.has('finance.view') &&
+    auth.financial.cost &&
+    auth.reportFields.cost;
   return {
     id: order.id,
     branchId: order.branchId,

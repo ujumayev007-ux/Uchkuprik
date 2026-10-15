@@ -16,7 +16,10 @@
     "db:migrate": "prisma migrate deploy",
     "admin:create": "node dist/cli/create-platform-admin.js",
     "admin:create:dev": "tsx src/cli/create-platform-admin.ts",
-    "seed:demo": "tsx src/cli/seed-demo.ts"
+    "seed:demo": "tsx src/cli/seed-demo.ts",
+    "control:owner": "node dist/cli/control-owner.js",
+    "control:owner:dev": "tsx src/cli/control-owner.ts",
+    "control:keygen": "tsx src/cli/control-keygen.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

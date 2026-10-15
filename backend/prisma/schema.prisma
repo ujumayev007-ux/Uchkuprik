@@ -2811,17 +2811,17 @@ model ControlBranch {
 // Per-customer policy: feature switches, delegation, offline rules, visibility,
 // version rules. `version` increases on every change and is carried in grants.
 model ControlPolicy {
-  customerId        String   @id @db.Uuid
-  version           Int      @default(1)
+  customerId        String    @id @db.Uuid
+  version           Int       @default(1)
   // { [featureKey]: { mode?: ON|OFF|ADMIN, online?: boolean, offline?: boolean } }
-  features          Json     @default("{}")
-  // { cashierCost, cashierMargin, cashierProfit } explicitly enabled by SUPER_OWNER.
-  financial         Json     @default("{}")
-  offlineEnabled    Boolean  @default(false)
-  maxOfflineMinutes Int      @default(0)
+  features          Json      @default("{}")
+  offlineEnabled    Boolean   @default(false)
+  maxOfflineMinutes Int       @default(0)
   minAppVersion     String?
-  updatedAt         DateTime @updatedAt
-  updatedById       String?  @db.Uuid
+  // Installs below minAppVersion stop taking new orders only after this moment.
+  minVersionFrom    DateTime?
+  updatedAt         DateTime  @updatedAt
+  updatedById       String?   @db.Uuid
 
   customer ControlCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 

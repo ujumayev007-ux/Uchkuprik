@@ -49,6 +49,8 @@ export function devicesRouter(services: Services) {
           lastSeenAt: device.lastSeenAt,
           appVersion: device.appVersion,
           userAgent: device.userAgent,
+          panel: device.panel,
+          lastIp: device.lastIp,
           createdAt: device.createdAt,
         })),
       });
@@ -75,6 +77,7 @@ export function devicesRouter(services: Services) {
         lastSeenAt: services.now?.() ?? new Date(),
         appVersion: version,
         userAgent: req.get('user-agent')?.slice(0, 200) ?? null,
+        lastIp: req.ip ?? null,
       },
     });
     res.json({ registered: result.count > 0 });
@@ -85,7 +88,14 @@ export function devicesRouter(services: Services) {
   router.post('/devices/register', ...manage, async (req, res) => {
     const auth = getAuth(res);
     const input = parse(
-      z.object({ branchId: z.uuid(), name: z.string().trim().min(2).max(60) }),
+      z.object({
+        branchId: z.uuid(),
+        name: z.string().trim().min(2).max(60),
+        // Panel the terminal serves (offline rules treat CASHIER specially).
+        panel: z
+          .enum(['CASHIER', 'KITCHEN', 'WAITER', 'OTHER'])
+          .default('OTHER'),
+      }),
       req.body,
     );
     const branch = await db.branch.findFirst({
@@ -105,6 +115,7 @@ export function devicesRouter(services: Services) {
           tenantId: auth.tenantId,
           branchId: branch.id,
           name: input.name,
+          panel: input.panel,
           tokenHash: sha256(token),
           registeredById: auth.userId,
         },
