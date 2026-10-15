@@ -24,6 +24,10 @@ import {
 } from './owner.js';
 import { sanitizeFeatures } from './policy.js';
 import { signDocument } from './keys.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createBackup, verifyBackup } from '../../lib/backup.js';
 
 const DAY = 86_400_000;
 
@@ -937,6 +941,40 @@ export function manageRouter(services: Services) {
       },
     });
     res.json({ operations: rows });
+  });
+
+  // ---- backups ------------------------------------------------------------
+
+  // Writes a fresh backup, restores it into a scratch database and compares every
+  // table: the answer proves the backup can actually be restored.
+  router.post('/control/backup/verify', ...sensitive, async (req, res) => {
+    const owner = getOwner(res);
+    const url = services.databaseUrl;
+    if (!url) throw errors.notFound();
+    const dir = await mkdtemp(join(tmpdir(), 'ff-verify-'));
+    const started = Date.now();
+    try {
+      const file = join(dir, 'backup.ndjson.gz');
+      const summary = await createBackup(url, file);
+      const result = await verifyBackup(url, file, summary);
+      await controlAudit(db, req, {
+        ownerId: owner.ownerId,
+        action: 'backup.verify',
+        outcome: result.ok ? 'SUCCESS' : 'FAILURE',
+        data: {
+          tables: result.tables,
+          rows: result.rows,
+          mismatches: result.mismatches.length,
+        },
+      });
+      res.json({
+        ...result,
+        bytes: summary.bytes,
+        seconds: Math.round((Date.now() - started) / 1000),
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   // ---- releases and staged updates ------------------------------------------

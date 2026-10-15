@@ -498,6 +498,41 @@ export function createControlRuntime(
     });
   }
 
+  /** Internet-dependent work waiting in its own queues (never shown as done). */
+  async function internetQueues() {
+    const [
+      notificationsQueued,
+      notificationsFailed,
+      webhooksQueued,
+      webhooksFailed,
+    ] = await Promise.all([
+      db.notificationJob.count({ where: { status: 'PENDING' } }),
+      db.notificationJob.count({ where: { status: 'FAILED' } }),
+      db.webhookDelivery.count({ where: { status: 'PENDING' } }),
+      db.webhookDelivery.count({ where: { status: 'FAILED' } }),
+    ]);
+    return {
+      notificationsQueued,
+      notificationsFailed,
+      webhooksQueued,
+      webhooksFailed,
+    };
+  }
+
+  /** Update readiness for the desktop launcher: never while a sale is running. */
+  async function updateInfo() {
+    const active = await db.order.count({
+      where: { status: { notIn: ['COMPLETED', 'CANCELLED'] } },
+    });
+    const current = await state();
+    return {
+      update: available,
+      activeOrders: active,
+      idle: active === 0,
+      minVersion: current.policy.minAppVersion,
+    };
+  }
+
   async function status() {
     const current = await state();
     const summary = await outboxSummary(db);
@@ -517,6 +552,7 @@ export function createControlRuntime(
       serverUrl: row?.serverUrl ?? services.control?.url ?? null,
       licenseHint: row?.licenseHint ?? null,
       sync: summary,
+      internet: await internetQueues(),
       update: available,
       timing: {
         heartbeatSeconds: timing.heartbeatIntervalMs / 1000,
@@ -559,6 +595,7 @@ export function createControlRuntime(
     beat,
     sync,
     status,
+    updateInfo,
     start,
     invalidate,
     evaluate: evaluateKey,

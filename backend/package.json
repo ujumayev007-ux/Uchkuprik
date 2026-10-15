@@ -19,7 +19,9 @@
     "seed:demo": "tsx src/cli/seed-demo.ts",
     "control:owner": "node dist/cli/control-owner.js",
     "control:owner:dev": "tsx src/cli/control-owner.ts",
-    "control:keygen": "tsx src/cli/control-keygen.ts"
+    "control:keygen": "tsx src/cli/control-keygen.ts",
+    "backup": "node dist/cli/backup.js",
+    "backup:dev": "tsx src/cli/backup.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

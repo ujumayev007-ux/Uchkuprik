@@ -76,6 +76,7 @@ async function main(): Promise<void> {
     secureCookies: config.NODE_ENV === 'production',
     events,
     selfHosted: config.SELF_HOSTED,
+    databaseUrl: config.DATABASE_URL,
     ...(config.INSTALL_ID ? { installId: config.INSTALL_ID } : {}),
     ...(config.INSTALLED_AT ? { installedAt: config.INSTALLED_AT } : {}),
     ...(config.LICENSE_STATUS_URL

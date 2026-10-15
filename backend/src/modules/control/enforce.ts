@@ -12,7 +12,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // panel only (kitchen devices keep updating tickets; nobody else adds orders).
 const CASHIER_ONLY_OFFLINE = new Set(['orders.create', 'orders.edit']);
 
-function isLoopback(req: Request): boolean {
+export function isLoopback(req: Request): boolean {
   const address = req.socket.remoteAddress ?? '';
   return (
     address === '127.0.0.1' ||

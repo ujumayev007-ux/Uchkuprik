@@ -41,6 +41,8 @@ export type Services = {
     // Device private key (PEM) from the launcher's OS secure storage.
     deviceKeyPem?: string;
   };
+  // Connection string, used only by backup tooling.
+  databaseUrl?: string;
   // Version of the running build (compared with the policy's minimum version).
   appVersion?: string;
   // Control state per tenant (feature switches, offline mode, financial visibility).

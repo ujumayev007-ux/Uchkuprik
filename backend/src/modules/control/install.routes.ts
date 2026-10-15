@@ -10,6 +10,7 @@ import {
   requireRecentAuth,
 } from '../auth/session.js';
 import { catalogByKey } from './catalog.js';
+import { isLoopback } from './enforce.js';
 import { listOutbox, retryOperation } from './outbox.js';
 import { clearAdminSettingsCache } from './view.js';
 
@@ -31,6 +32,12 @@ export function controlInstallRouter(services: Services) {
       return;
     }
     res.json({ available: true, ...(await runtime.status()) });
+  });
+
+  // Read by the desktop launcher on this computer only (no sign-in involved).
+  router.get('/control/link/update-info', async (req, res) => {
+    if (!isLoopback(req) || !services.controlRuntime) throw errors.forbidden();
+    res.json(await services.controlRuntime.updateInfo());
   });
 
   router.post('/control/link/activate', ...sensitive, async (req, res) => {
