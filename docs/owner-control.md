@@ -131,3 +131,11 @@ device; later devices stay `PENDING` until approved from an approved device (or
 - Hosted (cloud) tenants have no offline mode; their policy comes straight from the
   linked `control_customers` row.
 - Windows code-signing needs your certificate; unsigned builds are for testing only.
+
+## Test channel (isolated from production)
+
+`BUILD_CHANNEL=test` builds isolated TEST installers (`desktop/release-test`,
+`owner-desktop/release-test`): own app id, data folder (`FastFood-Test-Data`), Electron
+profile, ports (8788 / 54331), no vendor watchers, no production status/report
+settings, and a local `http://127.0.0.1:<port>` central address is allowed. A production
+build never accepts a plain-http address. Simple hosting steps: `owner-control-hosting-uz.md`.

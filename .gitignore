@@ -27,3 +27,5 @@ desktop/control.json
 owner-desktop/node_modules
 owner-desktop/stage
 owner-desktop/release
+desktop/release-test
+owner-desktop/release-test

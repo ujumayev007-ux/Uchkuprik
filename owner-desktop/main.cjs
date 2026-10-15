@@ -22,6 +22,25 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// A TEST installer (flag baked at build time) keeps its own profile and device key.
+try {
+  const baked = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        app.isPackaged ? process.resourcesPath : __dirname,
+        'owner.json',
+      ),
+      'utf8',
+    ),
+  );
+  if (baked.test === true)
+    app.setPath(
+      'userData',
+      path.join(app.getPath('appData'), 'FastFood-Owner-Test'),
+    );
+} catch {
+  /* production build or no baked file */
+}
 const DATA = app.getPath('userData');
 const SETTINGS = path.join(DATA, 'owner-settings.json');
 const KEY_FILE = path.join(DATA, 'owner-device.enc');
@@ -41,9 +60,13 @@ function canonicalJson(value) {
 
 /** Central server address: user setting first, then the build's baked value. */
 function serverUrl() {
+  let testBuild = false;
   const read = (file) => {
     try {
-      return String(JSON.parse(fs.readFileSync(file, 'utf8')).url || '');
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // Only a TEST installer (flag baked at build time) may use a local http address.
+      if (parsed.test === true && file.endsWith('owner.json')) testBuild = true;
+      return String(parsed.url || '');
     } catch {
       return '';
     }
@@ -56,8 +79,9 @@ function serverUrl() {
     .trim()
     .replace(/[/]+$/, '');
   const local =
-    process.env.OWNER_ALLOW_HTTP === '1' &&
-    /^http:\/\/(localhost|127\.)/.test(url);
+    (testBuild || process.env.OWNER_ALLOW_HTTP === '1') &&
+    (url.startsWith('http://127.0.0.1:') ||
+      url.startsWith('http://localhost:'));
   return url.startsWith('https://') || local ? url : '';
 }
 

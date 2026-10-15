@@ -23,23 +23,49 @@ const { registerUpdates } = require('./updates.cjs');
 const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
 
-// FASTFOOD_PORT / FASTFOOD_PG_PORT let a second copy run next to the installed one
-// (support and release checks) without touching it.
-const APP_PORT = Number(process.env.FASTFOOD_PORT) || 8787;
-const PG_PORT = Number(process.env.FASTFOOD_PG_PORT) || 54330;
-const VERSION = app.getVersion();
-// FASTFOOD_DATA_DIR / FASTFOOD_VENDOR_DIR point a run at other folders (support, testing).
-const DATA =
-  process.env.FASTFOOD_DATA_DIR ||
-  path.join(app.getPath('appData'), 'FastFood-Data');
-const PGDATA = path.join(DATA, 'pgdata');
-const BACKUPS = path.join(DATA, 'backups');
-const LOGS = path.join(DATA, 'logs');
 const RES = app.isPackaged
   ? process.resourcesPath
   : path.join(__dirname, 'stage');
 const PGBIN = path.join(RES, 'postgres', 'bin');
 const SERVER = path.join(RES, 'app-server');
+
+// A TEST build (channel.json baked by build.mjs) lives entirely apart from the
+// production install: own data folder, ports, window title and no vendor watchers,
+// so it can run next to the real app on the same computer without touching it.
+const CHANNEL = (() => {
+  try {
+    const value = JSON.parse(
+      fs.readFileSync(path.join(SERVER, 'channel.json'), 'utf8'),
+    );
+    return value.channel === 'test' ? 'test' : 'production';
+  } catch {
+    return 'production';
+  }
+})();
+const TEST = CHANNEL === 'test';
+// Own Electron profile: the test build must not share the single-instance lock or
+// window state with the production app running on the same computer.
+if (TEST)
+  app.setPath(
+    'userData',
+    path.join(app.getPath('appData'), 'FastFood-Test-App'),
+  );
+
+// FASTFOOD_PORT / FASTFOOD_PG_PORT let a second copy run next to the installed one
+// (support and release checks) without touching it.
+const APP_PORT = Number(process.env.FASTFOOD_PORT) || (TEST ? 8788 : 8787);
+const PG_PORT = Number(process.env.FASTFOOD_PG_PORT) || (TEST ? 54331 : 54330);
+const VERSION = app.getVersion();
+// FASTFOOD_DATA_DIR / FASTFOOD_VENDOR_DIR point a run at other folders (support, testing).
+const DATA =
+  process.env.FASTFOOD_DATA_DIR ||
+  path.join(
+    app.getPath('appData'),
+    TEST ? 'FastFood-Test-Data' : 'FastFood-Data',
+  );
+const PGDATA = path.join(DATA, 'pgdata');
+const BACKUPS = path.join(DATA, 'backups');
+const LOGS = path.join(DATA, 'logs');
 
 let win = null;
 let api = null;
@@ -139,7 +165,12 @@ function controlSettings() {
   try {
     const file = path.join(SERVER, 'control.json');
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return String(parsed.url || '').startsWith('https://') && parsed.publicKey
+    const secure =
+      String(parsed.url || '').startsWith('https://') ||
+      (TEST &&
+        (String(parsed.url).startsWith('http://127.0.0.1:') ||
+          String(parsed.url).startsWith('http://localhost:')));
+    return secure && parsed.publicKey
       ? {
           url: String(parsed.url).replace(/[/]+$/, ''),
           publicKey: parsed.publicKey,
@@ -565,6 +596,8 @@ ipcMain.handle('anydesk:open', async () => {
 // The vendor tools live in vendor-ipc.cjs (shared with the Owner app); they only
 // work on the vendor's computer, which holds the private signing key.
 const vendorTools = require('./vendor-ipc.cjs').registerVendor({
+  // A test build never uses the production vendor folder or its signing key.
+  vendorDir: TEST ? path.join(DATA, 'vendor-test') : undefined,
   ipcMain,
   dialog,
   getWindow: () => win,
@@ -683,7 +716,7 @@ async function boot() {
   win = new BrowserWindow({
     width: 1366,
     height: 860,
-    title: `FastFood ${VERSION}`,
+    title: TEST ? `FastFood TEST ${VERSION}` : `FastFood ${VERSION}`,
     autoHideMenuBar: false,
     webPreferences: {
       contextIsolation: true,

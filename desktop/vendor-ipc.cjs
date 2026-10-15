@@ -8,12 +8,14 @@ const path = require('node:path');
 const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
 
-function registerVendor({ ipcMain, dialog, getWindow, log }) {
+function registerVendor({ ipcMain, dialog, getWindow, log, vendorDir }) {
   // --------------------------------------------------- vendor licence panel
 
   // Present only on the vendor's computer; customers' installs never have it.
   const VENDOR_DIR =
-    process.env.FASTFOOD_VENDOR_DIR || path.join(os.homedir(), '.fastfood');
+    vendorDir ||
+    process.env.FASTFOOD_VENDOR_DIR ||
+    path.join(os.homedir(), '.fastfood');
   const VENDOR_KEY = path.join(VENDOR_DIR, 'vendor-license-private.pem');
   const VENDOR_HISTORY = path.join(VENDOR_DIR, 'licenses-issued.json');
   const VENDOR_STATE = path.join(VENDOR_DIR, 'vendor.json');

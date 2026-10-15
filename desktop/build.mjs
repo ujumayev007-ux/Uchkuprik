@@ -22,6 +22,9 @@ const require = createRequire(import.meta.url);
 const { version } = JSON.parse(
   readFileSync(join(here, 'package.json'), 'utf8'),
 );
+// BUILD_CHANNEL=test makes an isolated TEST installer: own app id, data folder,
+// ports and output folder; it never bakes the production status/report settings.
+const TEST = process.env.BUILD_CHANNEL === 'test';
 const sh = (command, cwd = root) =>
   execSync(command, { cwd, stdio: 'inherit' });
 
@@ -73,7 +76,7 @@ if (existsSync(apk)) {
 
 // Remote licence control: customers' apps poll the vendor's signed status document.
 const vendorState = join(homedir(), '.fastfood', 'vendor.json');
-if (existsSync(vendorState)) {
+if (!TEST && existsSync(vendorState)) {
   const { statusUrl, report } = JSON.parse(readFileSync(vendorState, 'utf8'));
   if (statusUrl)
     writeFileSync(join(server, 'license-status-url.txt'), statusUrl);
@@ -99,7 +102,13 @@ if (existsSync(vendorState)) {
       : existsSync(file)
         ? JSON.parse(readFileSync(file, 'utf8'))
         : null;
-  if (settings?.url?.startsWith('https://') && settings.publicKey)
+  const urlOk =
+    settings?.url?.startsWith('https://') ||
+    (TEST &&
+      /^http:[/][/](127[.]0[.]0[.]1|localhost):[0-9]+$/.test(
+        settings?.url ?? '',
+      ));
+  if (urlOk && settings.publicKey)
     writeFileSync(
       join(server, 'control.json'),
       JSON.stringify({ url: settings.url, publicKey: settings.publicKey }),
@@ -109,6 +118,12 @@ if (existsSync(vendorState)) {
       'Central control not baked in: set CONTROL_URL and CONTROL_PUBLIC_KEY (or desktop/control.json).',
     );
 }
+
+if (TEST)
+  writeFileSync(
+    join(server, 'channel.json'),
+    JSON.stringify({ channel: 'test' }),
+  );
 
 // PostgreSQL 17 binaries for Windows (bin, lib, share).
 const native = join(
@@ -127,11 +142,11 @@ const { build } = require('electron-builder');
 await build({
   projectDir: here,
   config: {
-    appId: `uz.fastfood.desktop.v${slug}`,
-    productName: `FastFood ${version}`,
+    appId: `uz.fastfood.desktop.${TEST ? 'test.' : ''}v${slug}`,
+    productName: `FastFood ${TEST ? 'TEST ' : ''}${version}`,
     executableName: 'FastFood',
     directories: {
-      output: join(here, 'release'),
+      output: join(here, TEST ? 'release-test' : 'release'),
       buildResources: join(here, 'build'),
     },
     files: [
@@ -155,11 +170,13 @@ await build({
       perMachine: false,
       allowToChangeInstallationDirectory: true,
       createDesktopShortcut: true,
-      shortcutName: `FastFood ${version}`,
-      artifactName: `FastFood-Setup-${version}.exe`,
+      shortcutName: `FastFood ${TEST ? 'TEST ' : ''}${version}`,
+      artifactName: `FastFood-${TEST ? 'TEST-' : ''}Setup-${version}.exe`,
       // Uninstalling a version never touches the shared data folder.
       deleteAppDataOnUninstall: false,
     },
   },
 });
-console.log(`Ready: desktop/release/FastFood-Setup-${version}.exe`);
+console.log(
+  `Ready: desktop/${TEST ? 'release-test' : 'release'}/FastFood-${TEST ? 'TEST-' : ''}Setup-${version}.exe`,
+);
