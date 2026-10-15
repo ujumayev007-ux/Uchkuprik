@@ -4,6 +4,7 @@ import {
   Button,
   Checkbox,
   EmptyState,
+  LoadingState,
   PageHeader,
   SelectField,
   TextField,
@@ -11,6 +12,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { OwnerConsole, useControlPlane } from './owner/OwnerConsole';
 import { VendorAlerts, type AlertsBridge } from './VendorAlerts';
 import { VendorInstalls, type InstallsBridge } from './VendorInstalls';
 import {
@@ -101,7 +103,7 @@ function addMonths(months: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function VendorPage() {
+function LegacyVendorPage() {
   const toast = useToast();
   const { confirm, element } = useConfirm();
   const [state, setState] = useState<VendorState | null>(null);
@@ -511,4 +513,21 @@ export function VendorPage() {
       {element}
     </div>
   );
+}
+
+/**
+ * The single Sotuvchi paneli. On the central server it is the SUPER_OWNER console
+ * (customers, licences, devices, policy, updates, audit) and keeps the existing
+ * local vendor tools as one more tab; elsewhere it is the unchanged local panel.
+ */
+export function VendorPage() {
+  const plane = useControlPlane();
+  if (plane.isPending) return <LoadingState />;
+  if (plane.data?.plane)
+    return (
+      <OwnerConsole
+        local={vendor?.isVendor ? <LegacyVendorPage /> : undefined}
+      />
+    );
+  return <LegacyVendorPage />;
 }

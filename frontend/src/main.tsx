@@ -224,6 +224,18 @@ const router = createBrowserRouter([
     ),
   },
   { path: '/pin', element: <PinPage /> },
+  // SUPER_OWNER console (central server): own sign-in, outside restaurant sessions.
+  {
+    path: '/owner',
+    element: (
+      <div
+        className="owner-shell"
+        style={{ padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}
+      >
+        <VendorPage />
+      </div>
+    ),
+  },
   // Public customer pages: no staff session required.
   { path: '/t/:token', element: <TableMenuPage /> },
   { path: '/r/:slug', element: <WebsiteMenuPage /> },

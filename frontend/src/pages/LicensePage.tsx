@@ -12,6 +12,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
+import { ControlLinkCard } from './ControlLinkCard';
 
 const l = t.license;
 
@@ -170,6 +171,7 @@ export function LicenseDetails({ license }: { license: License }) {
           <KeyForm />
         </section>
       )}
+      <ControlLinkCard />
     </div>
   );
 }

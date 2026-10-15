@@ -31,6 +31,12 @@ export type Me = {
       devices: number | null;
     };
   };
+  financial?: { cost: boolean; margin: boolean; profit: boolean };
+  control?: {
+    mode: string;
+    reason: string | null;
+    offlineUntil: string | null;
+  };
   billing: {
     status: string;
     trialEndsAt: string | null;

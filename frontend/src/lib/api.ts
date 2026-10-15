@@ -27,6 +27,10 @@ async function send(path: string, options: Options): Promise<Response> {
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
+      // Offline rules allow orders only from the Cashier panel (server verifies it).
+      ...(window.location.pathname.startsWith('/kassa')
+        ? { 'X-Panel': 'cashier' }
+        : {}),
       ...(options.body === undefined
         ? {}
         : { 'Content-Type': 'application/json' }),

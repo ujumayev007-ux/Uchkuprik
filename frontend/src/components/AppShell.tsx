@@ -446,6 +446,32 @@ function openPopup(path: string) {
   window.open(path, 'fastfood-tv', 'popup,width=1280,height=760');
 }
 
+/** Offline / expired / blocked state decided by the central control (server-enforced). */
+function ControlBanner({ me }: { me: Me }) {
+  const control = me.control;
+  if (!control || control.mode === 'ONLINE' || control.mode === 'UNLINKED')
+    return null;
+  const b = t.control.banner;
+  let text: string;
+  if (control.mode === 'OFFLINE')
+    text = b.OFFLINE.replace(
+      '{until}',
+      control.offlineUntil
+        ? new Date(control.offlineUntil).toLocaleString('uz-UZ')
+        : '—',
+    );
+  else if (control.mode === 'BLOCKED') text = b.BLOCKED;
+  else text = control.reason === 'CLOCK' ? b.CLOCK : b.EXPIRED;
+  return (
+    <div
+      className={`billing-banner ${control.mode === 'OFFLINE' ? 'warning' : 'danger'}`}
+      role="status"
+    >
+      <span>{text}</span>
+    </div>
+  );
+}
+
 function LicenseBanner({ license }: { license: License | undefined }) {
   if (!license?.selfHosted) return null;
   if (license.status !== 'EXPIRING' && license.status !== 'TRIAL') return null;
@@ -681,6 +707,7 @@ export function AppShell() {
           <LicenseBanner license={license.data} />
           <AppUpdateBanner />
           <BillingBanner me={me} />
+          <ControlBanner me={me} />
           {licenseBlocks(license.data) ? (
             <LicenseLock license={license.data!} />
           ) : menuDisabled ? (

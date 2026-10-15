@@ -1,6 +1,10 @@
 // Uzbek (Latin) is the default and reference catalog. Russian and English catalogs
 // must provide the same keys (enforced by the Catalog type in i18n.ts).
+import { control, owner } from './owner-uz';
+
 export const uz = {
+  owner,
+  control,
   common: {
     save: 'Saqlash',
     cancel: 'Bekor qilish',
