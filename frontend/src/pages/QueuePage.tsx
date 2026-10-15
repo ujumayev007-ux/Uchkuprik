@@ -94,7 +94,8 @@ export function QueuePage() {
   useEffect(() => {
     if (!sound) return;
     const map = known();
-    for (const item of ready) if (!map.has(item.key)) map.set(item.key, Date.now());
+    for (const item of ready)
+      if (!map.has(item.key)) map.set(item.key, Date.now());
     saveAnnounced(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sound]);
@@ -173,7 +174,10 @@ export function QueuePage() {
         />
       </header>
       {display.layout === 'single' ? (
-        <div className="queue-columns" style={{ ['--tv-columns' as string]: 1 }}>
+        <div
+          className="queue-columns"
+          style={{ ['--tv-columns' as string]: 1 }}
+        >
           <section>
             <ul className="tv-list single" aria-label={t.queue.title}>
               {showReady &&

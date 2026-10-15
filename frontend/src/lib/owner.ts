@@ -79,7 +79,13 @@ export type ParamDef =
       default: number;
       ownerCap?: boolean;
     }
-  | { key: string; label: string; hint?: string; type: 'bool'; default: boolean }
+  | {
+      key: string;
+      label: string;
+      hint?: string;
+      type: 'bool';
+      default: boolean;
+    }
   | {
       key: string;
       label: string;

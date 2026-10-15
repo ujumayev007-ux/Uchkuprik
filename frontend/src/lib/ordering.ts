@@ -86,7 +86,9 @@ export function useOrderDisplayMode() {
   const read = useCallback((): DisplayMode | null => {
     try {
       const value = localStorage.getItem(key);
-      return MODES.includes(value as DisplayMode) ? (value as DisplayMode) : null;
+      return MODES.includes(value as DisplayMode)
+        ? (value as DisplayMode)
+        : null;
     } catch {
       return null;
     }

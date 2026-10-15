@@ -7,7 +7,11 @@ import { formatOrderNo } from '../lib/uzbek-number';
 import { useMe } from '../auth/session';
 import { useFloor } from '../pages/FloorPage';
 
-type ActiveOrder = { id: string; tableId?: string | null; table?: { id: string } | null };
+type ActiveOrder = {
+  id: string;
+  tableId?: string | null;
+  table?: { id: string } | null;
+};
 
 /**
  * Chooses or changes the table of an existing order. The order, its items,
@@ -19,7 +23,11 @@ export function TableAssignDialog({
   onClose,
   onDone,
 }: {
-  order: { id: string; number: number; table: { id: string; name: string } | null };
+  order: {
+    id: string;
+    number: number;
+    table: { id: string; name: string } | null;
+  };
   onClose: () => void;
   onDone?: () => void;
 }) {

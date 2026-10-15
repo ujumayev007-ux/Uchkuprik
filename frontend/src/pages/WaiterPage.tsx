@@ -53,7 +53,8 @@ export function WaiterPage() {
     enabled: !!alertOrderId,
   });
   useEffect(() => {
-    if (alertOrder.data && !alertOrder.data.table) setAssigning(alertOrder.data);
+    if (alertOrder.data && !alertOrder.data.table)
+      setAssigning(alertOrder.data);
   }, [alertOrder.data]);
   const floor = useQuery({
     queryKey: ['floor', branchId],

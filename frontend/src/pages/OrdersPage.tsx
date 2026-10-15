@@ -409,7 +409,9 @@ export function OrderDetail({
                 busy={busy}
                 onClick={() =>
                   void run(() =>
-                    patch(`/orders/${o.id}`, { note: (note ?? '').trim() || null }),
+                    patch(`/orders/${o.id}`, {
+                      note: (note ?? '').trim() || null,
+                    }),
                   )
                 }
               >
@@ -425,10 +427,7 @@ export function OrderDetail({
                     '{percent}',
                     String(ordering.discount.maxPercentBp / 100),
                   )
-                  .replace(
-                    '{fixed}',
-                    formatMoney(ordering.discount.maxFixed),
-                  )}
+                  .replace('{fixed}', formatMoney(ordering.discount.maxFixed))}
               </p>
               <div className="form-grid">
                 <TextField
@@ -437,7 +436,11 @@ export function OrderDetail({
                   min={0}
                   max={ordering.discount.maxPercentBp / 100}
                   disabled={!ordering.discount.percent}
-                  hint={ordering.discount.percent ? undefined : t.ordering.percentOff}
+                  hint={
+                    ordering.discount.percent
+                      ? undefined
+                      : t.ordering.percentOff
+                  }
                   value={discount.percent}
                   onChange={(e) =>
                     setDiscount({ ...discount, percent: e.target.value })
@@ -582,14 +585,14 @@ export function OrderDetail({
             {open &&
               can(me, 'discounts.apply') &&
               (ordering.discount.percent || ordering.discount.fixed) && (
-              <Button
-                onClick={() =>
-                  setAction(action === 'discount' ? null : 'discount')
-                }
-              >
-                {t.orders.applyDiscount}
-              </Button>
-            )}
+                <Button
+                  onClick={() =>
+                    setAction(action === 'discount' ? null : 'discount')
+                  }
+                >
+                  {t.orders.applyDiscount}
+                </Button>
+              )}
             {can(me, 'payments.refund') && o.paidTotal > o.refundedTotal && (
               <Button
                 variant="danger"
