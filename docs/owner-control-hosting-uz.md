@@ -20,6 +20,18 @@ Loyihada allaqachon Render uchun sozlama bor (`render.yaml`). Tavsiya:
 - Haqiqiy ishlatish uchun **pullik tarif** oling: bepul xizmat uxlab qoladi va bepul
   baza muddati tugaydi — litsenziya nazorati uchun yaramaydi.
 
+### Bepul Render tarifi bo‘yicha ogohlantirish
+
+- Bepul Web Service 15 daqiqa so‘rovsiz qolsa uxlaydi; birinchi so‘rov sekin (taxminan
+  yarim daqiqa). Mijoz dasturlari har 60 soniyada ulanadi, shuning uchun ish vaqtida
+  uyg‘oq turadi; oflayn ruxsatnoma uzilishlarni qoplaydi.
+- **Bepul Render bazasi cheklangan muddatli** (o‘chirilishi mumkin). Litsenziyalar bazasi
+  yo‘qolsa barcha mijozlar qayta faollashtirilishi kerak. Shuning uchun bepul Render
+  bazasini faqat sinov uchun ishlating. Doimiy variant: pullik Render bazasi yoki
+  muddati tugamaydigan boshqa bepul PostgreSQL xizmati (`DATABASE_URL` ga qo‘yiladi).
+- Google Drive server o‘rnini bosa olmaydi, lekin EXE o‘rnatuvchilarni tarqatish va
+  zaxira fayllarini saqlash uchun yaroqli (zaxirani parol bilan arxivlang).
+
 ## 2. Kalitlarni yaratish (o‘z kompyuteringizda, bir marta)
 
 ```text
