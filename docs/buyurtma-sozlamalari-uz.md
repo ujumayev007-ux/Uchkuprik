@@ -1,7 +1,7 @@
 # Buyurtma sozlamalari — Owner uchun qo‘llanma
 
-Barcha sozlamalar **Owner paneli → Mijoz → Funksiyalar va siyosat** bo‘limida.
-Qidiruv maydoniga «chegirma», «mijoz», «TV», «ofitsiant» deb yozing — kerakli qator
+Barcha sozlamalar **Owner paneli → Mijozlar → (mijozni tanlang) → «Funksiyalar va oflayn siyosat»**
+bo‘limida. Qidiruv maydoniga «chegirma», «mijoz», «TV», «ofitsiant» deb yozing — kerakli qator
 topiladi. Qatordagi **▼ Qiymatlar va rollar** tugmasi rollar bo‘yicha qarorlar va
 qiymatlarni ochadi.
 
@@ -33,7 +33,8 @@ qiymatlarni ochadi.
 ## Android ilova (ofitsiant planshetlari)
 
 1. APK ni o‘rnating va restoran kompyuteri manzilini kiriting.
-2. Ofitsiant tizimga kirgach, ilova bildirishnoma ruxsatini so‘raydi — **Ruxsat** bering.
+2. Ofitsiant tizimga kirgach, ekranda «Ovozli xabarni yoqish» tugmasi chiqadi — bosib,
+   Android so‘ragan bildirishnoma ruxsatiga **Ruxsat** bering.
 3. Planshetda **quvvat tejash** rejimida ilovani cheklamang (Sozlamalar → Ilovalar →
    FastFood → Batareya → «Cheklovsiz»), aks holda ba’zi telefonlar ekran o‘chganda
    ulanishni to‘xtatadi.
