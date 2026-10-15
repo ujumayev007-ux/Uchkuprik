@@ -145,6 +145,22 @@ export function OrderDetail({
     );
   };
 
+  // The item note (e.g. "achchiq bo‘lmasin") is edited the same way.
+  const changeNote = (item: OrderItem) => {
+    const o = order.data!;
+    const text = window.prompt(t.ordering.noteLabel, item.note ?? '');
+    if (text === null) return;
+    const sent = o.status !== 'DRAFT';
+    const why = sent ? (window.prompt(t.orderEdit.reason) ?? '') : '';
+    if (sent && why.trim().length < 3) return;
+    void run(() =>
+      patch(`/orders/${o.id}/items/${item.id}`, {
+        note: text.trim() || null,
+        ...(sent ? { reason: why } : {}),
+      }),
+    );
+  };
+
   if (order.isPending)
     return (
       <Dialog open title={t.orders.details} onClose={onClose}>
@@ -259,7 +275,20 @@ export function OrderDetail({
                   <td className="right nowrap">
                     {formatMoney(item.lineTotal)}
                   </td>
-                  <td className="right">
+                  <td className="right nowrap">
+                    {open &&
+                      item.status === 'ACTIVE' &&
+                      !item.cancelRequested &&
+                      o.status !== 'PENDING' &&
+                      can(me, 'orders.edit') && (
+                        <button
+                          className="text-link"
+                          disabled={busy}
+                          onClick={() => changeNote(item)}
+                        >
+                          {t.pos.note}
+                        </button>
+                      )}{' '}
                     {open &&
                       item.status === 'ACTIVE' &&
                       !item.cancelRequested && (

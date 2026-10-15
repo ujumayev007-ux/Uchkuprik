@@ -2,14 +2,18 @@ package uz.fastfood.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -21,6 +25,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import org.json.JSONObject;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -34,16 +40,114 @@ public class MainActivity extends Activity {
     private static final String PREFS = "fastfood";
     private static final String KEY_SERVER = "server";
     private static final int FILE_REQUEST = 41;
+    private static final int NOTIFY_REQUEST = 42;
 
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
+    // Page to open once the app is up (a tapped notification: «Stol belgilash»).
+    private String pendingPath;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        pendingPath = pathFrom(getIntent());
         String server = prefs().getString(KEY_SERVER, null);
         if (server == null) showSetup(null);
         else showApp(server);
+    }
+
+    private static String pathFrom(Intent intent) {
+        String path = intent == null ? null : intent.getStringExtra(AlertService.EXTRA_PATH);
+        // Only paths of the FastFood app itself are accepted.
+        return path != null && path.startsWith("/") && !path.startsWith("//") ? path : null;
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String path = pathFrom(intent);
+        String server = prefs().getString(KEY_SERVER, null);
+        if (path != null && server != null) {
+            if (web != null) web.loadUrl(server + path);
+            else {
+                pendingPath = path;
+                showApp(server);
+            }
+        }
+    }
+
+    /**
+     * Lets the web app (served by the restaurant computer) start the waiter alert
+     * service with the central settings. Only pages of that server can be loaded in
+     * this WebView, so only the restaurant's own app can call it.
+     */
+    private class AlertBridge {
+        @JavascriptInterface
+        public void configureAlerts(String json) {
+            try {
+                JSONObject settings = new JSONObject(json);
+                if (!settings.optBoolean("enabled", false)) {
+                    AlertService.stop(MainActivity.this);
+                    return;
+                }
+                getSharedPreferences(AlertService.PREFS, MODE_PRIVATE).edit()
+                    .putBoolean("sound", settings.optBoolean("sound", true))
+                    .putBoolean("voice", settings.optBoolean("voice", true))
+                    .putInt("volume", settings.optInt("volume", 100))
+                    .putInt("repeat", settings.optInt("repeat", 1))
+                    .putInt("reminder", settings.optInt("reminderSeconds", 0))
+                    .apply();
+                AlertService.start(MainActivity.this);
+            } catch (Exception ignored) {
+            }
+        }
+
+        @JavascriptInterface
+        public void stopAlerts() {
+            AlertService.stop(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String alertStatus() {
+            try {
+                JSONObject status = new JSONObject();
+                status.put("running", AlertService.wanted(MainActivity.this));
+                status.put("notifications", AlertService.notificationsAllowed(MainActivity.this));
+                status.put("ttsReady", true);
+                return status.toString();
+            } catch (Exception error) {
+                return "{}";
+            }
+        }
+
+        @JavascriptInterface
+        public void requestNotificationPermission() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33)
+                    requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, NOTIFY_REQUEST);
+                else openAlertSettings();
+            });
+        }
+
+        @JavascriptInterface
+        public void openAlertSettings() {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                try {
+                    startActivity(intent);
+                } catch (Exception ignored) {
+                }
+            });
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == NOTIFY_REQUEST && web != null)
+            web.evaluateJavascript("window.dispatchEvent(new Event('ff-android-permission'))", null);
     }
 
     private SharedPreferences prefs() {
@@ -202,7 +306,9 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
-        web.loadUrl(server + "/");
+        web.addJavascriptInterface(new AlertBridge(), "FastFoodAndroid");
+        web.loadUrl(server + (pendingPath != null ? pendingPath : "/"));
+        pendingPath = null;
         setContentView(web);
     }
 

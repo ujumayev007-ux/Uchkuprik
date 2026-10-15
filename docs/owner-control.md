@@ -77,6 +77,45 @@ Cost price, margin and net profit are hidden from **Cashier-class** users by def
 delegate them. `fin.cost|margin|profit` and `field.report.*` switch them off for
 everyone.
 
+### Per-role decisions and parameters
+
+Every feature can also carry **per-role overrides** (`roles.<roleKey>.enabled`) and
+**parameters** (`params`, plus `roles.<roleKey>.params`) declared in the catalog
+(`ParamDef`: int with min/max and optional `ownerCap`, bool, enum). A role override
+applies to the users holding that role and a user with several roles keeps what any
+of them allows; a global `OFF` is always final. For a delegated (`ADMIN`) feature the
+restaurant Admin may set parameter values (`feature_settings.params`); numbers marked
+`ownerCap` can only be lowered below the Owner's value.
+
+The resolved result for the signed-in user is `me.ordering` (`modules/control/ordering.ts`)
+and is enforced by the order routes — the UI only mirrors it:
+
+| Setting                                | Feature key(s)                                                        | Parameters                                                           |
+| -------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Order types                            | `orders.type.dine_in\|takeaway\|delivery`                             | –                                                                    |
+| «Mijoz» button (order without a table) | `orders.walkin`                                                       | –                                                                    |
+| Assign / change table                  | `orders.table.assign` (`POST /orders/:id/table`, `PATCH /orders/:id`) | –                                                                    |
+| Discounts                              | `discounts.percent`, `discounts.fixed` (+ `discounts.apply`)          | `maxPercent`, `maxFixed`                                             |
+| Order display mode (Cashier/Waiter)    | `orders.display`                                                      | `defaultMode`; switch = may the user change it                       |
+| Customer TV                            | `tv.display`, `tv.voice`                                              | `layout`, `showPreparing`, `showReady`, `repeat`, `volume`, `phrase` |
+| Waiter Android alerts                  | `waiter.notify`                                                       | `sound`, `voice`, `volume`, `repeat`, `reminderSeconds`              |
+
+Order table changes, details edits, item additions/changes and discounts are written
+to the audit log (`order.table.assign`, `order.update`, `order.items.add`,
+`order.item.change`, `order.discount` with the previous values).
+
+### Live events and the Android alert service
+
+`order.table_needed` / `order.table_assigned` (branch room) and `config.changed`
+(tenant room; also published when an install receives a new policy version) travel over
+the existing Socket.io channel. Waiter tablets in the Android app use
+`GET /api/live/alerts` (Server-Sent Events, same session cookie, feature
+`waiter.notify`): it sends `config`, `snapshot` (guests still waiting, so a reconnect
+cannot miss one), `walkin`, `assigned` and `bye`. The native `AlertService` announces
+each order id once (ids are persisted), speaks «Yangi mijoz buyurtmasi. Stolni
+belgilang.» with Android text-to-speech (Uzbek voice, Turkish as fallback) and shows a
+notification with the order number and a «Stol belgilash» action.
+
 ## Synchronisation
 
 Outbox (`sync_operations`) is durable and idempotent by operation id; the server keeps

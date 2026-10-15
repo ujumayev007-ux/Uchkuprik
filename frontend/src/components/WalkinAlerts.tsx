@@ -71,6 +71,14 @@ export function WalkinAlerts() {
     } else native.stopAlerts();
   }, [native, enabled, settings]);
 
+  // The Android permission dialog finished: read the status again.
+  useEffect(() => {
+    if (!native) return;
+    const refresh = () => setStatus(androidAlertStatus());
+    window.addEventListener('ff-android-permission', refresh);
+    return () => window.removeEventListener('ff-android-permission', refresh);
+  }, [native]);
+
   const announce = (order: Waiting) => {
     if (!settings || !enabled) return;
     if (seen.current[order.orderId]) return;
