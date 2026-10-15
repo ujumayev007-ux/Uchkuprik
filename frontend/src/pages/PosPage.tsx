@@ -1,4 +1,5 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { can, useMe } from '../auth/session';
 import { PaymentDialog } from '../components/PaymentDialog';
@@ -17,6 +18,8 @@ import { t } from '../i18n';
 import { parsePoint } from './DeliveryPricingCard';
 import { api, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
+import { useOrdering } from '../lib/ordering';
+import { formatOrderNo } from '../lib/uzbek-number';
 import {
   newKey,
   useCurrentShift,
@@ -258,16 +261,35 @@ export function PosPage() {
   const [query, setQuery] = useState('');
   const [picking, setPicking] = useState<Product | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [type, setType] = useState<OrderType>('TAKEAWAY');
+  const ordering = useOrdering();
+  const navigate = useNavigate();
+  const allowedTypes = (['TAKEAWAY', 'DINE_IN', 'DELIVERY'] as const).filter(
+    (value) => ordering.types[value],
+  );
+  const [type, setType] = useState<OrderType>(allowedTypes[0] ?? 'TAKEAWAY');
   const [tableId, setTableId] = useState('');
+  // Adding items to an existing order: /kassa?buyurtma=<orderId>.
+  const [addToId, setAddToId] = useState<string | null>(null);
   // Waiter panel opens the POS for a table: /kassa?stol=<tableId>.
+  // The «Mijoz» button of the Orders section opens it as /kassa?mijoz=1.
   useEffect(() => {
-    const table = new URLSearchParams(window.location.search).get('stol');
+    const params = new URLSearchParams(window.location.search);
+    const table = params.get('stol');
     if (table) {
       setType('DINE_IN');
       setTableId(table);
     }
+    if (params.get('mijoz')) {
+      setType('DINE_IN');
+      setTableId('');
+    }
+    setAddToId(params.get('buyurtma'));
   }, []);
+  const addTo = useQuery({
+    queryKey: ['orders', 'one', addToId],
+    queryFn: () => api<Order>(`/orders/${addToId}`),
+    enabled: !!addToId,
+  });
   const [customer, setCustomer] = useState({
     name: '',
     phone: '',
@@ -285,6 +307,8 @@ export function PosPage() {
     change: number | null;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Phones: the cart is a full-screen sheet opened from the bottom bar.
+  const [cartOpen, setCartOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   // One idempotency key per cart, so a retried submit cannot create two orders.
   const cartKey = useRef(newKey());
@@ -313,6 +337,7 @@ export function PosPage() {
     room.tables.map((table) => ({ ...table, room: room.name })),
   );
   const needsShift = can(me, 'payments.accept') && shift.data === null;
+  const guestMode = type === 'DINE_IN' && !tableId;
 
   const addProduct = (product: Product) => {
     const available = product.variants.filter((variant) => variant.available);
@@ -348,6 +373,21 @@ export function PosPage() {
     setBusy(true);
     setError(null);
     try {
+      if (addToId) {
+        const updated = await post<Order>(`/orders/${addToId}/items`, {
+          items: cart.map((line) => ({
+            variantId: line.variant.id,
+            quantity: line.quantity,
+            modifierOptionIds: line.options.map((option) => option.id),
+            note: line.note || null,
+          })),
+        });
+        setCart([]);
+        await client.invalidateQueries({ queryKey: ['orders'] });
+        toast(`${t.ordering.itemsAdded} ${formatOrderNo(updated.number)}`);
+        navigate('/buyurtmalar');
+        return;
+      }
       const order = await post<Order>('/orders', {
         idempotencyKey: cartKey.current,
         type,
@@ -408,7 +448,13 @@ export function PosPage() {
       setExtras({ phone: '', promo: '' });
       await client.invalidateQueries({ queryKey: ['orders'] });
       if (place)
-        toast(`${t.pos.orderSent} ${t.orders.number}${current.number}`);
+        toast(
+          `${t.pos.orderSent} ${formatOrderNo(current.number)}${
+            type === 'DINE_IN' && !current.table
+              ? ` · ${t.ordering.noTable}`
+              : ''
+          }`,
+        );
       else setPaying(current);
     } catch (caught) {
       setError(caught);
@@ -501,22 +547,95 @@ export function PosPage() {
         )}
       </section>
 
-      <aside className="pos-cart" aria-label={t.pos.cart}>
+      <button
+        type="button"
+        className="pos-cartbar"
+        onClick={() => setCartOpen(true)}
+      >
+        <span>
+          🛒 {t.pos.cart}
+          {cart.length > 0
+            ? ` · ${cart.reduce((sum, line) => sum + line.quantity, 0)}`
+            : ''}
+        </span>
+        <span>{formatMoney(subtotal)}</span>
+      </button>
+      <aside
+        className={`pos-cart ${cartOpen ? 'open' : ''}`}
+        aria-label={t.pos.cart}
+      >
+        <button
+          type="button"
+          className="btn btn-ghost btn-md pos-cart-close"
+          onClick={() => setCartOpen(false)}
+        >
+          ✕ {t.common.close}
+        </button>
         {needsShift && <ShiftGate />}
-        <div className="segmented" role="radiogroup" aria-label={t.orders.type}>
-          {(['TAKEAWAY', 'DINE_IN', 'DELIVERY'] as const).map((value) => (
+        {addToId && (
+          <div className="guest-waiting" role="status">
+            <strong>
+              {t.ordering.addingTo}
+              {addTo.data ? `: ${formatOrderNo(addTo.data.number)}` : ''}
+            </strong>
+            {addTo.data?.table && <span>{addTo.data.table.name}</span>}
             <button
-              key={value}
-              role="radio"
-              aria-checked={type === value}
-              className={type === value ? 'active' : ''}
-              onClick={() => setType(value)}
+              className="text-link"
+              onClick={() => {
+                setAddToId(null);
+                navigate('/kassa', { replace: true });
+              }}
             >
-              {t.pos.types[value]}
+              {t.common.cancel}
             </button>
-          ))}
-        </div>
-        {type === 'DINE_IN' && (
+          </div>
+        )}
+        {!addToId && (
+          <div
+            className="segmented"
+            role="radiogroup"
+            aria-label={t.orders.type}
+          >
+            {allowedTypes.map((value) => (
+              <button
+                key={value}
+                role="radio"
+                aria-checked={
+                  type === value && !(value === 'DINE_IN' && guestMode)
+                }
+                className={
+                  type === value && !(value === 'DINE_IN' && guestMode)
+                    ? 'active'
+                    : ''
+                }
+                onClick={() => setType(value)}
+              >
+                {t.pos.types[value]}
+              </button>
+            ))}
+            {ordering.walkin && ordering.types.DINE_IN && (
+              <button
+                role="radio"
+                aria-checked={guestMode}
+                className={guestMode ? 'active' : ''}
+                title={t.ordering.guestHint}
+                onClick={() => {
+                  setType('DINE_IN');
+                  setTableId('');
+                }}
+              >
+                {t.ordering.guest}
+              </button>
+            )}
+          </div>
+        )}
+        {!addToId && guestMode && (
+          <p className="guest-waiting" role="status">
+            <strong>{t.ordering.noTable}</strong>
+            <span className="muted small">{t.ordering.guestHint}</span>
+          </p>
+        )}
+        {!addToId && type === 'DINE_IN' && (
           <label className="field">
             <span className="field-label">{t.pos.table}</span>
             <select
@@ -524,7 +643,9 @@ export function PosPage() {
               onChange={(e) => setTableId(e.target.value)}
               aria-label={t.pos.table}
             >
-              <option value="">{t.pos.noTable}</option>
+              {ordering.walkin && (
+                <option value="">{t.ordering.noTable}</option>
+              )}
               {tables.map((table) => (
                 <option key={table.id} value={table.id}>
                   {table.room} · {table.name}
@@ -533,7 +654,7 @@ export function PosPage() {
             </select>
           </label>
         )}
-        {type === 'DELIVERY' && (
+        {!addToId && type === 'DELIVERY' && (
           <div className="stack compact">
             <TextField
               label={t.pos.customerPhone}
@@ -588,26 +709,30 @@ export function PosPage() {
             )}
           </div>
         )}
-        <details className="cart-extras">
-          <summary>
-            {t.crm.customerPhone} · {t.crm.promoCode}
-          </summary>
-          <div className="stack compact">
-            <TextField
-              label={`${t.crm.customerPhone} (${t.common.optional})`}
-              type="tel"
-              value={extras.phone}
-              onChange={(e) => setExtras({ ...extras, phone: e.target.value })}
-            />
-            <TextField
-              label={`${t.crm.promoCode} (${t.common.optional})`}
-              value={extras.promo}
-              onChange={(e) =>
-                setExtras({ ...extras, promo: e.target.value.toUpperCase() })
-              }
-            />
-          </div>
-        </details>
+        {!addToId && (
+          <details className="cart-extras">
+            <summary>
+              {t.crm.customerPhone} · {t.crm.promoCode}
+            </summary>
+            <div className="stack compact">
+              <TextField
+                label={`${t.crm.customerPhone} (${t.common.optional})`}
+                type="tel"
+                value={extras.phone}
+                onChange={(e) =>
+                  setExtras({ ...extras, phone: e.target.value })
+                }
+              />
+              <TextField
+                label={`${t.crm.promoCode} (${t.common.optional})`}
+                value={extras.promo}
+                onChange={(e) =>
+                  setExtras({ ...extras, promo: e.target.value.toUpperCase() })
+                }
+              />
+            </div>
+          </details>
+        )}
         <h2 className="cart-title">{t.pos.cart}</h2>
         {cart.length === 0 ? (
           <p className="muted center cart-empty">{t.pos.emptyCart}</p>
@@ -687,7 +812,10 @@ export function PosPage() {
               variant="primary"
               size="lg"
               disabled={
-                cart.length === 0 || !can(me, 'payments.accept') || needsShift
+                cart.length === 0 ||
+                !can(me, 'payments.accept') ||
+                needsShift ||
+                !!addToId
               }
               busy={busy}
               onClick={() => void submit(false)}

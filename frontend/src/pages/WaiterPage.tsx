@@ -1,7 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useMe } from '../auth/session';
+import { can, useMe } from '../auth/session';
+import { DisplayModeSwitch, OrderBoard } from '../components/OrderBoard';
+import { TableAssignDialog } from '../components/TableAssignDialog';
 import {
+  Button,
+  Dialog,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -9,8 +14,9 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { api } from '../lib/api';
-import type { OrderStatus } from '../lib/orders';
-import { PaymentBadge, StatusBadge } from './OrdersPage';
+import { useOrderDisplayMode, useOrdering } from '../lib/ordering';
+import type { Order } from '../lib/orders';
+import { OrderDetail } from './OrdersPage';
 
 type Floor = {
   rooms: {
@@ -19,21 +25,36 @@ type Floor = {
     tables: { id: string; name: string; seats: number }[];
   }[];
 };
-type ActiveOrder = {
-  id: string;
-  number: number;
-  status: OrderStatus;
-  total: number;
-  due: number;
-  tableId: string | null;
-  table?: { id: string; name: string } | null;
-};
 
-/** Waiter panel: tap a table to take its order on the POS screen. */
+/**
+ * Waiter panel: tables, guests still waiting for a table and the active orders.
+ * Orders can be edited here (items, notes, table, discounts within the limits the
+ * restaurant allows) and new orders are taken on the POS screen.
+ */
 export function WaiterPage() {
   const { data: me } = useMe();
+  const ordering = useOrdering();
   const navigate = useNavigate();
+  const view = useOrderDisplayMode();
   const branchId = me?.activeBranchId;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<Order | null>(null);
+  const [tableOrders, setTableOrders] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  // Opened from an alert: /ofitsiant?stol-belgilash=<orderId> asks for a table.
+  const alertOrderId = new URLSearchParams(window.location.search).get(
+    'stol-belgilash',
+  );
+  const alertOrder = useQuery({
+    queryKey: ['orders', 'one', alertOrderId],
+    queryFn: () => api<Order>(`/orders/${alertOrderId}`),
+    enabled: !!alertOrderId,
+  });
+  useEffect(() => {
+    if (alertOrder.data && !alertOrder.data.table) setAssigning(alertOrder.data);
+  }, [alertOrder.data]);
   const floor = useQuery({
     queryKey: ['floor', branchId],
     queryFn: () =>
@@ -43,7 +64,7 @@ export function WaiterPage() {
   const orders = useQuery({
     queryKey: ['orders', 'active-tables', branchId],
     queryFn: () =>
-      api<{ orders: ActiveOrder[] }>(
+      api<{ orders: Order[] }>(
         `/orders?scope=active${branchId ? `&branchId=${branchId}` : ''}`,
       ).then((data) => data.orders),
     enabled: !!branchId,
@@ -54,44 +75,56 @@ export function WaiterPage() {
     return (
       <ErrorState error={floor.error} onRetry={() => void floor.refetch()} />
     );
-  const busy = (tableId: string) =>
-    (orders.data ?? []).filter(
-      (order) => (order.tableId ?? order.table?.id) === tableId,
-    ).length;
+  const all = orders.data ?? [];
+  const tableOf = (order: Order) => order.table?.id ?? null;
+  const countAt = (tableId: string) =>
+    all.filter((order) => tableOf(order) === tableId).length;
+  const waiting = all.filter(
+    (order) => order.type === 'DINE_IN' && !order.table,
+  );
+  const canAssign =
+    ordering.tableAssign &&
+    (can(me, 'orders.edit') ||
+      can(me, 'orders.create') ||
+      can(me, 'payments.accept'));
+  const canOrder = can(me, 'pos.access');
+
   return (
     <div className="stack">
       <PageHeader title={t.waiter.title} />
-      <div>
-        <button
-          className="btn btn-secondary btn-lg"
-          onClick={() => navigate('/kassa')}
-        >
-          {t.waiter.takeaway}
-        </button>
+      <div className="orders-toolbar">
+        {canOrder && ordering.types.TAKEAWAY && (
+          <Button size="lg" onClick={() => navigate('/kassa')}>
+            {t.waiter.takeaway}
+          </Button>
+        )}
+        <span className="spacer" />
+        {view.canChange && (
+          <DisplayModeSwitch mode={view.mode} onChange={view.change} />
+        )}
       </div>
-      {(orders.data ?? []).length > 0 && (
+      {waiting.length > 0 && (
+        <section className="guest-waiting" aria-live="polite">
+          <h2 className="section-title">
+            {t.ordering.waitingGuests} ({waiting.length})
+          </h2>
+          <OrderBoard
+            orders={waiting}
+            mode={view.mode === 'detailed' ? 'grid' : view.mode}
+            onSelect={(order) => setSelected(order.id)}
+            {...(canAssign ? { onAssignTable: setAssigning } : {})}
+          />
+        </section>
+      )}
+      {all.length > 0 && (
         <section className="stack">
           <h2 className="section-title">{t.waiter.activeOrders}</h2>
-          <div className="table-grid">
-            {(orders.data ?? []).map((order) => (
-              <button
-                key={order.id}
-                className="table-tile busy"
-                onClick={() =>
-                  navigate(
-                    order.tableId
-                      ? `/kassa?stol=${order.tableId}`
-                      : '/buyurtmalar',
-                  )
-                }
-              >
-                <strong>№{order.number}</strong>
-                <span>{order.table?.name ?? '—'}</span>
-                <StatusBadge status={order.status} />
-                <PaymentBadge order={order} />
-              </button>
-            ))}
-          </div>
+          <OrderBoard
+            orders={all}
+            mode={view.mode}
+            onSelect={(order) => setSelected(order.id)}
+            {...(canAssign ? { onAssignTable: setAssigning } : {})}
+          />
         </section>
       )}
       {floor.data.rooms.length === 0 ? (
@@ -102,12 +135,18 @@ export function WaiterPage() {
             <h2 className="section-title">{room.name}</h2>
             <div className="table-grid">
               {room.tables.map((table) => {
-                const count = busy(table.id);
+                const count = countAt(table.id);
                 return (
                   <button
                     key={table.id}
                     className={`table-tile ${count ? 'busy' : ''}`}
-                    onClick={() => navigate(`/kassa?stol=${table.id}`)}
+                    onClick={() =>
+                      count
+                        ? setTableOrders({ id: table.id, name: table.name })
+                        : canOrder
+                          ? navigate(`/kassa?stol=${table.id}`)
+                          : undefined
+                    }
                   >
                     <strong>{table.name}</strong>
                     <span>
@@ -121,6 +160,42 @@ export function WaiterPage() {
             </div>
           </section>
         ))
+      )}
+      {tableOrders && (
+        <Dialog
+          open
+          wide
+          title={tableOrders.name}
+          onClose={() => setTableOrders(null)}
+        >
+          <div className="stack">
+            <OrderBoard
+              orders={all.filter((order) => tableOf(order) === tableOrders.id)}
+              mode={view.mode === 'detailed' ? 'grid' : view.mode}
+              onSelect={(order) => {
+                setTableOrders(null);
+                setSelected(order.id);
+              }}
+            />
+            {canOrder && (
+              <Button
+                variant="primary"
+                onClick={() => navigate(`/kassa?stol=${tableOrders.id}`)}
+              >
+                + {t.pos.addOrder}
+              </Button>
+            )}
+          </div>
+        </Dialog>
+      )}
+      {selected && (
+        <OrderDetail orderId={selected} onClose={() => setSelected(null)} />
+      )}
+      {assigning && (
+        <TableAssignDialog
+          order={assigning}
+          onClose={() => setAssigning(null)}
+        />
       )}
     </div>
   );

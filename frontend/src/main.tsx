@@ -72,7 +72,9 @@ import './styles.css';
 import './ui.css';
 import './pos.css';
 import './kitchen.css';
+import './orders.css';
 import './public.css';
+import './responsive.css';
 
 /** The next step a partially authenticated session must complete, if any. */
 function pendingStep(me: Me): string | null {

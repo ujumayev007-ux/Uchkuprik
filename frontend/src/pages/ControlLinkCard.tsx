@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ParamFields } from '../components/ParamFields';
+import type { ParamDef, ParamValue } from '../lib/owner';
 import { useMe } from '../auth/session';
 import {
   Badge,
@@ -63,9 +65,66 @@ type Delegated = {
     sensitive: boolean;
     defaultEnabled: boolean;
     settings: Record<string, boolean>;
+    params: ParamDef[];
+    values: Record<string, Record<string, ParamValue>>;
+    ownerValues: Record<string, ParamValue>;
   }[];
   roles: { key: string; name: string }[];
 };
+
+/** Values (limits, default modes) the Admin chooses for one delegated feature and role. */
+function DelegatedValues({
+  feature,
+  roleKey,
+  roleName,
+  onSave,
+}: {
+  feature: Delegated['features'][number];
+  roleKey: string;
+  roleName: string;
+  onSave: (params: Record<string, ParamValue> | null) => Promise<void>;
+}) {
+  const [values, setValues] = useState<Record<string, ParamValue>>(
+    feature.values[roleKey] ?? {},
+  );
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="stack compact">
+      <span className="field-label">
+        {dl.values}: {roleName}
+      </span>
+      <ParamFields
+        defs={feature.params}
+        values={values}
+        inherited={feature.ownerValues}
+        caps={feature.ownerValues}
+        onChange={(key, value) =>
+          setValues((current) => {
+            const next = { ...current };
+            if (value === undefined) delete next[key];
+            else next[key] = value;
+            return next;
+          })
+        }
+      />
+      <div>
+        <Button
+          busy={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onSave(Object.keys(values).length ? values : null);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {dl.saveValues}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function DelegatedFeatures() {
   const toast = useToast();
@@ -78,12 +137,14 @@ function DelegatedFeatures() {
   const set = async (
     featureKey: string,
     roleKey: string,
-    enabled: boolean | null,
+    change:
+      | { enabled: boolean | null }
+      | { params: Record<string, ParamValue> | null },
   ) => {
     try {
       await api('/control/link/features', {
         method: 'PUT',
-        body: { featureKey, roleKey, enabled },
+        body: { featureKey, roleKey, ...change },
       });
       await client.invalidateQueries();
     } catch (error) {
@@ -123,13 +184,12 @@ function DelegatedFeatures() {
                   <select
                     value={value === undefined ? '' : value ? '1' : '0'}
                     onChange={(event) =>
-                      void set(
-                        feature.key,
-                        role.key,
-                        event.target.value === ''
-                          ? null
-                          : event.target.value === '1',
-                      )
+                      void set(feature.key, role.key, {
+                        enabled:
+                          event.target.value === ''
+                            ? null
+                            : event.target.value === '1',
+                      })
                     }
                   >
                     <option value="">{dl.default}</option>
@@ -140,6 +200,22 @@ function DelegatedFeatures() {
               );
             })}
           </div>
+          {feature.params.length > 0 &&
+            [
+              { key: '*', name: dl.all },
+              ...data.data.roles.map((role) => ({
+                key: role.key ?? '',
+                name: role.name,
+              })),
+            ].map((role) => (
+              <DelegatedValues
+                key={`${feature.key}|${role.key}`}
+                feature={feature}
+                roleKey={role.key}
+                roleName={role.name}
+                onSave={(params) => set(feature.key, role.key, { params })}
+              />
+            ))}
         </div>
       ))}
     </section>

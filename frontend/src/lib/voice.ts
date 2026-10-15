@@ -77,6 +77,14 @@ export function availableVoices(): SpeechSynthesisVoice[] {
   }
 }
 
+/** Turkish reads Uzbek Latin text well when the device has no Uzbek voice. */
+function fallbackVoice(): SpeechSynthesisVoice | null {
+  const voices = availableVoices();
+  return (
+    voices.find((voice) => voice.lang.toLowerCase().startsWith('tr')) ?? null
+  );
+}
+
 export function pickVoice(settings: VoiceSettings) {
   const voices = availableVoices();
   if (settings.voiceName) {
@@ -91,12 +99,22 @@ export function pickVoice(settings: VoiceSettings) {
   return pool.find((voice) => pattern.test(voice.name)) ?? pool[0] ?? null;
 }
 
-const queue: string[] = [];
+export type SpeakOptions = {
+  // Overrides this device's repeat count and scales its volume (central settings).
+  repeat?: number;
+  volume?: number;
+  // Speak even when the device voice is muted: used for Owner-controlled alerts.
+  force?: boolean;
+  // Play only the signal tone, no words.
+  chimeOnly?: boolean;
+};
+type Queued = { text: string; options: SpeakOptions };
+const queue: Queued[] = [];
 let speaking = false;
 
 function speakOnce(text: string, settings: VoiceSettings) {
   return new Promise<void>((resolve) => {
-    const voice = pickVoice(settings);
+    const voice = pickVoice(settings) ?? fallbackVoice();
     if (!voice || !window.speechSynthesis) {
       setTimeout(resolve, 900);
       return;
@@ -119,13 +137,23 @@ async function drain() {
   speaking = true;
   try {
     while (queue.length) {
-      const text = queue.shift()!;
-      const settings = loadVoiceSettings();
-      if (!settings.enabled) continue;
+      const { text, options } = queue.shift()!;
+      const stored = loadVoiceSettings();
+      if (!stored.enabled && !options.force) continue;
+      const settings: VoiceSettings = {
+        ...stored,
+        enabled: true,
+        volume: Math.max(
+          0,
+          Math.min(1, stored.volume * ((options.volume ?? 100) / 100)),
+        ),
+      };
       chime();
       await new Promise((resolve) => setTimeout(resolve, 600));
-      for (let i = 0; i < Math.max(1, Math.min(5, settings.repeat)); i++)
-        await speakOnce(text, settings);
+      const times = options.repeat ?? settings.repeat;
+      if (!options.chimeOnly)
+        for (let i = 0; i < Math.max(1, Math.min(5, times)); i++)
+          await speakOnce(text, settings);
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
   } finally {
@@ -134,9 +162,9 @@ async function drain() {
 }
 
 /** Queues an announcement; respects this device's mute, voice, volume and repeats. */
-export function speak(text: string) {
-  if (!loadVoiceSettings().enabled) return;
+export function speak(text: string, options: SpeakOptions = {}) {
+  if (!loadVoiceSettings().enabled && !options.force) return;
   if (queue.length > 20) queue.shift();
-  queue.push(text);
+  queue.push({ text, options });
   void drain();
 }

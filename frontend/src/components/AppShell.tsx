@@ -15,6 +15,7 @@ import {
   usePwa,
 } from '../lib/pwa';
 import { useRealtime } from '../lib/realtime';
+import { WalkinAlerts } from './WalkinAlerts';
 import {
   LicenseLock,
   licenseBlocks,
@@ -616,7 +617,7 @@ export function AppShell() {
           )}
           {desktop && (
             <button
-              className="icon-button"
+              className="icon-button topbar-optional"
               aria-label={t.remote.anydesk}
               title={t.remote.anydesk}
               onClick={async () => {
@@ -635,7 +636,7 @@ export function AppShell() {
           )}
           {pwa.installable && (
             <button
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm topbar-optional"
               onClick={() => void promptInstall()}
             >
               {t.pwa.install}
@@ -643,7 +644,7 @@ export function AppShell() {
           )}
           {document.fullscreenEnabled && (
             <button
-              className="icon-button"
+              className="icon-button topbar-optional"
               onClick={() => void toggleFullscreen()}
               aria-label={t.pwa.fullscreen}
               title={t.pwa.fullscreen}
@@ -708,6 +709,7 @@ export function AppShell() {
           <AppUpdateBanner />
           <BillingBanner me={me} />
           <ControlBanner me={me} />
+          <WalkinAlerts />
           {licenseBlocks(license.data) ? (
             <LicenseLock license={license.data!} />
           ) : menuDisabled ? (

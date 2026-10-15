@@ -84,6 +84,20 @@ export function useRealtime(branchId: string | null | undefined) {
       void client.invalidateQueries({ queryKey: ['inventory'] });
       void client.invalidateQueries({ queryKey: ['recipe'] });
     });
+    // A guest was taken without a table / a table was chosen.
+    for (const name of ['order.table_needed', 'order.table_assigned'] as const)
+      socket.on(name, (payload: Record<string, unknown>) => {
+        for (const key of LIVE_KEYS)
+          void client.invalidateQueries({ queryKey: [key] });
+        for (const listener of listeners) listener(name, payload);
+      });
+    // Owner or Admin changed settings: reload what this user is allowed to do.
+    socket.on('config.changed', (payload: Record<string, unknown>) => {
+      void client.invalidateQueries({ queryKey: ['auth', 'me'] });
+      void client.invalidateQueries({ queryKey: ['queue'] });
+      void client.invalidateQueries({ queryKey: ['control-link'] });
+      for (const listener of listeners) listener('config.changed', payload);
+    });
     socket.on(
       'menu.changed',
       () => void client.invalidateQueries({ queryKey: ['menu'] }),

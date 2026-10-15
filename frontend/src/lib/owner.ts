@@ -62,12 +62,42 @@ export type FeatureDef = {
   defaultOffline: boolean;
   defaultMode?: 'ON' | 'OFF';
   sensitive?: boolean;
+  params?: ParamDef[];
 };
+
+export type ParamValue = number | string | boolean;
+
+export type ParamDef =
+  | {
+      key: string;
+      label: string;
+      hint?: string;
+      type: 'int';
+      min: number;
+      max: number;
+      unit?: string;
+      default: number;
+      ownerCap?: boolean;
+    }
+  | { key: string; label: string; hint?: string; type: 'bool'; default: boolean }
+  | {
+      key: string;
+      label: string;
+      hint?: string;
+      type: 'enum';
+      options: { value: string; label: string }[];
+      default: string;
+    };
 
 export type FeatureOverride = {
   mode?: 'ON' | 'OFF' | 'ADMIN';
   online?: boolean;
   offline?: boolean;
+  params?: Record<string, ParamValue>;
+  roles?: Record<
+    string,
+    { enabled?: boolean; params?: Record<string, ParamValue> }
+  >;
 };
 
 export type PolicyDoc = {

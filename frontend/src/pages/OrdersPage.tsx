@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { can, useMe } from '../auth/session';
+import { DisplayModeSwitch, OrderBoard } from '../components/OrderBoard';
+import { TableAssignDialog } from '../components/TableAssignDialog';
 import { PaymentDialog } from '../components/PaymentDialog';
 import {
   Badge,
@@ -19,7 +22,9 @@ import {
 import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
+import { useOrderDisplayMode, useOrdering } from '../lib/ordering';
 import type { Order, OrderItem, OrderStatus } from '../lib/orders';
+import { formatOrderNo } from '../lib/uzbek-number';
 
 const tone: Record<
   OrderStatus,
@@ -59,9 +64,9 @@ export function PaymentBadge({
   return <Badge tone="danger">{t.payStatus.unpaid}</Badge>;
 }
 
-type Action = 'cancel' | 'refund' | 'discount' | 'pay' | null;
+type Action = 'cancel' | 'refund' | 'discount' | 'pay' | 'note' | null;
 
-function OrderDetail({
+export function OrderDetail({
   orderId,
   onClose,
 }: {
@@ -69,6 +74,10 @@ function OrderDetail({
   onClose: () => void;
 }) {
   const { data: me } = useMe();
+  const ordering = useOrdering();
+  const navigate = useNavigate();
+  const [tableOpen, setTableOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const client = useQueryClient();
   const toast = useToast();
   const order = useQuery({
@@ -163,7 +172,7 @@ function OrderDetail({
     <>
       <Dialog
         open={action !== 'pay'}
-        title={`${t.orders.number}${o.number} · ${t.pos.types[o.type]}`}
+        title={`${formatOrderNo(o.number)} · ${t.pos.types[o.type]}`}
         onClose={onClose}
         wide
       >
@@ -174,6 +183,9 @@ function OrderDetail({
               <Badge>
                 {t.pos.table}: {o.table.name}
               </Badge>
+            )}
+            {!o.table && o.type === 'DINE_IN' && (
+              <Badge tone="warning">{t.ordering.noTable}</Badge>
             )}
             <Badge>{formatDateTime(o.createdAt)}</Badge>
             {o.version && o.version > 1 && o.status !== 'DRAFT' && (
@@ -383,14 +395,49 @@ function OrderDetail({
               </Button>
             </div>
           )}
+          {action === 'note' && (
+            <div className="stack card">
+              <TextField
+                label={t.ordering.noteLabel}
+                value={note ?? ''}
+                maxLength={300}
+                onChange={(e) => setNote(e.target.value)}
+                autoFocus
+              />
+              <Button
+                variant="primary"
+                busy={busy}
+                onClick={() =>
+                  void run(() =>
+                    patch(`/orders/${o.id}`, { note: (note ?? '').trim() || null }),
+                  )
+                }
+              >
+                {t.common.save}
+              </Button>
+            </div>
+          )}
           {action === 'discount' && (
             <div className="stack card">
+              <p className="muted small">
+                {t.ordering.discountLimits
+                  .replace(
+                    '{percent}',
+                    String(ordering.discount.maxPercentBp / 100),
+                  )
+                  .replace(
+                    '{fixed}',
+                    formatMoney(ordering.discount.maxFixed),
+                  )}
+              </p>
               <div className="form-grid">
                 <TextField
                   label={t.orders.discountPercent}
                   type="number"
                   min={0}
-                  max={100}
+                  max={ordering.discount.maxPercentBp / 100}
+                  disabled={!ordering.discount.percent}
+                  hint={ordering.discount.percent ? undefined : t.ordering.percentOff}
                   value={discount.percent}
                   onChange={(e) =>
                     setDiscount({ ...discount, percent: e.target.value })
@@ -398,6 +445,7 @@ function OrderDetail({
                 />
                 <MoneyField
                   label={`${t.orders.discountFixed} (${t.menu.sum})`}
+                  disabled={!ordering.discount.fixed}
                   value={discount.fixed}
                   onChange={(fixed) => setDiscount({ ...discount, fixed })}
                 />
@@ -502,7 +550,38 @@ function OrderDetail({
                 {t.orders.place}
               </Button>
             )}
-            {open && can(me, 'discounts.apply') && (
+            {open && o.type === 'DINE_IN' && ordering.tableAssign && (
+              <Button onClick={() => setTableOpen(true)}>
+                {o.table ? t.ordering.changeTable : t.ordering.assignTable}
+              </Button>
+            )}
+            {open && can(me, 'orders.edit') && (
+              <Button
+                onClick={() => {
+                  setNote(o.note ?? '');
+                  setAction('note');
+                }}
+              >
+                {t.ordering.editNote}
+              </Button>
+            )}
+            {open &&
+              o.status !== 'PENDING' &&
+              can(me, 'pos.access') &&
+              can(me, 'orders.edit') && (
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/kassa?buyurtma=${o.id}${o.table ? `&stol=${o.table.id}` : ''}`,
+                    )
+                  }
+                >
+                  {t.ordering.addItems}
+                </Button>
+              )}
+            {open &&
+              can(me, 'discounts.apply') &&
+              (ordering.discount.percent || ordering.discount.fixed) && (
               <Button
                 onClick={() =>
                   setAction(action === 'discount' ? null : 'discount')
@@ -557,6 +636,13 @@ function OrderDetail({
           </div>
         </div>
       </Dialog>
+      {tableOpen && (
+        <TableAssignDialog
+          order={o}
+          onClose={() => setTableOpen(false)}
+          onDone={() => toast(t.ordering.tableSaved)}
+        />
+      )}
       {action === 'pay' && (
         <PaymentDialog
           order={o}
@@ -574,8 +660,12 @@ function OrderDetail({
 
 export function OrdersPage() {
   const { data: me } = useMe();
+  const ordering = useOrdering();
+  const navigate = useNavigate();
+  const view = useOrderDisplayMode();
   const [scope, setScope] = useState<'active' | 'today'>('active');
   const [selected, setSelected] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<Order | null>(null);
   const orders = useQuery({
     queryKey: ['orders', 'list', me?.activeBranchId, scope],
     queryFn: () =>
@@ -585,21 +675,48 @@ export function OrdersPage() {
     enabled: !!me?.activeBranchId,
     refetchInterval: 15_000,
   });
+  // «Mijoz»: a guest orders at the cashier before choosing a table.
+  const canGuest =
+    can(me, 'orders.create') &&
+    can(me, 'pos.access') &&
+    ordering.walkin &&
+    ordering.types.DINE_IN;
+  const canAssign =
+    ordering.tableAssign &&
+    (can(me, 'orders.edit') ||
+      can(me, 'orders.create') ||
+      can(me, 'payments.accept'));
   return (
     <>
       <PageHeader title={t.orders.title} subtitle={t.orders.subtitle} />
-      <div className="tabs" role="tablist">
-        {(['active', 'today'] as const).map((value) => (
-          <button
-            key={value}
-            role="tab"
-            aria-selected={scope === value}
-            className={`tab ${scope === value ? 'active' : ''}`}
-            onClick={() => setScope(value)}
+      <div className="orders-toolbar">
+        <div className="tabs" role="tablist">
+          {(['active', 'today'] as const).map((value) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={scope === value}
+              className={`tab ${scope === value ? 'active' : ''}`}
+              onClick={() => setScope(value)}
+            >
+              {t.orders[value]}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        {view.canChange && (
+          <DisplayModeSwitch mode={view.mode} onChange={view.change} />
+        )}
+        {canGuest && (
+          <Button
+            variant="primary"
+            size="lg"
+            title={t.ordering.guestHint}
+            onClick={() => navigate('/kassa?mijoz=1')}
           >
-            {t.orders[value]}
-          </button>
-        ))}
+            + {t.ordering.guest}
+          </Button>
+        )}
       </div>
       {orders.isPending ? (
         <LoadingState />
@@ -611,64 +728,21 @@ export function OrdersPage() {
       ) : orders.data.length === 0 ? (
         <EmptyState title={t.orders.noOrders} />
       ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t.orders.number}</th>
-                <th>{t.orders.type}</th>
-                <th>{t.common.status}</th>
-                <th>{t.payStatus.column}</th>
-                <th>{t.orders.time}</th>
-                <th className="right">{t.pos.total}</th>
-                <th className="right">{t.pos.due}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.data.map((order) => (
-                <tr
-                  key={order.id}
-                  className="clickable"
-                  onClick={() => setSelected(order.id)}
-                >
-                  <td>
-                    <button
-                      className="text-link"
-                      onClick={() => setSelected(order.id)}
-                    >
-                      {t.orders.number}
-                      {order.number}
-                    </button>
-                  </td>
-                  <td>
-                    {t.pos.types[order.type]}
-                    {order.table && (
-                      <small className="muted block">{order.table.name}</small>
-                    )}
-                  </td>
-                  <td>
-                    <StatusBadge status={order.status} />
-                  </td>
-                  <td>
-                    <PaymentBadge order={order} />
-                  </td>
-                  <td className="nowrap">{formatDateTime(order.createdAt)}</td>
-                  <td className="right nowrap">{formatMoney(order.total)}</td>
-                  <td className="right nowrap">
-                    {order.due > 0 ? (
-                      <strong>{formatMoney(order.due)}</strong>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <OrderBoard
+          orders={orders.data}
+          mode={view.mode}
+          onSelect={(order) => setSelected(order.id)}
+          {...(canAssign ? { onAssignTable: setAssigning } : {})}
+        />
       )}
       {selected && (
         <OrderDetail orderId={selected} onClose={() => setSelected(null)} />
+      )}
+      {assigning && (
+        <TableAssignDialog
+          order={assigning}
+          onClose={() => setAssigning(null)}
+        />
       )}
     </>
   );

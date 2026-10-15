@@ -388,12 +388,14 @@ export function MoneyField({
   value,
   onChange,
   required = false,
+  disabled = false,
   hint,
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
   required?: boolean;
+  disabled?: boolean;
   hint?: string;
 }) {
   return (
@@ -405,6 +407,7 @@ export function MoneyField({
           inputMode="numeric"
           className="money-input"
           required={required}
+          disabled={disabled}
           value={value === null ? '' : group(value)}
           onChange={(event) => {
             const digits = event.target.value.replace(/\D/g, '').slice(0, 10);

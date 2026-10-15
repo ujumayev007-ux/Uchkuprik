@@ -171,6 +171,16 @@ export const owner = {
       'O‘zgarishlar qurilma serverga ulangan zahoti kuchga kiradi (har 60 soniyada tekshiradi). Aloqasiz qolgan qurilma oldingi ruxsatnomasini qayta ulanguncha yoki muddati tugaguncha saqlaydi — yangi cheklov unga o‘sha vaqtgacha yetib bormaydi.',
     timing:
       'Tekshiruv oralig‘i: 60 soniya. Qisqa uzilishlar 5 daqiqagacha sezilmaydi. Undan keyin qurilma oflayn ruxsatnomadagi amallarni bajaradi. Buyurtmani oflayn faqat Kassa panelidan yaratish mumkin.',
+    valuesTitle: 'Qiymatlar va rollar',
+    rolesTitle: 'Rollar bo‘yicha qaror',
+    roleDefault: 'Umumiy qoida',
+    roleOn: 'Shu rolga yoqish',
+    roleOff: 'Shu rol uchun o‘chirish',
+    sameAsAll: 'Umumiy qiymat',
+    rolesHint:
+      'Umumiy holat «O‘chirilgan» bo‘lsa, hech bir rolga yoqib bo‘lmaydi. Foydalanuvchida bir nechta rol bo‘lsa, ruxsat berilgan roli hisobga olinadi.',
+    adminCap:
+      '«Admin hal qiladi» tanlansa, Admin bu qiymatlarni faqat kamaytira oladi (chegirma limitlari) yoki o‘zi tanlaydi (rejimlar).',
     cashierFinancial:
       'Kassir tannarx, marja va sof foydani standart holatda ko‘rmaydi; faqat “Moliyaviy ko‘rinish” kalitlari orqali yoqiladi.',
   },
@@ -286,5 +296,8 @@ export const control = {
     enabled: 'Yoqilgan',
     disabled: 'O‘chirilgan',
     default: 'Standart',
+    values: 'Qiymatlar',
+    ownerLimit: 'Dastur egasi chegarasi',
+    saveValues: 'Qiymatlarni saqlash',
   },
 };

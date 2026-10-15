@@ -32,6 +32,8 @@ export type Me = {
     };
   };
   financial?: { cost: boolean; margin: boolean; profit: boolean };
+  // Order types, discount limits, display, TV and waiter alert settings.
+  ordering?: import('../lib/ordering').Ordering;
   control?: {
     mode: string;
     reason: string | null;

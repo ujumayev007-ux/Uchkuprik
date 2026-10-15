@@ -1,0 +1,299 @@
+/* Order boards (compact / detailed / adaptive cards), guest alerts and customer TV. */
+
+.orders-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.orders-toolbar .spacer {
+  flex: 1 1 auto;
+}
+.display-mode button {
+  min-height: 44px;
+}
+
+/* Compact: table + receipt number only. */
+.order-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.order-compact-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.order-compact-tile.no-table {
+  border-color: var(--warning, #e0a100);
+  background: color-mix(in srgb, #ffd23f 18%, var(--surface));
+}
+.order-compact-main {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  min-height: 84px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: center;
+}
+.order-compact-table {
+  font-size: clamp(20px, 3vw, 30px);
+  line-height: 1.1;
+}
+.order-compact-number {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.order-compact-hint {
+  font-size: 13px;
+  font-weight: 700;
+  color: #8a5a00;
+}
+
+/* Adaptive cards like the kitchen screen. */
+.order-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.order-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 2px solid var(--line);
+  border-top-width: 8px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.order-card.status-placed,
+.order-card.status-preparing,
+.order-card.status-pending {
+  border-top-color: #e0b100;
+}
+.order-card.status-ready,
+.order-card.status-served {
+  border-top-color: #18a957;
+}
+.order-card.no-table {
+  border-color: #e0b100;
+  background: color-mix(in srgb, #ffd23f 16%, var(--surface));
+}
+.order-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  text-align: left;
+  min-height: 44px;
+}
+.order-card-head strong {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.order-card-head span {
+  font-weight: 600;
+  text-align: right;
+}
+.order-card-items {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.order-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* Waiting guests highlight in the waiter panel. */
+.guest-waiting {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 2px solid #e0b100;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, #ffd23f 22%, var(--surface));
+}
+.guest-waiting h2 {
+  margin: 0;
+}
+
+/* Web alert for a guest that needs a table (the Android app has its own). */
+.walkin-alerts {
+  position: fixed;
+  z-index: 60;
+  inset: 12px 12px auto auto;
+  display: grid;
+  gap: 10px;
+  width: min(420px, calc(100vw - 24px));
+}
+.walkin-alert {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 3px solid #e0b100;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.walkin-alert strong {
+  font-size: 20px;
+}
+.walkin-alert .form-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Customer TV. */
+.queue-screen {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  gap: 2vh;
+  padding: 2vh 2vw;
+}
+.queue-screen > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+.queue-screen > header h1 {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: clamp(22px, 3vw, 56px);
+}
+.queue-columns {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(var(--tv-columns, 2), minmax(0, 1fr));
+  gap: 2vw;
+  min-height: 0;
+}
+.queue-columns section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: calc(100svh - 18vh);
+  overflow: hidden;
+}
+.tv-title {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+}
+.tv-title .tv-count {
+  margin-left: auto;
+  font-size: clamp(18px, 2vw, 32px);
+  opacity: 0.8;
+}
+/* Order numbers run top to bottom and continue in the next column. */
+.tv-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  columns: clamp(170px, 16vw, 360px);
+  column-gap: 2vw;
+  column-fill: auto;
+}
+.tv-list li {
+  break-inside: avoid;
+  padding: 0.6vh 0;
+  font-size: clamp(36px, 6.4vh, 120px);
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.queue-columns .ready .tv-list li {
+  animation: pop 0.6s ease-out;
+}
+.tv-list.single {
+  columns: clamp(320px, 30vw, 640px);
+}
+.queue-screen.single .queue-columns {
+  --tv-columns: 1;
+}
+.queue-screen.single .queue-columns section {
+  height: calc(100svh - 18vh);
+}
+.tv-row {
+  display: flex;
+  align-items: center;
+  gap: 2vw;
+  padding: 1vh 2vw;
+  border-radius: 18px;
+  margin-bottom: 1.2vh;
+}
+.tv-row.is-ready {
+  background: #18a957;
+  color: #fff;
+}
+.tv-row.is-preparing {
+  background: #ffd23f;
+  color: #111;
+}
+.tv-row b {
+  font-size: clamp(36px, 6.4vh, 120px);
+  font-variant-numeric: tabular-nums;
+}
+.tv-row span {
+  margin-left: auto;
+  font-size: clamp(18px, 3vh, 44px);
+  font-weight: 700;
+}
+.tv-sound-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.82);
+}
+.tv-sound-overlay button {
+  min-height: 96px;
+  padding: 0 48px;
+  font-size: clamp(24px, 3vw, 44px);
+}
+
+@media (max-width: 700px) {
+  .queue-columns {
+    grid-template-columns: 1fr;
+  }
+  .queue-columns section {
+    height: auto;
+    min-height: 40svh;
+  }
+  .queue-screen .tv-list {
+    columns: 2 120px;
+  }
+}
+
+/* Number colours: black on yellow (preparing), white on green (ready). */
+.queue-columns .preparing .tv-list li {
+  color: #111;
+}
+.queue-columns .ready .tv-list li {
+  color: #fff;
+}
