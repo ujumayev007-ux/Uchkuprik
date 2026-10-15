@@ -214,6 +214,9 @@ model Device {
   // Reported by the installed app (heartbeat) for fleet monitoring.
   appVersion     String?
   userAgent      String?
+  // Panel this terminal serves: CASHIER, KITCHEN, WAITER or OTHER (offline rules).
+  panel          String       @default("OTHER")
+  lastIp         String?
   createdAt      DateTime     @default(now())
   revokedAt      DateTime?
 
@@ -2544,4 +2547,428 @@ model StockRequest {
 
   @@index([tenantId, branchId, status])
   @@map("stock_requests")
+}
+
+// ---------------------------------------------------------------------------
+// SUPER_OWNER central control (additive). The central server (this backend run as
+// the control plane) owns customers, licences, activations and policies; customer
+// installs hold a signed, expiring grant and never the signing key.
+
+enum ControlOwnerStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ControlDeviceStatus {
+  PENDING
+  APPROVED
+  REVOKED
+}
+
+// Separate account space from restaurant users: owners never share credentials,
+// sessions or roles with any tenant.
+model ControlOwner {
+  id               String             @id @default(uuid(7)) @db.Uuid
+  email            String             @unique
+  displayName      String
+  passwordHash     String
+  mfaSecretEnc     String?
+  mfaEnabledAt     DateTime?
+  mfaLastStep      BigInt?
+  status           ControlOwnerStatus @default(ACTIVE)
+  failedLoginCount Int                @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  devices  ControlOwnerDevice[]
+  sessions ControlOwnerSession[]
+
+  @@map("control_owners")
+}
+
+// An Owner application installation (EXE) holds a private key in OS secure storage;
+// the owner can only sign in from an approved device.
+model ControlOwnerDevice {
+  id           String              @id @default(uuid(7)) @db.Uuid
+  ownerId      String              @db.Uuid
+  label        String
+  publicKey    String
+  fingerprint  String              @unique
+  status       ControlDeviceStatus @default(PENDING)
+  approvedAt   DateTime?
+  approvedById String?             @db.Uuid
+  lastSeenAt   DateTime?
+  lastIp       String?
+  createdAt    DateTime            @default(now())
+
+  owner    ControlOwner          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sessions ControlOwnerSession[]
+
+  @@index([ownerId, status])
+  @@map("control_owner_devices")
+}
+
+model ControlOwnerSession {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tokenHash     String    @unique
+  ownerId       String    @db.Uuid
+  deviceId      String    @db.Uuid
+  mfaVerified   Boolean   @default(false)
+  reauthAt      DateTime?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  idleExpiresAt DateTime
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokeReason  String?
+  ipAddress     String?
+  userAgent     String?
+
+  owner  ControlOwner       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  device ControlOwnerDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, revokedAt])
+  @@map("control_owner_sessions")
+}
+
+enum ControlCustomerStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+// A restaurant business under central control (a tenant of the SUPER_OWNER).
+model ControlCustomer {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  name           String
+  contactName    String?
+  phone          String?
+  note           String?
+  status         ControlCustomerStatus @default(ACTIVE)
+  // Cloud-hosted tenant this customer corresponds to, when it runs on this server.
+  tenantId       String?               @unique @db.Uuid
+  // Local tenant of the first activated install; later activations must match.
+  boundTenantKey String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  licenses    ControlLicense[]
+  activations ControlActivation[]
+  branches    ControlBranch[]
+  payments    ControlPayment[]
+  policy      ControlPolicy?
+  syncOps     ControlSyncOp[]
+
+  @@map("control_customers")
+}
+
+enum ControlLicenseStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+model ControlLicense {
+  id          String               @id @default(uuid(7)) @db.Uuid
+  customerId  String               @db.Uuid
+  // HMAC-SHA256 of the normalized key; the plaintext key is shown once at issue.
+  keyHash     String               @unique
+  keyHint     String
+  status      ControlLicenseStatus @default(ACTIVE)
+  startsAt    DateTime             @default(now())
+  expiresAt   DateTime
+  // Computers (cashier hosts) that may be activated with this licence.
+  maxInstalls Int                  @default(1)
+  // Registered terminals (kitchen, waiter phones); null = unlimited.
+  maxDevices  Int?
+  maxBranches Int?
+  maxUsers    Int?
+  features    String[]
+  note        String?
+  renewedAt   DateTime?
+  suspendedAt DateTime?
+  revokedAt   DateTime?
+  createdById String?              @db.Uuid
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  customer    ControlCustomer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  activations ControlActivation[]
+  payments    ControlPayment[]
+
+  @@index([customerId, status])
+  @@map("control_licenses")
+}
+
+model ControlPayment {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  customerId   String   @db.Uuid
+  licenseId    String?  @db.Uuid
+  amount       Int
+  currency     String   @default("UZS")
+  method       String   @default("TRANSFER")
+  // Months added to the licence by this payment (0 = record only).
+  periodMonths Int      @default(0)
+  reference    String?
+  note         String?
+  paidAt       DateTime @default(now())
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  customer ControlCustomer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  license  ControlLicense? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+
+  @@index([customerId, paidAt])
+  @@map("control_payments")
+}
+
+enum ControlActivationStatus {
+  ACTIVE
+  BLOCKED
+  REPLACED
+  REVOKED
+}
+
+// One activated installation (the cashier computer). Bound to the customer and to a
+// device-generated key pair: every request is signed by the private key.
+model ControlActivation {
+  id              String                  @id @default(uuid(7)) @db.Uuid
+  customerId      String                  @db.Uuid
+  licenseId       String                  @db.Uuid
+  installId       String
+  deviceName      String
+  model           String?
+  os              String?
+  platform        String                  @default("DESKTOP")
+  appVersion      String?
+  publicKey       String
+  fingerprint     String                  @unique
+  status          ControlActivationStatus @default(ACTIVE)
+  branchName      String?
+  activatedAt     DateTime                @default(now())
+  lastHeartbeatAt DateTime?
+  lastIp          String?
+  currentUser     String?
+  // Highest request counter seen; lower or equal counters are replays.
+  lastSeq         BigInt                  @default(0)
+  // Commands for the device (terminate sessions...), delivered on its next beat.
+  pendingCommands Json                    @default("[]")
+  // Reported by the install: queue size, unresolved sync errors, uptime.
+  stats           Json?
+  replacedAt      DateTime?
+  blockedReason   String?
+  updatedAt       DateTime                @updatedAt
+
+  customer  ControlCustomer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  license   ControlLicense    @relation(fields: [licenseId], references: [id], onDelete: Restrict)
+  terminals ControlTerminal[]
+
+  @@index([customerId, status])
+  @@index([licenseId, status])
+  @@map("control_activations")
+}
+
+// Terminals (kitchen screens, waiter phones) registered on a cashier host, as
+// reported by the host.
+model ControlTerminal {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  activationId String    @db.Uuid
+  localId      String
+  name         String
+  branchName   String?
+  panel        String    @default("OTHER")
+  status       String    @default("ACTIVE")
+  appVersion   String?
+  model        String?
+  os           String?
+  lastSeenAt   DateTime?
+  lastIp       String?
+  currentUser  String?
+  updatedAt    DateTime  @updatedAt
+
+  activation ControlActivation @relation(fields: [activationId], references: [id], onDelete: Cascade)
+
+  @@unique([activationId, localId])
+  @@map("control_terminals")
+}
+
+model ControlBranch {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  customerId     String   @db.Uuid
+  code           String
+  name           String
+  isActive       Boolean  @default(true)
+  lastReportedAt DateTime @default(now())
+
+  customer ControlCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, code])
+  @@map("control_branches")
+}
+
+// Per-customer policy: feature switches, delegation, offline rules, visibility,
+// version rules. `version` increases on every change and is carried in grants.
+model ControlPolicy {
+  customerId        String   @id @db.Uuid
+  version           Int      @default(1)
+  // { [featureKey]: { mode?: ON|OFF|ADMIN, online?: boolean, offline?: boolean } }
+  features          Json     @default("{}")
+  // { cashierCost, cashierMargin, cashierProfit } explicitly enabled by SUPER_OWNER.
+  financial         Json     @default("{}")
+  offlineEnabled    Boolean  @default(false)
+  maxOfflineMinutes Int      @default(0)
+  minAppVersion     String?
+  updatedAt         DateTime @updatedAt
+  updatedById       String?  @db.Uuid
+
+  customer ControlCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("control_policies")
+}
+
+enum ControlSyncStatus {
+  APPLIED
+  DUPLICATE
+  CONFLICT
+  REJECTED
+}
+
+// Idempotency ledger for operations that devices synchronize to the centre.
+model ControlSyncOp {
+  id           String            @id @default(uuid(7)) @db.Uuid
+  customerId   String            @db.Uuid
+  activationId String            @db.Uuid
+  opId         String
+  type         String
+  payloadHash  String
+  payload      Json
+  status       ControlSyncStatus
+  result       Json?
+  receivedAt   DateTime          @default(now())
+
+  customer ControlCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, opId])
+  @@index([customerId, receivedAt])
+  @@map("control_sync_ops")
+}
+
+enum ControlReleaseStage {
+  DRAFT
+  STAGED
+  ALL
+  WITHDRAWN
+}
+
+model ControlRelease {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  platform       String
+  version        String
+  url            String
+  sha256         String
+  size           Int?
+  notes          String?
+  stage          ControlReleaseStage @default(DRAFT)
+  // Share of installs (0-100) that see this release while STAGED.
+  rolloutPercent Int                 @default(0)
+  // Installs older than this must update (blocks new operations until updated).
+  minVersion     String?
+  signature      String
+  createdById    String?             @db.Uuid
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([platform, version])
+  @@map("control_releases")
+}
+
+// Append-only evidence of every Owner action, licence event and suspicious attempt.
+model ControlAuditLog {
+  id         BigInt   @id @default(autoincrement())
+  ownerId    String?  @db.Uuid
+  customerId String?  @db.Uuid
+  action     String
+  entityType String?
+  entityId   String?
+  outcome    String   @default("SUCCESS")
+  data       Json?
+  ipAddress  String?
+  requestId  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([customerId, createdAt])
+  @@index([action, createdAt])
+  @@map("control_audit_logs")
+}
+
+// ---- customer (install) side -------------------------------------------------
+
+// Link between this install and the central server (singleton row).
+model ControlLink {
+  id             Int       @id @default(1)
+  serverUrl      String
+  activationId   String
+  customerId     String
+  licenseHint    String?
+  // Signed grant document as issued by the server; verified on every load.
+  grant          String
+  grantIssuedAt  DateTime
+  grantExpiresAt DateTime
+  policyVersion  Int       @default(0)
+  // Local time of the last successful contact with the server.
+  lastContactAt  DateTime?
+  // Highest time ever observed (system clock or server); rollback cannot lower it.
+  highWater      DateTime  @default(now())
+  // Server verdict: ACTIVE, SUSPENDED, REVOKED, BLOCKED, REPLACED.
+  serverStatus   String    @default("ACTIVE")
+  requestSeq     BigInt    @default(0)
+  // Sealed (APP_SECRET_KEY) device private key when the launcher gave none.
+  deviceKeyEnc   String?
+  lastError      String?
+  updatedAt      DateTime  @updatedAt
+
+  @@map("control_link")
+}
+
+enum SyncOpStatus {
+  PENDING
+  DONE
+  CONFLICT
+  FAILED
+}
+
+// Durable outbox: operations are stored before sending and removed only after the
+// server confirmed them, so a crash or outage never loses or duplicates one.
+model SyncOperation {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  opId          String       @unique
+  type          String
+  payload       Json
+  status        SyncOpStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime     @default(now())
+  lastError     String?
+  result        Json?
+  createdAt     DateTime     @default(now())
+  doneAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@map("sync_operations")
+}
+
+// Switches a restaurant Admin set for features SUPER_OWNER delegated (mode ADMIN).
+model FeatureSetting {
+  tenantId    String   @db.Uuid
+  featureKey  String
+  // Role key the setting applies to; '*' = every role.
+  roleKey     String   @default("*")
+  enabled     Boolean
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  @@id([tenantId, featureKey, roleKey])
+  @@map("feature_settings")
 }

@@ -88,6 +88,8 @@ export type SecretBox = {
   decrypt(sealed: string): string;
   // Keyed PIN input: a stolen database alone cannot brute-force 4-digit PINs.
   pepperPin(userId: string, pin: string): Buffer;
+  // Keyed hash for high-entropy secrets (licence keys, tokens): `info` separates uses.
+  keyedHash(info: string, value: string): string;
 };
 
 export function createSecretBox(masterKeyBase64: string): SecretBox {
@@ -124,6 +126,11 @@ export function createSecretBox(masterKeyBase64: string): SecretBox {
     },
     pepperPin(userId, pin) {
       return createHmac('sha256', pinKey).update(`${userId}:${pin}`).digest();
+    },
+    keyedHash(info, value) {
+      return createHmac('sha256', derive(`fastfood/keyed/${info}/v1`))
+        .update(value)
+        .digest('hex');
     },
   };
 }
