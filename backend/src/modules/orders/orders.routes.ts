@@ -52,6 +52,10 @@ const phone = z
   .regex(/^\+?[0-9 ()-]{7,20}$/);
 const idempotencyKey = z.string().trim().min(8).max(80);
 
+// The central policy switched this order action off for the user's role.
+const featureOff = () =>
+  new AppError(403, 'FEATURE_DISABLED', 'featureDisabled');
+
 // Methods accepted at the counter. Online providers (Click, Payme, Uzum) are only
 // accepted through verified provider callbacks (Phase 8), never as manual entries.
 // QR is a merchant QR (e.g. Paynet) confirmed by the cashier; it must be enabled by the owner.
@@ -316,6 +320,10 @@ export function ordersRouter(services: Services) {
         res.status(200).json(await respond(auth, existing.id));
         return;
       }
+      // Order types and the «Mijoz» button are central decisions per role.
+      if (!auth.ordering.types[input.type]) throw featureOff();
+      if (input.type === 'DINE_IN' && !input.tableId && !auth.ordering.walkin)
+        throw featureOff();
       const branch = await resolveBranch(db, auth, input.branchId);
       const profile = await db.tenantProfile.findUnique({
         where: { tenantId: auth.tenantId },
@@ -393,7 +401,18 @@ export function ordersRouter(services: Services) {
           });
           return order.id;
         });
-        res.status(201).json(await respondChanged(auth, id));
+        const created = await respondChanged(auth, id);
+        // A guest taken at the cashier without a table: waiters are told to assign one.
+        if (input.type === 'DINE_IN' && !created.table)
+          services.events?.publish({
+            type: 'order.table_needed',
+            tenantId: auth.tenantId,
+            branchId: created.branchId,
+            orderId: created.id,
+            number: created.number,
+            byUserId: auth.userId,
+          });
+        res.status(201).json(created);
       } catch (error) {
         if (isUniqueViolation(error)) {
           const raced = await db.order.findUnique({
@@ -455,6 +474,20 @@ export function ordersRouter(services: Services) {
             })),
           },
         );
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: order.branchId,
+          actorUserId: auth.userId,
+          action: 'order.items.add',
+          entityType: 'order',
+          entityId: id,
+          data: {
+            items: priced.map((item) => ({
+              variantId: item.variantId,
+              quantity: item.quantity,
+            })),
+          },
+        });
       });
       res.json(await respondChanged(auth, id, true));
     },
@@ -551,6 +584,20 @@ export function ordersRouter(services: Services) {
             });
             placedChange = true;
           }
+          await audit(tx, req, {
+            tenantId: auth.tenantId,
+            branchId: order.branchId,
+            actorUserId: auth.userId,
+            action: 'order.item.change',
+            entityType: 'order',
+            entityId: id,
+            data: {
+              itemId,
+              from: { quantity: item.quantity, note: item.note },
+              to: { quantity, note },
+              draft: order.status === 'DRAFT',
+            },
+          });
         } else {
           await assertCanEditPlaced(tx, auth, order);
           if (quantity < item.quantity) await assertCanCancelPlaced(tx, auth);
@@ -719,6 +766,12 @@ export function ordersRouter(services: Services) {
         }),
         req.body,
       );
+      let tableChange: {
+        from: string | null;
+        to: string | null;
+        number: number;
+        branchId: string;
+      } | null = null;
       await mutate(auth, id, async (tx, order) => {
         if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
@@ -726,6 +779,7 @@ export function ordersRouter(services: Services) {
           version: { increment: 1 },
         };
         if (input.tableId !== undefined) {
+          if (!auth.ordering.tableAssign) throw featureOff();
           if (order.type !== 'DINE_IN' && input.tableId)
             throw errors.validation([{ path: 'tableId' }]);
           data.tableId = await assertTable(
@@ -734,6 +788,13 @@ export function ordersRouter(services: Services) {
             order.branchId,
             input.tableId,
           );
+          if (data.tableId !== order.tableId)
+            tableChange = {
+              from: order.tableId,
+              to: data.tableId as string | null,
+              number: order.number,
+              branchId: order.branchId,
+            };
         }
         if (input.customerName !== undefined)
           data.customerName = input.customerName;
@@ -753,10 +814,113 @@ export function ordersRouter(services: Services) {
           'details_updated',
           JSON.parse(JSON.stringify(input)),
         );
+        // Every edit of order details keeps what it was before.
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: order.branchId,
+          actorUserId: auth.userId,
+          action: 'order.update',
+          entityType: 'order',
+          entityId: id,
+          data: {
+            from: {
+              tableId: order.tableId,
+              note: order.note,
+              customerName: order.customerName,
+              customerPhone: order.customerPhone,
+              deliveryAddress: order.deliveryAddress,
+            },
+            to: JSON.parse(JSON.stringify(input)),
+          },
+        });
       });
-      res.json(await respondChanged(auth, id));
+      const updated = await respondChanged(auth, id);
+      announceTable(auth, updated, tableChange);
+      res.json(updated);
     },
   );
+
+  /** Waiters and cashiers stop alerting once a table is chosen. */
+  const announceTable = (
+    auth: AuthContext,
+    order: { id: string; number: number; branchId: string },
+    change: { from: string | null; to: string | null } | null,
+  ) => {
+    if (!change) return;
+    services.events?.publish({
+      type: change.to ? 'order.table_assigned' : 'order.table_needed',
+      tenantId: auth.tenantId,
+      branchId: order.branchId,
+      orderId: order.id,
+      number: order.number,
+      byUserId: auth.userId,
+    });
+  };
+
+  /**
+   * Chooses or changes the table of an order without recreating it: items, payments
+   * and history stay. Cashiers and waiters both use this (when the central policy
+   * allows), and every panel and waiter tablet is updated at once.
+   */
+  router.post('/orders/:id/table', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (
+      !auth.permissions.has('orders.edit') &&
+      !auth.permissions.has('orders.create') &&
+      !auth.permissions.has('payments.accept')
+    )
+      throw errors.forbidden();
+    if (!auth.ordering.tableAssign) throw featureOff();
+    const id = parse(z.uuid(), req.params.id);
+    const input = parse(z.object({ tableId: z.uuid().nullable() }), req.body);
+    let change: { from: string | null; to: string | null } | null = null;
+    await mutate(auth, id, async (tx, order) => {
+      if (!editableStatuses.includes(order.status))
+        throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+      if (order.type !== 'DINE_IN')
+        throw new AppError(400, 'TABLE_NOT_NEEDED', 'tableNotNeeded');
+      const tableId = await assertTable(
+        tx,
+        auth,
+        order.branchId,
+        input.tableId,
+      );
+      if (tableId === order.tableId) return;
+      await tx.order.update({
+        where: { id },
+        data: { tableId, version: { increment: 1 } },
+      });
+      change = { from: order.tableId, to: tableId };
+      const names = await tx.diningTable.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          id: { in: [order.tableId, tableId].filter((v): v is string => !!v) },
+        },
+        select: { id: true, name: true },
+      });
+      const nameOf = (value: string | null) =>
+        names.find((row) => row.id === value)?.name ?? null;
+      await addEvent(tx, auth.tenantId, id, auth.userId, 'table_assigned', {
+        from: nameOf(order.tableId),
+        to: nameOf(tableId),
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: order.branchId,
+        actorUserId: auth.userId,
+        action: 'order.table.assign',
+        entityType: 'order',
+        entityId: id,
+        data: {
+          from: { tableId: order.tableId, name: nameOf(order.tableId) },
+          to: { tableId, name: nameOf(tableId) },
+        },
+      });
+    });
+    const updated = await respondChanged(auth, id);
+    announceTable(auth, updated, change);
+    res.json(updated);
+  });
 
   router.post(
     '/orders/:id/discount',
@@ -775,6 +939,15 @@ export function ordersRouter(services: Services) {
       );
       if ((input.percentBp > 0 || input.fixed > 0) && input.reason.length < 3)
         throw errors.validation([{ path: 'reason' }]);
+      // Allowed types and the largest discount are decided centrally, per role.
+      const rules = auth.ordering.discount;
+      if (input.percentBp > 0 && !rules.percent) throw featureOff();
+      if (input.fixed > 0 && !rules.fixed) throw featureOff();
+      if (input.percentBp > rules.maxPercentBp || input.fixed > rules.maxFixed)
+        throw new AppError(403, 'DISCOUNT_LIMIT', 'discountLimit', {
+          maxPercentBp: rules.maxPercentBp,
+          maxFixed: rules.maxFixed,
+        });
       await mutate(auth, id, async (tx, order) => {
         if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
@@ -798,7 +971,17 @@ export function ordersRouter(services: Services) {
           action: 'order.discount',
           entityType: 'order',
           entityId: id,
-          data: { ...input, discountTotal: updated.discountTotal },
+          data: {
+            ...input,
+            discountTotal: updated.discountTotal,
+            from: {
+              percentBp: order.discountBp,
+              fixed: order.discountFixed,
+              discountTotal: order.discountTotal,
+              reason: order.discountReason,
+            },
+            total: updated.total,
+          },
         });
       });
       res.json(await respondChanged(auth, id));

@@ -73,8 +73,21 @@ export function attachRealtime(
   });
 
   const unsubscribe = bus.subscribe((event) => {
-    if (event.type === 'menu.changed' || event.type === 'inventory.changed')
+    if (
+      event.type === 'menu.changed' ||
+      event.type === 'inventory.changed' ||
+      event.type === 'config.changed'
+    )
       io.to(tenantRoom(event.tenantId)).emit(event.type, {});
+    else if (
+      event.type === 'order.table_needed' ||
+      event.type === 'order.table_assigned'
+    )
+      io.to(branchRoom(event.tenantId, event.branchId)).emit(event.type, {
+        orderId: event.orderId,
+        number: event.number,
+        byUserId: event.byUserId,
+      });
     else
       io.to(branchRoom(event.tenantId, event.branchId)).emit(event.type, {
         orderId: event.orderId,

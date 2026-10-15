@@ -2965,7 +2965,10 @@ model FeatureSetting {
   featureKey  String
   // Role key the setting applies to; '*' = every role.
   roleKey     String   @default("*")
-  enabled     Boolean
+  // Null when only parameter values were set (no on/off decision).
+  enabled     Boolean?
+  // Values the Admin chose for delegated parameters (limits, default modes).
+  params      Json?
   updatedById String?  @db.Uuid
   updatedAt   DateTime @updatedAt
 

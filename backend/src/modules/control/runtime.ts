@@ -23,7 +23,7 @@ import {
   scheduleDailySummaries,
 } from './outbox.js';
 import { evaluateKey } from './policy.js';
-import { loadAdminSettings, unlinkedView, type ControlView } from './view.js';
+import { loadAdminData, unlinkedView, type ControlView } from './view.js';
 
 type Transport = typeof fetch;
 
@@ -149,7 +149,11 @@ export function createControlRuntime(
     const current = await state();
     if (current.mode === 'UNLINKED') {
       const base = unlinkedView();
-      if (tenantId) base.adminSettings = await loadAdminSettings(db, tenantId);
+      if (tenantId) {
+        const admin = await loadAdminData(db, tenantId);
+        base.adminSettings = admin.settings;
+        base.adminParams = admin.params;
+      }
       return base;
     }
     const required = current.policy.minAppVersion;
@@ -157,13 +161,13 @@ export function createControlRuntime(
       ? new Date(current.policy.minVersionFrom).getTime()
       : 0;
     const version = services.appVersion ?? '0.0.0';
+    const admin = tenantId ? await loadAdminData(db, tenantId) : null;
     return {
       mode: current.mode,
       reason: current.reason,
       policy: current.policy,
-      adminSettings: tenantId
-        ? await loadAdminSettings(db, tenantId)
-        : new Map(),
+      adminSettings: admin?.settings ?? new Map(),
+      adminParams: admin?.params ?? new Map(),
       offlineUntil: current.offlineUntil,
       versionBlocked:
         !!required &&
@@ -383,6 +387,19 @@ export function createControlRuntime(
   }
 
   /** One check-in with the centre. Network failures are recorded, never thrown. */
+  /** Tells connected panels (web and Android) to reload their settings. */
+  async function announceConfigChange() {
+    const tenant = await db.tenant
+      .findFirst({
+        where: { kind: 'BUSINESS' },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (tenant)
+      services.events?.publish({ type: 'config.changed', tenantId: tenant.id });
+  }
+
   async function beat(): Promise<string> {
     if (beating) return 'busy';
     beating = true;
@@ -452,6 +469,9 @@ export function createControlRuntime(
         },
       });
       clockSuspect = false;
+      // New decisions from the Owner reach connected screens and Android devices.
+      if (row.policyVersion !== grant.policy.version)
+        void announceConfigChange();
       available = doc.update;
       ackIds = [];
       for (const command of doc.commands) {

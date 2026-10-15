@@ -5,6 +5,7 @@ import type { AuthMethod } from '../../generated/prisma/client.js';
 import { AppError, errors } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
 import { featureCatalog } from '../control/catalog.js';
+import { buildOrdering, type OrderingConfig } from '../control/ordering.js';
 import {
   evaluateFeature,
   evaluateKey,
@@ -61,6 +62,8 @@ export type AuthContext = {
   financial: FinancialVisibility;
   // Report columns SUPER_OWNER switched on or off for the whole restaurant.
   reportFields: { cost: boolean; margin: boolean; netProfit: boolean };
+  // Order types, discount limits, display modes, TV and waiter alert settings.
+  ordering: OrderingConfig;
   // Central control state: online, offline (grant), expired or blocked.
   control: {
     mode: string;
@@ -282,6 +285,13 @@ export async function authenticate(
       margin: fieldOn('field.report.margin'),
       netProfit: fieldOn('field.report.netProfit'),
     },
+    ordering: buildOrdering({
+      policy: view.policy,
+      adminSettings: view.adminSettings,
+      adminParams: view.adminParams,
+      roleKeys,
+      offline: view.mode === 'OFFLINE',
+    }),
     control: {
       mode: view.mode,
       reason: view.reason,

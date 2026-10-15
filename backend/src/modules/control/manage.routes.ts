@@ -23,11 +23,17 @@ import {
   requireOwnerReauth,
 } from './owner.js';
 import { sanitizeFeatures } from './policy.js';
+import { clearPolicyCache } from './view.js';
 import { signDocument } from './keys.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBackup, verifyBackup } from '../../lib/backup.js';
+
+const paramValues = z.record(
+  z.string().max(40),
+  z.union([z.number(), z.string().max(40), z.boolean()]),
+);
 
 const DAY = 86_400_000;
 
@@ -828,6 +834,16 @@ export function manageRouter(services: Services) {
               mode: z.enum(['ON', 'OFF', 'ADMIN']).optional(),
               online: z.boolean().optional(),
               offline: z.boolean().optional(),
+              params: paramValues.optional(),
+              roles: z
+                .record(
+                  z.string().max(40),
+                  z.object({
+                    enabled: z.boolean().optional(),
+                    params: paramValues.optional(),
+                  }),
+                )
+                .optional(),
             }),
           ),
           offlineEnabled: z.boolean(),
@@ -893,6 +909,18 @@ export function manageRouter(services: Services) {
         });
         return saved.version;
       });
+      // Hosted restaurants see the change at once; installs get it with the next
+      // heartbeat and announce it to their own panels then.
+      clearPolicyCache();
+      const linked = await db.controlCustomer.findUnique({
+        where: { id: customerId },
+        select: { tenantId: true },
+      });
+      if (linked?.tenantId)
+        services.events?.publish({
+          type: 'config.changed',
+          tenantId: linked.tenantId,
+        });
       res.json({ version });
     },
   );

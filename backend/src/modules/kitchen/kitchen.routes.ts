@@ -533,6 +533,9 @@ export function kitchenRouter(services: Services) {
   router.get('/queue', requireAuth(), async (req, res) => {
     const auth = getAuth(res);
     if (!can(auth, 'orders.view', 'kitchen.access')) throw errors.forbidden();
+    // SUPER_OWNER (or the restaurant Admin where delegated) can switch the TV off.
+    if (!auth.ordering.tv.enabled)
+      throw new AppError(403, 'FEATURE_DISABLED', 'featureDisabled');
     const { branchId } = parse(
       z.object({ branchId: z.uuid().optional() }),
       req.query,
@@ -546,16 +549,22 @@ export function kitchenRouter(services: Services) {
         status: { in: ['PLACED', 'PREPARING', 'READY'] },
       },
       orderBy: [{ readyAt: 'desc' }, { placedAt: 'asc' }],
-      select: { number: true, status: true, readyAt: true },
+      select: { id: true, number: true, status: true, readyAt: true },
     });
     res.json({
       branch: { name: branch.name },
+      // Layout, visible statuses and voice settings chosen centrally.
+      display: auth.ordering.tv,
       preparing: orders
         .filter((order) => order.status !== 'READY')
         .map((order) => order.number),
       ready: orders
         .filter((order) => order.status === 'READY')
-        .map((order) => ({ number: order.number, readyAt: order.readyAt })),
+        .map((order) => ({
+          id: order.id,
+          number: order.number,
+          readyAt: order.readyAt,
+        })),
     });
   });
 

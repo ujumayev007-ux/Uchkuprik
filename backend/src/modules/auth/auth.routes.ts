@@ -60,6 +60,7 @@ export function publicAuth(auth: AuthContext) {
     mustChangePassword: auth.mustChangePassword,
     entitlements: auth.entitlements,
     financial: auth.financial,
+    ordering: auth.ordering,
     control: {
       mode: auth.control.mode,
       reason: auth.control.reason,

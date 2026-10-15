@@ -9,7 +9,9 @@ import {
   requirePermission,
   requireRecentAuth,
 } from '../auth/session.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { catalogByKey } from './catalog.js';
+import { resolveParams, sanitizeParams } from './policy.js';
 import { isLoopback } from './enforce.js';
 import { listOutbox, retryOperation } from './outbox.js';
 import { clearAdminSettingsCache } from './view.js';
@@ -122,6 +124,11 @@ export function controlInstallRouter(services: Services) {
           const [featureKey, role] = composite.split('|');
           if (featureKey === key && role) settings[role] = enabled;
         }
+        const values: Record<string, Record<string, unknown>> = {};
+        for (const [composite, params] of view.adminParams) {
+          const [featureKey, role] = composite.split('|');
+          if (featureKey === key && role) values[role] = params;
+        }
         return [
           {
             key,
@@ -131,6 +138,10 @@ export function controlInstallRouter(services: Services) {
             sensitive: !!def.sensitive,
             defaultEnabled: def.defaultMode !== 'OFF',
             settings,
+            params: def.params ?? [],
+            values,
+            // What SUPER_OWNER allows: delegated numbers never exceed it.
+            ownerValues: resolveParams(view.policy, def, [], new Map()),
           },
         ];
       });
@@ -151,18 +162,23 @@ export function controlInstallRouter(services: Services) {
           .string()
           .regex(/^[a-z0-9_-]{1,40}$|^\*$/)
           .default('*'),
-        enabled: z.boolean().nullable(),
+        enabled: z.boolean().nullable().optional(),
+        params: z
+          .record(
+            z.string().max(40),
+            z.union([z.number(), z.string().max(40), z.boolean()]),
+          )
+          .nullable()
+          .optional(),
       }),
       req.body,
     );
     const view = await services.controlView?.(auth.tenantId);
     // Only features SUPER_OWNER delegated can be switched by the restaurant Admin.
-    if (
-      !catalogByKey.has(input.featureKey) ||
-      view?.policy.features[input.featureKey]?.mode !== 'ADMIN'
-    )
+    const def = catalogByKey.get(input.featureKey);
+    if (!def || view?.policy.features[input.featureKey]?.mode !== 'ADMIN')
       throw errors.forbidden();
-    const key = {
+    const where = {
       tenantId_featureKey_roleKey: {
         tenantId: auth.tenantId,
         featureKey: input.featureKey,
@@ -170,7 +186,19 @@ export function controlInstallRouter(services: Services) {
       },
     };
     await db.$transaction(async (tx) => {
-      if (input.enabled === null)
+      const current = await tx.featureSetting.findUnique({ where });
+      const enabled =
+        input.enabled === undefined
+          ? (current?.enabled ?? null)
+          : input.enabled;
+      const params =
+        input.params === undefined
+          ? ((current?.params as Prisma.InputJsonValue | null) ?? null)
+          : input.params === null
+            ? null
+            : ((sanitizeParams(def, input.params, true) ??
+                null) as Prisma.InputJsonValue | null);
+      if (enabled === null && params === null)
         await tx.featureSetting.deleteMany({
           where: {
             tenantId: auth.tenantId,
@@ -180,15 +208,20 @@ export function controlInstallRouter(services: Services) {
         });
       else
         await tx.featureSetting.upsert({
-          where: key,
+          where,
           create: {
             tenantId: auth.tenantId,
             featureKey: input.featureKey,
             roleKey: input.roleKey,
-            enabled: input.enabled,
+            enabled,
+            params: params ?? Prisma.DbNull,
             updatedById: auth.userId,
           },
-          update: { enabled: input.enabled, updatedById: auth.userId },
+          update: {
+            enabled,
+            params: params ?? Prisma.DbNull,
+            updatedById: auth.userId,
+          },
         });
       await audit(tx, req, {
         tenantId: auth.tenantId,
@@ -196,10 +229,22 @@ export function controlInstallRouter(services: Services) {
         action: 'feature.delegated.set',
         entityType: 'feature',
         entityId: input.featureKey,
-        data: { roleKey: input.roleKey, enabled: input.enabled },
+        data: {
+          roleKey: input.roleKey,
+          enabled,
+          params,
+          before: {
+            enabled: current?.enabled ?? null,
+            params: current?.params ?? null,
+          },
+        },
       });
     });
     clearAdminSettingsCache();
+    services.events?.publish({
+      type: 'config.changed',
+      tenantId: auth.tenantId,
+    });
     res.json({ ok: true });
   });
 

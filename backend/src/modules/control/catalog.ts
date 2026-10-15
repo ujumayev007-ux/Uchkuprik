@@ -8,6 +8,41 @@ import type { Permission } from '../auth/permissions.js';
 export type FeatureKind =
   'panel' | 'module' | 'action' | 'button' | 'report_field' | 'financial';
 
+export type ParamValue = number | string | boolean;
+
+/**
+ * A value SUPER_OWNER sets next to a feature's switch (a limit, a default mode).
+ * Values can differ per role; `ownerCap` marks numbers a restaurant Admin may only
+ * lower, never raise, when the feature is delegated.
+ */
+export type ParamDef =
+  | {
+      key: string;
+      label: string;
+      hint?: string;
+      type: 'int';
+      min: number;
+      max: number;
+      unit?: string;
+      default: number;
+      ownerCap?: boolean;
+    }
+  | {
+      key: string;
+      label: string;
+      hint?: string;
+      type: 'bool';
+      default: boolean;
+    }
+  | {
+      key: string;
+      label: string;
+      hint?: string;
+      type: 'enum';
+      options: { value: string; label: string }[];
+      default: string;
+    };
+
 export type FeatureDef = {
   key: string;
   kind: FeatureKind;
@@ -28,6 +63,8 @@ export type FeatureDef = {
   defaultMode?: 'ON' | 'OFF';
   // Marks sensitive money-related switches in the Owner UI.
   sensitive?: boolean;
+  // Values configured next to the switch (per restaurant and per role).
+  params?: ParamDef[];
 };
 
 const f = (
@@ -711,6 +748,218 @@ export const featureCatalog: FeatureDef[] = [
     menuPath: '/obuna',
     routes: ['* /billing', '* /billing/*', 'POST /tenant/close'],
     offline: 'never',
+  }),
+  // ---- Buyurtma qabul qilish, tahrirlash va ko‘rinish ----
+  f({
+    key: 'orders.type.dine_in',
+    kind: 'button',
+    group: 'Buyurtma qabul qilish',
+    label: 'Zalda (stol bilan) buyurtma yaratish',
+    hint: 'Rollar bo‘yicha alohida o‘chirish mumkin.',
+  }),
+  f({
+    key: 'orders.type.takeaway',
+    kind: 'button',
+    group: 'Buyurtma qabul qilish',
+    label: 'Olib ketish buyurtmasi yaratish',
+  }),
+  f({
+    key: 'orders.type.delivery',
+    kind: 'button',
+    group: 'Buyurtma qabul qilish',
+    label: 'Yetkazib berish buyurtmasi yaratish',
+  }),
+  f({
+    key: 'orders.walkin',
+    kind: 'button',
+    group: 'Buyurtma qabul qilish',
+    label: '«Mijoz» tugmasi: stol tanlanmagan buyurtma',
+    hint: 'Kassir mijoz buyurtmasini stolsiz qabul qiladi; ofitsiant keyin stol belgilaydi.',
+  }),
+  f({
+    key: 'orders.table.assign',
+    kind: 'action',
+    group: 'Buyurtma qabul qilish',
+    label: 'Buyurtmaga stol belgilash va almashtirish',
+    hint: 'To‘lov, taomlar va tarix saqlanadi; buyurtma qayta yaratilmaydi.',
+    routes: ['POST /orders/:id/table'],
+  }),
+  f({
+    key: 'discounts.percent',
+    kind: 'button',
+    group: 'Chegirmalar',
+    label: 'Foizli chegirma',
+    hint: 'Chegirma qo‘llash huquqi ham kerak (Chegirma qo‘llash).',
+    sensitive: true,
+    offline: 'off',
+    params: [
+      {
+        key: 'maxPercent',
+        label: 'Eng ko‘p chegirma',
+        type: 'int',
+        min: 0,
+        max: 100,
+        unit: '%',
+        default: 100,
+        ownerCap: true,
+      },
+    ],
+  }),
+  f({
+    key: 'discounts.fixed',
+    kind: 'button',
+    group: 'Chegirmalar',
+    label: 'Aniq summali chegirma',
+    sensitive: true,
+    offline: 'off',
+    params: [
+      {
+        key: 'maxFixed',
+        label: 'Eng ko‘p chegirma summasi',
+        type: 'int',
+        min: 0,
+        max: 100_000_000,
+        unit: 'so‘m',
+        default: 100_000_000,
+        ownerCap: true,
+      },
+    ],
+  }),
+  f({
+    key: 'orders.display',
+    kind: 'module',
+    group: 'Ko‘rinish va ekranlar',
+    label: 'Buyurtmalar ko‘rinishi (Kassa va Ofitsiant)',
+    hint: 'Yoqilgan: xodim rejimni o‘zgartira oladi. O‘chirilgan: faqat standart rejim.',
+    params: [
+      {
+        key: 'defaultMode',
+        label: 'Standart rejim',
+        type: 'enum',
+        options: [
+          { value: 'compact', label: 'Ixcham (stol va chek raqami)' },
+          { value: 'detailed', label: 'Batafsil (to‘liq ma’lumot)' },
+          { value: 'grid', label: 'Moslashuvchan kartalar' },
+        ],
+        default: 'detailed',
+      },
+    ],
+  }),
+  f({
+    key: 'tv.display',
+    kind: 'module',
+    group: 'Ko‘rinish va ekranlar',
+    label: 'Mijozlar ekrani (TV)',
+    menuPath: '/navbat',
+    params: [
+      {
+        key: 'layout',
+        label: 'Joylashuv',
+        type: 'enum',
+        options: [
+          { value: 'split', label: 'Ikki ustun: tayyorlanmoqda | tayyor' },
+          { value: 'single', label: 'Bitta ro‘yxat (tayyorlari tepada)' },
+        ],
+        default: 'split',
+      },
+      {
+        key: 'showPreparing',
+        label: '«Tayyorlanmoqda» holatini ko‘rsatish',
+        type: 'bool',
+        default: true,
+      },
+      {
+        key: 'showReady',
+        label: '«Tayyor» holatini ko‘rsatish',
+        type: 'bool',
+        default: true,
+      },
+    ],
+  }),
+  f({
+    key: 'tv.voice',
+    kind: 'action',
+    group: 'Ko‘rinish va ekranlar',
+    label: 'Mijozlar ekrani: o‘zbekcha ovozli e’lon',
+    hint: 'Masalan: «Yettinchi buyurtma tayyor.»',
+    offline: 'default',
+    params: [
+      {
+        key: 'repeat',
+        label: 'Takrorlash soni',
+        type: 'int',
+        min: 1,
+        max: 3,
+        default: 1,
+      },
+      {
+        key: 'volume',
+        label: 'Ovoz balandligi',
+        type: 'int',
+        min: 10,
+        max: 100,
+        unit: '%',
+        default: 100,
+      },
+      {
+        key: 'phrase',
+        label: 'Gap shakli',
+        type: 'enum',
+        options: [
+          { value: 'ordinal', label: 'Yettinchi buyurtma tayyor.' },
+          { value: 'cardinal', label: 'Yetti raqamli buyurtma tayyor.' },
+        ],
+        default: 'ordinal',
+      },
+    ],
+  }),
+  f({
+    key: 'waiter.notify',
+    kind: 'action',
+    group: 'Ko‘rinish va ekranlar',
+    label: 'Ofitsiant planshetiga «yangi mijoz» bildirishnomasi',
+    hint: 'Android ilovada ovozli xabar va bildirishnoma. Standart: faqat ofitsiantlar.',
+    routes: ['GET /live/alerts'],
+    offline: 'default',
+    params: [
+      {
+        key: 'sound',
+        label: 'Signal tovushi',
+        type: 'bool',
+        default: true,
+      },
+      {
+        key: 'voice',
+        label: 'O‘zbekcha ovozli e’lon',
+        type: 'bool',
+        default: true,
+      },
+      {
+        key: 'volume',
+        label: 'Ovoz balandligi',
+        type: 'int',
+        min: 10,
+        max: 100,
+        unit: '%',
+        default: 100,
+      },
+      {
+        key: 'repeat',
+        label: 'Ovozni takrorlash',
+        type: 'int',
+        min: 1,
+        max: 5,
+        default: 1,
+      },
+      {
+        key: 'reminderSeconds',
+        label: 'Stol belgilanmaguncha eslatish (soniya, 0 = o‘chiq)',
+        type: 'int',
+        min: 0,
+        max: 600,
+        default: 0,
+      },
+    ],
   }),
   // ---- Moliyaviy ko'rinish (tannarx, marja, sof foyda) ----
   f({

@@ -117,6 +117,8 @@ export const messages = {
   ownerDeviceRevoked: 'Bu qurilma bloklangan.',
   ownerMfaSetup: 'Avval ikki bosqichli himoyani yoqing.',
   featureDisabled: 'Bu imkoniyat dastur egasi tomonidan o‘chirilgan.',
+  discountLimit: 'Chegirma ruxsat etilgan chegaradan oshib ketdi.',
+  tableNotNeeded: 'Stolni faqat zaldagi (stolli) buyurtmaga belgilash mumkin.',
   offlineNotAllowed:
     'Internet yo‘qligida bu amalga ruxsat berilmagan. Aloqa tiklanishini kuting.',
   offlineExpired:

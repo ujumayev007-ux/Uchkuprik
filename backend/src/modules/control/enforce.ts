@@ -10,7 +10,11 @@ import { enqueueOperation } from './outbox.js';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // Features that create or change orders: offline they are allowed from the Cashier
 // panel only (kitchen devices keep updating tickets; nobody else adds orders).
-const CASHIER_ONLY_OFFLINE = new Set(['orders.create', 'orders.edit']);
+const CASHIER_ONLY_OFFLINE = new Set([
+  'orders.create',
+  'orders.edit',
+  'orders.table.assign',
+]);
 
 export function isLoopback(req: Request): boolean {
   const address = req.socket.remoteAddress ?? '';

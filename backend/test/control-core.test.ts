@@ -27,6 +27,7 @@ import {
   defaultPolicy,
   evaluateKey,
   financialVisibility,
+  resolveParams,
   sanitizeFeatures,
   type PolicyDoc,
 } from '../src/modules/control/policy.js';
@@ -384,5 +385,70 @@ describe('Owner application signing parity', () => {
         signature,
       ),
     ).toBe(true);
+  });
+});
+
+describe('per-role overrides and parameters', () => {
+  const policy = (features: PolicyDoc['features']): PolicyDoc => ({
+    ...defaultPolicy(),
+    features,
+  });
+  const def = catalogByKey.get('discounts.percent')!;
+
+  it('applies an override per role and keeps what any role allows', () => {
+    const p = policy({
+      'discounts.percent': { roles: { waiter: { enabled: false } } },
+    });
+    expect(evaluateKey(p, 'discounts.percent', ['waiter'])?.online).toBe(false);
+    expect(evaluateKey(p, 'discounts.percent', ['cashier'])?.online).toBe(true);
+    expect(
+      evaluateKey(p, 'discounts.percent', ['waiter', 'cashier'])?.online,
+    ).toBe(true);
+    // A global OFF is final even when a role is explicitly enabled.
+    const off = policy({
+      'discounts.percent': {
+        mode: 'OFF',
+        roles: { cashier: { enabled: true } },
+      },
+    });
+    expect(evaluateKey(off, 'discounts.percent', ['cashier'])?.online).toBe(
+      false,
+    );
+  });
+
+  it('resolves parameters: default, restaurant, role, then delegated Admin value under the cap', () => {
+    const p = policy({
+      'discounts.percent': {
+        mode: 'ADMIN',
+        params: { maxPercent: 40 },
+        roles: { cashier: { params: { maxPercent: 15 } } },
+      },
+    });
+    const admin = new Map([
+      ['discounts.percent|cashier', { maxPercent: 30 }],
+      ['discounts.percent|waiter', { maxPercent: 5 }],
+    ]);
+    // The Admin cannot raise the cashier limit above the Owner value (15).
+    expect(resolveParams(p, def, ['cashier'], admin).maxPercent).toBe(15);
+    expect(resolveParams(p, def, ['waiter'], admin).maxPercent).toBe(5);
+    expect(resolveParams(p, def, ['kitchen'], new Map()).maxPercent).toBe(40);
+    expect(resolveParams(defaultPolicy(), def, []).maxPercent).toBe(100);
+  });
+
+  it('drops invalid parameters and unknown roles when sanitizing', () => {
+    const clean = sanitizeFeatures({
+      'discounts.percent': {
+        params: { maxPercent: 500, other: 1 },
+        roles: {
+          'Bad Role!': { enabled: true },
+          cashier: { params: { maxPercent: 12 } },
+        },
+      },
+      'orders.display': { params: { defaultMode: 'weird' } },
+    });
+    expect(clean['discounts.percent']).toEqual({
+      roles: { cashier: { params: { maxPercent: 12 } } },
+    });
+    expect(clean['orders.display']).toBeUndefined();
   });
 });

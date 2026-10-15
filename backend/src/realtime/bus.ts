@@ -29,6 +29,25 @@ export type RealtimeEvent =
       number: number;
       version: number;
     }
+  | {
+      // A guest was taken without a table: waiters assign one.
+      type: 'order.table_needed';
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      number: number;
+      byUserId: string | null;
+    }
+  | {
+      type: 'order.table_assigned';
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      number: number;
+      byUserId: string | null;
+    }
+  // Owner or Admin changed settings: panels and Android devices reload them.
+  | { type: 'config.changed'; tenantId: string }
   | { type: 'menu.changed'; tenantId: string }
   | { type: 'inventory.changed'; tenantId: string };
 

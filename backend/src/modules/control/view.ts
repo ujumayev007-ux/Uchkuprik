@@ -3,7 +3,9 @@ import type { ControlMode, ControlReason } from './grant.js';
 import {
   defaultPolicy,
   sanitizeFeatures,
+  type AdminParams,
   type AdminSettings,
+  type ParamValues,
   type PolicyDoc,
 } from './policy.js';
 
@@ -14,6 +16,8 @@ export type ControlView = {
   policy: PolicyDoc;
   // Restaurant Admin decisions for features SUPER_OWNER delegated.
   adminSettings: AdminSettings;
+  // Values the Admin set for delegated parameters (limits, defaults).
+  adminParams: AdminParams;
   offlineUntil: Date | null;
   // This install runs an older version than the policy requires.
   versionBlocked: boolean;
@@ -24,6 +28,7 @@ export const unlinkedView = (): ControlView => ({
   reason: null,
   policy: defaultPolicy(),
   adminSettings: new Map(),
+  adminParams: new Map(),
   offlineUntil: null,
   versionBlocked: false,
 });
@@ -33,26 +38,41 @@ export type ControlViewProvider = (
 ) => Promise<ControlView>;
 
 const SETTINGS_TTL_MS = 10_000;
-const settingsCache = new Map<string, { at: number; value: AdminSettings }>();
+type AdminData = { settings: AdminSettings; params: AdminParams };
+const settingsCache = new Map<string, { at: number; value: AdminData }>();
 
 export function clearAdminSettingsCache() {
   settingsCache.clear();
 }
 
-/** Admin switches of one tenant (cached briefly; writes clear the cache). */
+/** Admin switches and values of one tenant (cached briefly; writes clear the cache). */
+export async function loadAdminData(
+  db: Db,
+  tenantId: string,
+  nowMs = Date.now(),
+): Promise<AdminData> {
+  const hit = settingsCache.get(tenantId);
+  if (hit && nowMs - hit.at < SETTINGS_TTL_MS) return hit.value;
+  const rows = await db.featureSetting.findMany({ where: { tenantId } });
+  const settings: AdminSettings = new Map();
+  const params: AdminParams = new Map();
+  for (const row of rows) {
+    const composite = `${row.featureKey}|${row.roleKey}`;
+    if (row.enabled !== null) settings.set(composite, row.enabled);
+    if (row.params && typeof row.params === 'object')
+      params.set(composite, row.params as ParamValues);
+  }
+  const value = { settings, params };
+  settingsCache.set(tenantId, { at: nowMs, value });
+  return value;
+}
+
 export async function loadAdminSettings(
   db: Db,
   tenantId: string,
   nowMs = Date.now(),
 ): Promise<AdminSettings> {
-  const hit = settingsCache.get(tenantId);
-  if (hit && nowMs - hit.at < SETTINGS_TTL_MS) return hit.value;
-  const rows = await db.featureSetting.findMany({ where: { tenantId } });
-  const value: AdminSettings = new Map(
-    rows.map((row) => [`${row.featureKey}|${row.roleKey}`, row.enabled]),
-  );
-  settingsCache.set(tenantId, { at: nowMs, value });
-  return value;
+  return (await loadAdminData(db, tenantId, nowMs)).settings;
 }
 
 const POLICY_TTL_MS = 15_000;
@@ -96,11 +116,13 @@ export function cloudViewProvider(
       policyCache.set(tenantId, { at, value: policy });
     }
     if (!policy) return unlinkedView();
+    const admin = await loadAdminData(db, tenantId, at);
     return {
       mode: 'ONLINE',
       reason: null,
       policy,
-      adminSettings: await loadAdminSettings(db, tenantId, at),
+      adminSettings: admin.settings,
+      adminParams: admin.params,
       offlineUntil: null,
       versionBlocked: false,
     };
