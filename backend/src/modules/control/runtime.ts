@@ -118,9 +118,10 @@ export function createControlRuntime(
   }
 
   function devicePem(row: ControlLink | null): string | null {
-    if (services.control?.deviceKeyPem) return services.control.deviceKeyPem;
+    // The key an activation was made with always wins (it is what the centre
+    // registered); the launcher's key is used for new activations.
     if (row?.deviceKeyEnc) return services.secrets.decrypt(row.deviceKeyEnc);
-    return null;
+    return services.control?.deviceKeyPem ?? null;
   }
 
   function deviceFingerprint(row: ControlLink): string | undefined {
@@ -203,11 +204,9 @@ export function createControlRuntime(
     // earlier activation, else a new identity generated now.
     const generated =
       envKey || existing?.deviceKeyEnc ? null : generateIdentity();
-    const pem =
-      envKey ??
-      (existing?.deviceKeyEnc
-        ? services.secrets.decrypt(existing.deviceKeyEnc)
-        : generated!.privateKeyPem);
+    const pem = existing?.deviceKeyEnc
+      ? services.secrets.decrypt(existing.deviceKeyEnc)
+      : (envKey ?? generated!.privateKeyPem);
     const publicKey = exportPublicKey(publicKeyOf(pem));
     const tenant = await db.tenant.findFirst({
       where: { kind: 'BUSINESS' },

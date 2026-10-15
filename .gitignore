@@ -23,3 +23,7 @@ android/local.properties
 android/release/
 desktop/build.log
 android/build.log
+desktop/control.json
+owner-desktop/node_modules
+owner-desktop/stage
+owner-desktop/release

@@ -353,3 +353,36 @@ describe('control state machine', () => {
     expect(compareVersions('1.7.9', '1.8')).toBe(-1);
   });
 });
+
+describe('Owner application signing parity', () => {
+  it('signs exactly the bytes the server verifies', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const source = readFileSync(
+      join(import.meta.dirname, '..', '..', 'owner-desktop', 'main.cjs'),
+      'utf8',
+    );
+    const body = /function canonicalJson\(value\) \{[\s\S]*?\n\}\n/.exec(
+      source,
+    )![0];
+    const canonical = new Function(`${body}; return canonicalJson;`)() as (
+      value: unknown,
+    ) => string;
+    const sample = {
+      z: [1, { b: 2, a: undefined, c: null }],
+      a: 'Ўзбек "тест"',
+      n: 12.5,
+    };
+    expect(canonical(sample)).toBe(canonicalJson(sample));
+    // A signature made over the Owner app's bytes verifies on the server.
+    const device = generateIdentity();
+    const signature = signValue(device.privateKeyPem, sample);
+    expect(
+      verifyValue(
+        device.publicKey,
+        JSON.parse(JSON.stringify(sample)),
+        signature,
+      ),
+    ).toBe(true);
+  });
+});

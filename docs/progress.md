@@ -22,6 +22,7 @@ Read this first when resuming work. Details: `implementation-plan.md`, `decision
 | 14 Infrastructure and intelligence | Accepted 2026-10-13 (14a CI 38285013868, 14b–c CI 38286901541) |
 | 15 Multi-platform delivery         | Implemented 2026-10-13                                         |
 | 16 Final acceptance                | Documentation delivered; production pilot pending              |
+| 17 SUPER_OWNER central control     | Implemented 2026-10-16 (see `owner-control.md`)                |
 
 ## Phase 2 — delivered
 

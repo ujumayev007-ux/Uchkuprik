@@ -47,13 +47,73 @@ async function fetchSignedDocument(url) {
   return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
 }
 
+/** A release announced by the central server, verified against its public key. */
+function verifyControlRelease(update, publicKeyB64) {
+  try {
+    const key = crypto.createPublicKey({
+      key: Buffer.from(publicKeyB64, 'base64url'),
+      format: 'der',
+      type: 'spki',
+    });
+    const [body, signature] = String(update.signature).split('.');
+    if (
+      !crypto.verify(
+        null,
+        Buffer.from(body, 'base64url'),
+        key,
+        Buffer.from(signature, 'base64url'),
+      )
+    )
+      return false;
+    const signed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    return (
+      signed.t === 'release' &&
+      signed.platform === 'EXE' &&
+      signed.version === update.version &&
+      signed.url === update.url &&
+      signed.sha256 === update.sha256
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
- * @param {{ statusUrl: () => string | null, log: (m: string) => void }} options
+ * @param {{
+ *   statusUrl: () => string | null,
+ *   log: (m: string) => void,
+ *   controlUpdate?: () => Promise<{ update: any, idle: boolean } | null>,
+ *   controlPublicKey?: string | null,
+ * }} options
  */
-function registerUpdates({ statusUrl, log }) {
+function registerUpdates({ statusUrl, log, controlUpdate, controlPublicKey }) {
   let downloading = false;
+  // True while a sale is running on this computer (installing would interrupt it).
+  let busy = false;
 
   async function available() {
+    busy = false;
+    // Staged rollout from the central server comes first: only releases the server
+    // signed for this very installation are offered.
+    if (controlUpdate && controlPublicKey) {
+      const info = await controlUpdate().catch(() => null);
+      const update = info?.update;
+      if (
+        update &&
+        String(update.url).startsWith('https://') &&
+        /^[0-9a-f]{64}$/.test(update.sha256) &&
+        compareVersions(update.version, app.getVersion()) > 0 &&
+        verifyControlRelease(update, controlPublicKey)
+      ) {
+        busy = !info.idle;
+        return {
+          version: update.version,
+          notes: update.notes ?? '',
+          publishedAt: null,
+          exe: { url: update.url, sha256: update.sha256, size: update.size },
+        };
+      }
+    }
     const url = statusUrl();
     if (!url) return null;
     const doc = await fetchSignedDocument(url);
@@ -80,6 +140,8 @@ function registerUpdates({ statusUrl, log }) {
               notes: update.notes ?? '',
               size: update.exe.size ?? null,
               publishedAt: update.publishedAt ?? null,
+              // Installing waits until no order is open (never interrupt a sale).
+              waitingForIdle: busy,
             }
           : null,
       };
@@ -95,6 +157,10 @@ function registerUpdates({ statusUrl, log }) {
     try {
       const update = await available();
       if (!update) throw new Error('Yangi versiya topilmadi');
+      if (busy)
+        throw new Error(
+          'Ochiq buyurtmalar bor. Savdo tugagach yangilang — joriy savdo to‘xtatilmaydi.',
+        );
       log(`downloading update ${update.version}`);
       const response = await fetch(update.exe.url, {
         signal: AbortSignal.timeout(30 * 60_000),

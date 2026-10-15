@@ -87,6 +87,29 @@ if (existsSync(vendorState)) {
     console.warn('Report key missing: open the vendor app once, then rebuild.');
 }
 
+// Central control (SUPER_OWNER): address and PUBLIC key of the central server. The
+// signing key and every Owner credential stay on the central server / Owner app.
+{
+  const file = join(here, 'control.json');
+  const url = process.env.CONTROL_URL;
+  const publicKey = process.env.CONTROL_PUBLIC_KEY;
+  const settings =
+    url && publicKey
+      ? { url, publicKey }
+      : existsSync(file)
+        ? JSON.parse(readFileSync(file, 'utf8'))
+        : null;
+  if (settings?.url?.startsWith('https://') && settings.publicKey)
+    writeFileSync(
+      join(server, 'control.json'),
+      JSON.stringify({ url: settings.url, publicKey: settings.publicKey }),
+    );
+  else
+    console.warn(
+      'Central control not baked in: set CONTROL_URL and CONTROL_PUBLIC_KEY (or desktop/control.json).',
+    );
+}
+
 // PostgreSQL 17 binaries for Windows (bin, lib, share).
 const native = join(
   here,
@@ -116,6 +139,7 @@ await build({
       'preload.cjs',
       'updates.cjs',
       'vendor-alerts.cjs',
+      'vendor-ipc.cjs',
       'reports.cjs',
       'loading.html',
       'package.json',

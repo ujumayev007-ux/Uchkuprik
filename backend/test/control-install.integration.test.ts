@@ -432,9 +432,14 @@ describe('linked install: offline policy', () => {
     runtime.invalidate();
     await newOrder(t.cashier, { 'x-panel': 'cashier' }).expect(201);
     await newOrder(t.cashier, { 'x-panel': 'cashier' }).expect(201);
-    const pending = await install.db.syncOperation.count({
-      where: { status: 'PENDING' },
-    });
+    // Offline events are written right after each response; wait for both.
+    let pending = 0;
+    for (let i = 0; i < 40 && pending < 2; i++) {
+      pending = await install.db.syncOperation.count({
+        where: { status: 'PENDING' },
+      });
+      if (pending < 2) await new Promise((r) => setTimeout(r, 50));
+    }
     expect(pending).toBeGreaterThanOrEqual(2);
     // Still offline: the flush fails and everything stays queued (never "done").
     await runtime.sync();
@@ -483,5 +488,170 @@ describe('linked install: offline policy', () => {
     expect(await runtime.beat()).toBe('ok');
     await t.cashier.get('/api/auth/me').expect(401);
     void PASSWORD;
+  });
+});
+
+describe('LAN devices on the cashier computer (offline)', () => {
+  type FakeRes = {
+    locals: Record<string, unknown>;
+    on: (event: string, handler: () => void) => void;
+  };
+  async function through(
+    t: Awaited<ReturnType<typeof lanSetup>>,
+    request_: {
+      method: string;
+      path: string;
+      remote: string;
+      cookie?: string;
+      panel?: string;
+      auth?: boolean;
+    },
+  ) {
+    const { enforceControl } =
+      await import('../src/modules/control/enforce.js');
+    const middleware = enforceControl(install.services);
+    const headers: Record<string, string> = {
+      ...(request_.cookie ? { cookie: request_.cookie } : {}),
+      ...(request_.panel ? { 'x-panel': request_.panel } : {}),
+    };
+    const req = {
+      method: request_.method,
+      path: request_.path,
+      headers,
+      socket: { remoteAddress: request_.remote },
+      get: (name: string) => headers[name.toLowerCase()],
+    };
+    const res: FakeRes = {
+      locals: request_.auth === false ? {} : { auth: t.auth },
+      on: () => undefined,
+    };
+    try {
+      await new Promise<void>((resolve, reject) => {
+        void middleware(req as never, res as never, (error?: unknown) =>
+          error ? reject(error) : resolve(),
+        ).catch(reject);
+      });
+      return 'allowed';
+    } catch (error) {
+      return (error as { code?: string }).code ?? 'error';
+    }
+  }
+
+  async function lanSetup() {
+    await resetLink();
+    const made = await licensed();
+    await activate(made.key);
+    expect(await runtime.beat()).toBe('ok');
+    const tenant = await createTenant(install);
+    const branch = await install.db.branch.findFirstOrThrow({
+      where: { tenantId: tenant.tenant.id },
+    });
+    const { sha256 } = await import('../src/lib/crypto.js');
+    const device = async (panel: string) => {
+      const token = `${panel}${randomUUID().replace(/-/g, '')}`.slice(0, 40);
+      await install.db.device.create({
+        data: {
+          tenantId: tenant.tenant.id,
+          branchId: branch.id,
+          name: `${panel} terminali`,
+          tokenHash: sha256(token),
+          registeredById: tenant.owner.id,
+          panel,
+        },
+      });
+      return `ff_device=${token}`;
+    };
+    const cashierCookie = await device('CASHIER');
+    const kitchenCookie = await device('KITCHEN');
+    // Authenticated context of a cashier / kitchen employee.
+    const auth = {
+      tenantId: tenant.tenant.id,
+      roleKeys: ['cashier'],
+      permissions: new Set(['pos.access', 'orders.create', 'kitchen.access']),
+    };
+    network.down = true;
+    advance(10 * 60_000);
+    runtime.invalidate();
+    return { cashierCookie, kitchenCookie, auth };
+  }
+
+  it('requires registered devices and keeps order creation on the Cashier panel', async () => {
+    const t = await lanSetup();
+    const lan = '::ffff:192.168.1.50';
+    // An unknown machine on the Wi-Fi is not served while offline.
+    expect(
+      await through(t, { method: 'GET', path: '/orders', remote: lan }),
+    ).toBe('LOCAL_DEVICE_REQUIRED');
+    // The kitchen terminal keeps receiving and updating tickets over the LAN.
+    expect(
+      await through(t, {
+        method: 'GET',
+        path: '/kitchen/tickets',
+        remote: lan,
+        cookie: t.kitchenCookie,
+      }),
+    ).toBe('allowed');
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: '/kitchen/items/123/status',
+        remote: lan,
+        cookie: t.kitchenCookie,
+      }),
+    ).toBe('allowed');
+    // ...but cannot create orders even if it claims to be the cashier.
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: '/orders',
+        remote: lan,
+        cookie: t.kitchenCookie,
+        panel: 'cashier',
+      }),
+    ).toBe('CASHIER_PANEL_ONLY');
+    // A terminal registered for the Cashier panel can.
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: '/orders',
+        remote: lan,
+        cookie: t.cashierCookie,
+        panel: 'cashier',
+      }),
+    ).toBe('allowed');
+    // Without the panel claim the same terminal is refused.
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: '/orders',
+        remote: lan,
+        cookie: t.cashierCookie,
+      }),
+    ).toBe('CASHIER_PANEL_ONLY');
+  });
+});
+
+describe('cloud edition tenant isolation', () => {
+  it("applies each customer's policy only to its own tenant", async () => {
+    const { cloudViewProvider } =
+      await import('../src/modules/control/view.js');
+    const a = await createTenant(central);
+    const b = await createTenant(central);
+    const customer = await central.db.controlCustomer.create({
+      data: { name: unique('Bulut'), tenantId: a.tenant.id },
+    });
+    await central.db.controlPolicy.create({
+      data: {
+        customerId: customer.id,
+        features: { 'menu.manage': { mode: 'OFF' } },
+      },
+    });
+    clearPolicyCache();
+    const provider = cloudViewProvider(central.db, () => new Date());
+    expect(
+      (await provider(a.tenant.id)).policy.features['menu.manage'],
+    ).toEqual({ mode: 'OFF' });
+    expect((await provider(b.tenant.id)).policy.features).toEqual({});
+    expect((await provider(null)).mode).toBe('UNLINKED');
   });
 });
