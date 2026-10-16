@@ -312,6 +312,8 @@ export function manageRouter(services: Services) {
       phone: customer.phone,
       note: customer.note,
       status: customer.status,
+      // The restaurant runs on this server: the Owner may browse its data.
+      hosted: customer.tenantId !== null,
       createdAt: customer.createdAt,
       licenses: customer.licenses.map((license) => licenseView(license, at)),
       devices: customer.activations.map((activation) =>

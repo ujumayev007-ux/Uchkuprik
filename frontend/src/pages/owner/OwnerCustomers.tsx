@@ -22,6 +22,7 @@ import {
   type LicenseRow,
 } from '../../lib/owner';
 import { DeviceCards } from './OwnerDevices';
+import { OwnerData } from './OwnerData';
 import { PolicyEditor } from './OwnerPolicy';
 
 const c = t.owner.customers;
@@ -466,6 +467,7 @@ function CustomerDetailView({
           </ul>
         )}
       </section>
+      <OwnerData customerId={id} hosted={!!customer.hosted} />
       <PolicyEditor
         key={customer.policy.version}
         customerId={id}

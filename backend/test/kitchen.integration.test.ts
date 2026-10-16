@@ -307,7 +307,14 @@ describe('kitchen printing', () => {
     );
 
     await processPrintJobs(ctx.services);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // The ticket arrives over a real socket: wait for it instead of a fixed pause.
+    for (
+      let wait = 0;
+      wait < 80 &&
+      !Buffer.concat(received).toString('latin1').includes('2 x Burger');
+      wait++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 100));
     const printed = Buffer.concat(received).toString('latin1');
     expect(printed).toContain(`N ${order.body.number}`);
     expect(printed).toContain('2 x Burger');

@@ -186,6 +186,7 @@ export type CustomerDetail = {
   phone: string | null;
   note: string | null;
   status: CustomerSummary['status'];
+  hosted?: boolean;
   createdAt: string;
   licenses: LicenseRow[];
   devices: DeviceRow[];

@@ -32,6 +32,7 @@ import {
   licenseRouter,
 } from './modules/license/license.routes.js';
 import { loadSession } from './modules/auth/session.js';
+import { dataRouter } from './modules/control/data.routes.js';
 import { deviceRouter } from './modules/control/device.routes.js';
 import { enforceControl } from './modules/control/enforce.js';
 import { controlInstallRouter } from './modules/control/install.routes.js';
@@ -244,7 +245,12 @@ export function createApp({
       app.use('/api', router(services));
     // Central control plane (SUPER_OWNER): owner sign-in, management, device channel.
     if (services.control?.plane)
-      for (const router of [ownerRouter, manageRouter, deviceRouter])
+      for (const router of [
+        ownerRouter,
+        manageRouter,
+        dataRouter,
+        deviceRouter,
+      ])
         app.use('/api', router(services));
     app.use('/api', paymentsRouter(services, config.APP_ORIGIN));
     app.use('/api', notificationsRouter(services, config.APP_ORIGIN));

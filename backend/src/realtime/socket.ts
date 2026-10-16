@@ -6,6 +6,10 @@ import { branchRoom, tenantRoom, type EventBus } from './bus.js';
 
 const REVALIDATE_MS = 60_000;
 
+/** Order and kitchen events only reach staff who may see orders or the kitchen. */
+const canSeeOrders = (auth: AuthContext) =>
+  auth.permissions.has('orders.view') || auth.permissions.has('kitchen.access');
+
 /**
  * Socket.io server bound to the API's HTTP server. Connections authenticate with the
  * same httpOnly session cookie as REST calls and join only their tenant and active
@@ -55,7 +59,7 @@ export function attachRealtime(
   io.on('connection', (socket) => {
     const auth = socket.data.auth as AuthContext;
     void socket.join(tenantRoom(auth.tenantId));
-    if (auth.activeBranchId)
+    if (auth.activeBranchId && canSeeOrders(auth))
       void socket.join(branchRoom(auth.tenantId, auth.activeBranchId));
     socket.emit('ready', { branchId: auth.activeBranchId });
     // Revoked or expired sessions lose their live connection too.
@@ -72,7 +76,35 @@ export function attachRealtime(
     socket.onAny(() => undefined);
   });
 
+  /**
+   * SUPER_OWNER (or the Admin) changed settings: every open connection of the
+   * restaurant is checked again. Connections that lost access to orders leave the
+   * branch room, ended or blocked sessions are disconnected.
+   */
+  const recheck = async (tenantId: string) => {
+    const sockets = await io.in(tenantRoom(tenantId)).fetchSockets();
+    for (const socket of sockets) {
+      const result = await authenticate(
+        services,
+        socket.data.cookie as string | undefined,
+        { touch: false },
+      ).catch(() => ({ status: 'invalid' as const }));
+      if (result.status !== 'ok' || !result.auth.mfaVerified) {
+        socket.disconnect(true);
+        continue;
+      }
+      socket.data.auth = result.auth;
+      const room = result.auth.activeBranchId
+        ? branchRoom(tenantId, result.auth.activeBranchId)
+        : null;
+      if (!room) continue;
+      if (canSeeOrders(result.auth)) socket.join(room);
+      else socket.leave(room);
+    }
+  };
+
   const unsubscribe = bus.subscribe((event) => {
+    if (event.type === 'config.changed') void recheck(event.tenantId);
     if (
       event.type === 'menu.changed' ||
       event.type === 'inventory.changed' ||

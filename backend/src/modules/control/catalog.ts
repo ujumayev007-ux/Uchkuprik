@@ -266,7 +266,11 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Chek dizayni va shablonlar (58/80 mm va boshqa kenglik)',
     hint: 'Shablonlarni printer, bo‘lim yoki chek turiga biriktirish va sinov chop etish.',
     menuPath: '/chek-dizayni',
-    routes: ['* /receipt-templates', '* /receipt-templates/*'],
+    routes: [
+      '* /receipt-templates',
+      '* /receipt-templates/*',
+      '* /settings/receipt',
+    ],
   }),
   // ---- Ombor ----
   f({
@@ -559,6 +563,36 @@ export const featureCatalog: FeatureDef[] = [
     permission: 'settings.manage',
     menuPath: '/sozlamalar',
     routes: ['* /settings', '* /settings/*'],
+  }),
+  f({
+    key: 'settings.workflow',
+    kind: 'module',
+    group: 'Sozlamalar va boshqaruv',
+    label: 'Buyurtma jarayoni qoidalari (tasdiqlash, bekor qilish, tahrirlash)',
+    routes: ['* /settings/orders'],
+  }),
+  f({
+    key: 'settings.fiscal',
+    kind: 'module',
+    group: 'Sozlamalar va boshqaruv',
+    label: 'Fiskal (soliq) sozlamalari',
+    sensitive: true,
+    routes: ['* /settings/fiscal'],
+  }),
+  f({
+    key: 'settings.loyalty',
+    kind: 'module',
+    group: 'Sozlamalar va boshqaruv',
+    label: 'Sodiqlik qoidalari',
+    routes: ['* /settings/loyalty-rules'],
+  }),
+  f({
+    key: 'settings.qrpay',
+    kind: 'module',
+    group: 'Sozlamalar va boshqaruv',
+    label: 'QR to‘lov sozlamalari',
+    sensitive: true,
+    routes: ['* /settings/qr-payment'],
   }),
   f({
     key: 'floor.view',
