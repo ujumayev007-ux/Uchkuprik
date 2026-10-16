@@ -253,3 +253,43 @@ TEST central server on `http://127.0.0.1:4100` with its own database
 `%LOCALAPPDATA%\FastFood-TestControl`, never in the repository, and nothing in a production
 installer contains them (the Owner and Admin build scripts refuse a production build whose
 files contain test flags, a local address or test credentials).
+
+### Advertising and remote design (Owner)
+
+Tables (additive migration `20261020090000_branding`): `branding_media` (validated picture/video
+bytes), `branding_designs` (Owner layers: key `global` or a customer id), `tenant_designs` (a
+restaurant Admin's layer, only while delegated), `ad_campaigns`/`ad_targets`, `ad_stats` (display
+counters), `ad_deliveries` (which install received which version), `branding_cache` (an install's
+last verified bundle).
+
+- **Media** is judged by its own bytes (PNG/JPEG/WEBP/GIF ≤ 3 MB, MP4/WEBM ≤ 20 MB); SVG, HTML and
+  anything else is refused. Files are served with `nosniff`, `Content-Security-Policy: sandbox` and
+  an ETag (`/api/branding/media/:id`).
+- **Design** is layered and sparse: defaults ← Owner global ← Owner per restaurant ← restaurant Admin
+  (only when the feature `design.admin` is ON for that restaurant). Deleting a layer restores the one
+  below it. Six skins: `classic`, `premium`, `blue`, `emerald`, `minimal`, `luxury`; per panel
+  (`admin`, `cashier`, `waiter`, `kitchen`, `customer`) a skin and a sign-in skin; login background,
+  logo, accent colour, welcome text; splash title/subtitle/logo.
+- **Campaigns** target all or selected customers, panels, a time window, frequency (`everyMinutes`,
+  `maxPerDay`), priority; the feature `ads.display` (default ON) switches advertising off for one
+  restaurant. A fullscreen campaign must be closable or have an auto-close timer.
+- **Delivery.** Hosted restaurants read the control tables directly and screens are told by the
+  Socket.io event `branding.changed`. Installed restaurants get a `branding` bundle (design + campaigns
+  - media checksums) inside the signed heartbeat answer whenever their reported `brandingVersion` differs
+    (≈ 60 s); the files come over the signed device channel `POST /control/device/media` (only files of the
+    restaurant's own bundle) and are checked against the signed sha256 before they are stored; the bundle
+    is reported as complete only when every file is present. Display counters travel back as cumulative
+    `ad_stats` sync operations (the centre keeps the larger value, so retries never double count).
+- **Screens** keep the last design and campaign list in `localStorage` (applied before the first paint
+  and used when the server cannot be reached). The ad engine never covers a payment dialog, a sale in
+  progress (cart), printing, any open dialog or a screen touched in the last 5 s; the kitchen only gets
+  banners; covering ads are dismissed the moment work starts.
+- **Routes.** Owner: `/api/control/{media,ads,design,customers/:id/design}` (audited with old/new
+  values; destructive actions need `confirm: true`, global changes need step-up). Restaurant:
+  `/api/branding/login` (public), `/api/branding`, `/api/branding/ads/:id/event`,
+  `/api/branding/admin[/media]` (settings permission + delegation).
+- **Cold starts.** The web application treats a gateway error or an HTML page where JSON is expected
+  as "server waking up", shows its own branded reconnect screen in Uzbek and reconnects by itself; the
+  Owner and Admin applications show a branded splash and wait for `/api/health/live` (JSON
+  `status: ok`) before opening the page. Hosting names and addresses appear only under
+  «Texnik ma’lumot» / «Murakkab sozlama».

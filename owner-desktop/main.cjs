@@ -533,7 +533,7 @@ async function boot() {
   identity();
   // The server may be asleep (a cold start takes up to a minute or two): a branded
   // splash is shown meanwhile and the console opens by itself.
-  await openConsole(url, 120_000);
+  await openConsole(url, Number(process.env.OWNER_SPLASH_WAIT_MS) || 120_000);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();

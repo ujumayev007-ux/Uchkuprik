@@ -1,6 +1,6 @@
 # Android ofitsiant ilovasi — qurilmada sinov ro‘yxati
 
-Versiya 1.12.0. Bu ilovaning bildirishnoma xizmati (AlertService) hali **haqiqiy qurilmada sinalmagan**:
+Versiya 1.13.0. Bu ilovaning bildirishnoma xizmati (AlertService) hali **haqiqiy qurilmada sinalmagan**:
 rivojlantirish kompyuterida planshet ham, emulyator ham yo‘q. Quyidagi ro‘yxatni birinchi
 planshetda bajaring va natijani belgilang. Hamma qadam o‘tmaguncha ilovani «tayyor» deb
 hisoblamang.
@@ -30,7 +30,7 @@ Eslatma: ba'zi telefonlar (Xiaomi, Huawei, Samsung) fondagi ilovalarni tez o‘c
 6‑ va 7‑sinov o‘tmasa: Sozlamalar → Ilovalar → FastFood → Batareya → «Cheklovsiz» qiling
 va «Avtomatik ishga tushirish» (Autostart) ruxsatini bering.
 
-## Qurilmada ko‘rib chiqiladigan ekranlar (versiya 1.12.0)
+## Qurilmada ko‘rib chiqiladigan ekranlar (versiya 1.13.0)
 
 Quyidagi ekranlar kompyuterda brauzer oynasida o‘lchamlarga qarab tekshirilgan, lekin
 **haqiqiy telefon/planshetda ko‘rilmagan**. Birinchi planshet/telefonda ko‘zdan kechiring:
@@ -44,6 +44,9 @@ Quyidagi ekranlar kompyuterda brauzer oynasida o‘lchamlarga qarab tekshirilgan
 | 19  | Mijozlar ekrani (TV) planshetda: buyurtmani «Tayyor» qiling              | Raqam sariq ro‘yxatdan yashil ro‘yxatga silliq o‘tadi, ovozli e’lon bir marta aytiladi                  | ☐      |
 
 | 20 | Ilovani oching va ofitsiant sifatida kiring | Ilova to‘g‘ridan-to‘g‘ri ofitsiant ekranini (Stollar) ochadi | ☐ |
+| 21 | Ownerdan kirish ekrani uslubini almashtiring (6 ta uslubdan birini) | Telefon/planshetda kirish ekrani yangi uslubda, yon tomonga siljimaydi; kirish tugmalari ko‘rinadi | ☐ |
+| 22 | Ownerdan banner va popup reklama yuboring | Banner kichik ko‘rinadi; popup faqat ekran tinch turganda chiqadi, yopish tugmasi ishlaydi | ☐ |
+| 23 | Stol buyurtmasi ochiq paytda reklama yuboring | Reklama buyurtma ustiga chiqmaydi | ☐ |
 
 ## Avtomatik tekshirilganlar (kompyuterda, qurilmasiz)
 

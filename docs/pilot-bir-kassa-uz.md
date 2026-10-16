@@ -12,9 +12,9 @@ umuman ulanmaydi.
 
 | Paket                                             | Fayl                                                             |
 | ------------------------------------------------- | ---------------------------------------------------------------- |
-| Umumiy kassa dasturi (Kassa+Ofitsiant+Oshxona)    | `desktop\release-test\FastFood-TEST-Setup-1.12.0.exe`            |
-| Restoran Admin dasturi (sinov)                    | `admin-desktop\release-test\FastFood-Admin-TEST-Setup-1.0.0.exe` |
-| Owner dasturi (sinov)                             | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.3.0.exe` |
+| Umumiy kassa dasturi (Kassa+Ofitsiant+Oshxona)    | `desktop\release-test\FastFood-TEST-Setup-1.13.0.exe`            |
+| Restoran Admin dasturi (sinov)                    | `admin-desktop\release-test\FastFood-Admin-TEST-Setup-1.1.0.exe` |
+| Owner dasturi (sinov)                             | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.5.0.exe` |
 | Ofitsiant Android (sinov va ishchi uchun bir xil) | `android\release\FastFood-1.12.0.apk`                            |
 
 **Sinov serverini ishga tushirish** (Owner dasturi shunga ulanadi; kompyuter qayta
@@ -28,6 +28,18 @@ node scripts/test-control-plane.mjs code      (Owner emaili, paroli va kirish ko
 
 Server ishlamayotgan bo‘lsa, Owner dasturi «Markaziy serverga ulanib bo‘lmadi» sahifasini
 ko‘rsatadi (Qayta urinish va Server manzili tugmalari bilan) va server yoqilgach o‘zi ulanadi.
+Server uyg‘onayotgan paytda (hostingning sovuq ishga tushishi) Owner va Admin dasturlari
+o‘zining «FAST FOOD» yuklanish ekranini ko‘rsatadi va server tayyor bo‘lgach o‘zi ochiladi;
+hosting nomi yoki manzili oddiy ko‘rinishda chiqmaydi.
+
+**Owner dasturida kirish.** Owner har doim pochta, parol va autentifikator kodini so‘raydi
+(server buni talab qiladi). Qulaylik uchun dastur autentifikator kalitini **faqat shu
+kompyuterda**, Windows himoyasi ostida eslab qolishi mumkin: kirish oynasidagi «Autentifikator
+kaliti» maydoniga kalitni bir marta kiriting — keyingi kirishlarda kod o‘zi kiritiladi va faqat
+parol yoziladi. Eslab qolishni oynadan o‘chirish mumkin.
+
+**Reklama va dizayn.** Owner → «Reklama boshqaruvi» va «Dizayn boshqaruvi»: hujjat
+`docs/reklama-va-dizayn-uz.md`.
 
 Paketlar raqamli imzosiz: Windows birinchi ishga tushirishda «Noma’lum nashriyotchi»
 ogohlantirishini ko‘rsatadi («Baribir ishga tushirish»). Fayl yaxlitligini SHA256 bilan
@@ -50,6 +62,10 @@ nusxalamang.
    - Mijozlar ekrani (TV): raqamlar №001 ko‘rinishida, silliq o‘zgaradi, ovozli e’lon.
    - Owner'da rol bo‘yicha o‘chirish/yoqish va limitlar kassada darrov ta’sir qiladi.
    - Internet uzilib qaytganda: ruxsat etilgan amallar ishlaydi, navbat tiklanadi.
+   - Owner → «Dizayn boshqaruvi»: kirish ekrani uslubini almashtiring (6 ta) — kassa, ofitsiant va
+     oshxona ekranlarida dasturni qayta ishga tushirmasdan o‘zgaradi.
+   - Owner → «Reklama boshqaruvi»: banner va popup yuboring — savatda taom yoki to‘lov oynasi
+     ochiq turganda chiqmasligini, oshxonada faqat banner chiqishini tekshiring.
 4. **Server ko‘chirish bo‘yicha pilot** (faqat tayyor bo‘lgach): `docs/server-kochirish-uz.md`,
    5‑bo‘lim — shu bitta kassada manzilni yangi serverga almashtiring va bir kun kuzating.
 5. Hammasi joyida bo‘lsa — ishchi (production) paketlarini yig‘ing va **shu bitta kassaga**

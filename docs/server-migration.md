@@ -198,3 +198,10 @@ Do not move every restaurant at once.
   by `caddy validate` / `systemd-analyze verify` here. Run both on the VPS before the pilot.
 - Restaurants that run on their own computer keep their data there; moving the central
   server does not move or touch it.
+
+## Branding (advertising and design) when moving
+
+Advertising campaigns, uploaded pictures/videos and designs live in the database
+(`branding_media`, `branding_designs`, `tenant_designs`, `ad_*`), so the normal database backup and
+restore carries them; nothing is stored on the disk. Installs keep their own verified copy
+(`branding_cache`) and keep showing it while the new server is being prepared.

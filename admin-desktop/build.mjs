@@ -65,7 +65,8 @@ for (const name of ['main.cjs', 'preload.cjs', 'connect.html'])
     throw new Error(`Test credentials found in ${name}; build refused.`);
 
 const { build } = require('electron-builder');
-const out = join(here, TEST ? 'release-test' : 'release');
+const out =
+  process.env.ADMIN_BUILD_OUT || join(here, TEST ? 'release-test' : 'release');
 const artifact = `FastFood-Admin${TEST ? '-TEST' : ''}-Setup-${version}.exe`;
 await build({
   projectDir: stage,

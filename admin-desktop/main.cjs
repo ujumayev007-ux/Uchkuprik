@@ -261,7 +261,8 @@ async function boot() {
   // The server may still be waking up: a branded splash is shown and the application
   // opens by itself once the server answers.
   await win.loadFile(path.join(__dirname, 'splash.html'));
-  const end = Date.now() + 120_000;
+  const end =
+    Date.now() + (Number(process.env.ADMIN_SPLASH_WAIT_MS) || 120_000);
   let ok = await reachable(currentUrl);
   while (!ok && Date.now() < end && !win.isDestroyed()) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
