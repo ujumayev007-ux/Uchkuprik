@@ -178,3 +178,18 @@ device; later devices stay `PENDING` until approved from an approved device (or
 profile, ports (8788 / 54331), no vendor watchers, no production status/report
 settings, and a local `http://127.0.0.1:<port>` central address is allowed. A production
 build never accepts a plain-http address. Simple hosting steps: `owner-control-hosting-uz.md`.
+
+### Verification status of the ordering controls
+
+Covered by automated tests (`backend/test/ordering*.test.ts`, `uzbek-number.test.ts`,
+the offline cases in `control-install.integration.test.ts`): per-role enforcement,
+discount limits, table assignment, delegation caps, the guest journey with partial
+payment, receipt/report/audit consistency, simultaneous edits, tenant isolation.
+Checked in a real browser against a throw-away tenant: delivery order created and
+assigned to a courier by a Cashier, «Mijoz» order → waiter alert → table assignment
+with live updates on every open panel, customer-TV announcement de-duplication across a
+connection loss, Admin and Owner pages at phone, tablet, 1024×600 and desktop sizes.
+The Android service logic that does not depend on Android (`SseReader`, `SeenOrders`)
+is run on a plain JVM by `android/test/StreamProbe.java`.
+**Not verified on a device:** notification, text-to-speech, screen-off and restart
+behaviour of `AlertService` — see `docs/android-sinov-royxati-uz.md`.
