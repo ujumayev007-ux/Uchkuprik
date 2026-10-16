@@ -218,23 +218,54 @@ const b32 = (text) => {
   return Buffer.from(out);
 };
 
-function code() {
-  if (!existsSync(OWNER_FILE))
-    throw new Error('Avval "setup" ni ishga tushiring.');
-  const owner = JSON.parse(readFileSync(OWNER_FILE, 'utf8'));
+function otpAt(secret, step) {
   const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
-  const digest = createHmac('sha1', b32(owner.mfaSecret))
-    .update(counter)
-    .digest();
+  counter.writeBigUInt64BE(BigInt(step));
+  const digest = createHmac('sha1', b32(secret)).update(counter).digest();
   const offset = digest[digest.length - 1] & 15;
-  const otp = String(
+  return String(
     (digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000,
   ).padStart(6, '0');
+}
+
+function ownerFile() {
+  if (!existsSync(OWNER_FILE))
+    throw new Error('Avval "setup" ni ishga tushiring.');
+  return JSON.parse(readFileSync(OWNER_FILE, 'utf8'));
+}
+
+function code() {
+  const owner = ownerFile();
+  const otp = otpAt(owner.mfaSecret, Math.floor(Date.now() / 30000));
   console.log('SINOV Owner (faqat sinov serveri uchun)');
   console.log(`  Email : ${owner.email}`);
   console.log(`  Parol : ${owner.password}`);
   console.log(`  Kod   : ${otp}  (30 soniya amal qiladi, bir marta ishlaydi)`);
+}
+
+/** Live view: the code is shown only while at least 12 s are left to type it. */
+async function watch() {
+  const owner = ownerFile();
+  console.log('SINOV Owner (faqat sinov serveri uchun)');
+  console.log(`  Email : ${owner.email}`);
+  console.log(`  Parol : ${owner.password}  (buferga nusxalandi: Ctrl+V)`);
+  console.log('');
+  let shown = -1;
+  for (;;) {
+    const now = Date.now();
+    const step = Math.floor(now / 30000);
+    const left = Math.ceil((30000 - (now % 30000)) / 1000);
+    if (left >= 12 && step !== shown) {
+      shown = step;
+      console.log(
+        `  Kod: ${otpAt(owner.mfaSecret, step)}   (${left} soniya qoldi; kiritib, «Kirish» ni bosing)`,
+      );
+    } else if (left < 12 && step === shown) {
+      console.log('  … vaqt tugayapti, yangi kod chiqadi');
+      shown = -2;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 
 const [command] = process.argv.slice(2);
@@ -243,6 +274,8 @@ try {
   else if (command === 'start') await start();
   else if (command === 'stop') await stop();
   else if (command === 'code') code();
+  else if (command === 'watch') await watch();
+  else if (command === 'password') process.stdout.write(ownerFile().password);
   else if (command === 'status') {
     const info = await health();
     console.log(info ? `Ishlayapti: ${base}` : `O‘chiq: ${base}`);
