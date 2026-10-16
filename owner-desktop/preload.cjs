@@ -5,6 +5,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('fastfoodOwner', {
   deviceKey: () => ipcRenderer.invoke('owner:deviceKey'),
   sign: (value) => ipcRenderer.invoke('owner:sign', value),
+  // "Remember on this computer": e-mail and authenticator key in protected storage.
+  rememberGet: () => ipcRenderer.invoke('owner:remember:get'),
+  rememberSet: (value) => ipcRenderer.invoke('owner:remember:set', value),
+  rememberClear: () => ipcRenderer.invoke('owner:remember:clear'),
+  code: () => ipcRenderer.invoke('owner:code'),
 });
 
 // Only the "cannot reach the server" page (a local file) may use these two calls; the

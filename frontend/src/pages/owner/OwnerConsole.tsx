@@ -46,6 +46,15 @@ function OwnerLogin({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // "Remember on this computer": the saved key makes the code field unnecessary.
+  const [saved, setSaved] = useState(false);
+  const [keyText, setKeyText] = useState('');
+  useEffect(() => {
+    void bridge?.rememberGet?.().then((info) => {
+      setSaved(info.hasKey);
+      if (info.email) setForm((current) => ({ ...current, email: info.email }));
+    });
+  }, [bridge]);
   if (!bridge) return <ErrorState error={new Error(o.login.noBridge)} />;
   return (
     <form
@@ -63,6 +72,8 @@ function OwnerLogin({ onDone }: { onDone: () => void }) {
             '/control/owner/challenge',
           );
           const deviceSignature = await bridge.sign({ challenge, email });
+          const code =
+            saved && bridge.code ? (await bridge.code()).code : form.code;
           await post('/control/owner/login', {
             email,
             password: form.password,
@@ -70,8 +81,13 @@ function OwnerLogin({ onDone }: { onDone: () => void }) {
             deviceKey: key.publicKey,
             deviceSignature,
             deviceLabel: key.label,
-            code: form.code,
+            code,
           });
+          // Keep the key on this computer only when the owner asked for it.
+          if (!saved && keyText.trim() && bridge.rememberSet)
+            await bridge
+              .rememberSet({ email, secret: keyText.trim() })
+              .catch(() => undefined);
           setForm({ email: '', password: '', code: '' });
           onDone();
         } catch (caught) {
@@ -100,17 +116,44 @@ function OwnerLogin({ onDone }: { onDone: () => void }) {
         onChange={(event) => setForm({ ...form, password: event.target.value })}
         required
       />
-      <TextField
-        label={o.login.code}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={6}
-        value={form.code}
-        onChange={(event) =>
-          setForm({ ...form, code: event.target.value.replace(/\D/g, '') })
-        }
-        required
-      />
+      {saved ? (
+        <p className="muted small">
+          {o.login.remembered}{' '}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={async () => {
+              await bridge.rememberClear?.();
+              setSaved(false);
+            }}
+          >
+            {o.login.forget}
+          </button>
+        </p>
+      ) : (
+        <>
+          <TextField
+            label={o.login.code}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={form.code}
+            onChange={(event) =>
+              setForm({ ...form, code: event.target.value.replace(/\D/g, '') })
+            }
+            required
+          />
+          {bridge.rememberSet && (
+            <TextField
+              label={o.login.keyLabel}
+              hint={o.login.keyHint}
+              autoComplete="off"
+              value={keyText}
+              onChange={(event) => setKeyText(event.target.value)}
+            />
+          )}
+        </>
+      )}
       {notice && <p className="muted small">{notice}</p>}
       <FormError error={error} />
       <div className="form-actions">
@@ -127,6 +170,12 @@ function ReauthHost() {
   const [pending, setPending] = useState<((ok: boolean) => void) | null>(null);
   const [form, setForm] = useState({ password: '', code: '' });
   const [error, setError] = useState<unknown>(null);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    void ownerBridge()
+      ?.rememberGet?.()
+      .then((info) => setSaved(info.hasKey));
+  }, [pending]);
   useEffect(() => {
     setOwnerReauthPrompt(
       () => new Promise<boolean>((resolve) => setPending(() => resolve)),
@@ -152,7 +201,15 @@ function ReauthHost() {
             variant="primary"
             onClick={async () => {
               try {
-                await post('/control/owner/reauth', form);
+                const bridge = ownerBridge();
+                const code =
+                  saved && bridge?.code
+                    ? (await bridge.code()).code
+                    : form.code;
+                await post('/control/owner/reauth', {
+                  password: form.password,
+                  code,
+                });
                 finish(true);
               } catch (caught) {
                 setError(caught);
@@ -171,15 +228,17 @@ function ReauthHost() {
         value={form.password}
         onChange={(event) => setForm({ ...form, password: event.target.value })}
       />
-      <TextField
-        label={o.login.code}
-        inputMode="numeric"
-        maxLength={6}
-        value={form.code}
-        onChange={(event) =>
-          setForm({ ...form, code: event.target.value.replace(/\D/g, '') })
-        }
-      />
+      {!saved && (
+        <TextField
+          label={o.login.code}
+          inputMode="numeric"
+          maxLength={6}
+          value={form.code}
+          onChange={(event) =>
+            setForm({ ...form, code: event.target.value.replace(/\D/g, '') })
+          }
+        />
+      )}
       <FormError error={error} />
     </Dialog>
   );

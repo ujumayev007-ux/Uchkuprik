@@ -23,6 +23,13 @@ export const owner = {
     pending:
       'Bu qurilma hali tasdiqlanmagan. Allaqachon tasdiqlangan qurilmadan “Xavfsizlik” bo‘limida ruxsat bering.',
     logout: 'Chiqish',
+    remembered:
+      'Autentifikator kaliti shu kompyuterda saqlangan: kod o‘zi kiritiladi, faqat parolni yozing.',
+    forget: 'Eslab qolishni o‘chirish',
+    keyLabel:
+      'Autentifikator kaliti (ixtiyoriy, shu kompyuterda eslab qolish uchun)',
+    keyHint:
+      'Kalitni bir marta kiriting (Owner kirish faylidagi «Autentifikator kaliti»). U faqat shu kompyuterda, Windows himoyasi ostida saqlanadi; keyingi kirishda faqat parol kerak bo‘ladi. Kalit bo‘sh qolsa, kod har safar so‘raladi.',
   },
   overview: {
     customers: 'Faol mijozlar',

@@ -121,6 +121,127 @@ ipcMain.handle('owner:sign', (_event, value) => {
     .toString('base64url');
 });
 
+// ---- "remember on this computer": the Owner's e-mail and authenticator key, kept in the
+// operating system's protected storage (DPAPI), so only the password has to be typed.
+// The server is unchanged: it still checks password, approved device key AND the code;
+// this application simply computes the code for the owner on their own computer.
+const REMEMBER_FILE = path.join(DATA, 'owner-remember.enc');
+let lastCodeStep = 0;
+
+function base32Decode(text) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+  for (const char of String(text).toUpperCase().replace(/[\s=-]+/g, '')) {
+    const index = alphabet.indexOf(char);
+    if (index < 0) return null;
+    value = (value << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return bytes.length >= 10 ? Buffer.from(bytes) : null;
+}
+
+function totpAt(secret, step) {
+  const key = base32Decode(secret);
+  if (!key) throw new Error('Autentifikator kaliti noto‘g‘ri.');
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const digest = crypto.createHmac('sha1', key).update(counter).digest();
+  const offset = digest[digest.length - 1] & 15;
+  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(
+    6,
+    '0',
+  );
+}
+
+function readRemembered() {
+  try {
+    if (!fs.existsSync(REMEMBER_FILE) || !safeStorage.isEncryptionAvailable())
+      return null;
+    const parsed = JSON.parse(
+      safeStorage.decryptString(fs.readFileSync(REMEMBER_FILE)),
+    );
+    return typeof parsed.secret === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// Only the Owner console of the configured central server may use these calls.
+const fromConsole = (event) => {
+  try {
+    const frame = String(event.senderFrame?.url || '');
+    return (
+      win !== null &&
+      event.sender === win.webContents &&
+      new URL(frame).origin === new URL(serverUrl()).origin
+    );
+  } catch {
+    return false;
+  }
+};
+
+ipcMain.handle('owner:remember:get', (event) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  const saved = readRemembered();
+  return { email: saved?.email ?? '', hasKey: saved !== null };
+});
+
+ipcMain.handle('owner:remember:set', (event, value) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  if (!safeStorage.isEncryptionAvailable())
+    throw new Error('Operatsion tizimning xavfsiz saqlash imkoniyati mavjud emas.');
+  const email = String(value?.email || '')
+    .trim()
+    .toLowerCase()
+    .slice(0, 200);
+  const secret = String(value?.secret || '')
+    .replace(/[\s=-]+/g, '')
+    .toUpperCase();
+  totpAt(secret, 0); // validates the key
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(
+    REMEMBER_FILE,
+    safeStorage.encryptString(JSON.stringify({ email, secret })),
+    { mode: 0o600 },
+  );
+  return { ok: true };
+});
+
+ipcMain.handle('owner:remember:clear', (event) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  fs.rmSync(REMEMBER_FILE, { force: true });
+  return { ok: true };
+});
+
+/** The current code; a code is single-use, so a second request in the same 30 s waits. */
+ipcMain.handle('owner:code', async (event) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  const saved = readRemembered();
+  if (!saved) throw new Error('Kalit saqlanmagan.');
+  let step = Math.floor(Date.now() / 30000);
+  if (step <= lastCodeStep) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, (lastCodeStep + 1) * 30000 - Date.now() + 300),
+    );
+    step = Math.floor(Date.now() / 30000);
+  }
+  // Too close to the end of the window: use the next one so the code is still valid.
+  if (30000 - (Date.now() % 30000) < 2500) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, 30000 - (Date.now() % 30000) + 300),
+    );
+    step = Math.floor(Date.now() / 30000);
+  }
+  lastCodeStep = step;
+  return { code: totpAt(saved.secret, step) };
+});
+
 // Local vendor tools (licence signing on this computer, GitHub status document,
 // update publishing) are shared with the customer app and only work when this
 // computer holds the vendor's private key.
