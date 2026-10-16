@@ -1,6 +1,6 @@
 # Android ofitsiant ilovasi — qurilmada sinov ro‘yxati
 
-Bu ilovaning bildirishnoma xizmati (AlertService) hali **haqiqiy qurilmada sinalmagan**:
+Versiya 1.11.0. Bu ilovaning bildirishnoma xizmati (AlertService) hali **haqiqiy qurilmada sinalmagan**:
 rivojlantirish kompyuterida planshet ham, emulyator ham yo‘q. Quyidagi ro‘yxatni birinchi
 planshetda bajaring va natijani belgilang. Hamma qadam o‘tmaguncha ilovani «tayyor» deb
 hisoblamang.
@@ -30,10 +30,35 @@ Eslatma: ba'zi telefonlar (Xiaomi, Huawei, Samsung) fondagi ilovalarni tez o‘c
 6‑ va 7‑sinov o‘tmasa: Sozlamalar → Ilovalar → FastFood → Batareya → «Cheklovsiz» qiling
 va «Avtomatik ishga tushirish» (Autostart) ruxsatini bering.
 
-## Kompyuterda avtomatik tekshirilganlar
+## Qurilmada ko‘rib chiqiladigan ekranlar (versiya 1.11.0)
 
-Quyidagilar kompyuterda tekshirildi (qurilmasiz): xabarlar oqimining serveri
-(`/api/live/alerts`), unda xabarni o‘qish va takroriy ulanishda bir buyurtmani ikki marta
-e’lon qilmaslik mantig‘i (`SseReader` va `SeenOrders` sinflari oddiy Java'da `android/test`
-orqali ishga tushirildi). Android'ning o‘zi (TTS, bildirishnoma, xizmat, qayta yoqish)
-**tekshirilmagan**.
+Quyidagi ekranlar kompyuterda brauzer oynasida o‘lchamlarga qarab tekshirilgan, lekin
+**haqiqiy telefon/planshetda ko‘rilmagan**. Birinchi planshet/telefonda ko‘zdan kechiring:
+
+| №   | Sinov                                                                    | Kutilgan natija                                                                                         | Natija |
+| --- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------ |
+| 15  | Kassa ekrani telefonda: taom qo‘shing, pastdagi «Savat» tugmasini bosing | Savat to‘liq ekranda ochiladi, «Jami» va «To‘lov qilish» doim ko‘rinadi, yon tomonga siljish yo‘q       | ☐      |
+| 16  | Planshetda (tik va yotiq) Kassa ekrani                                   | Menyu va savat bir ekranga sig‘adi; tugmalar bosishga qulay                                             | ☐      |
+| 17  | Stolni qayta oching (ofitsiant yoki kassa)                               | Stoldagi faol buyurtma tiklanadi, «Buyurtmaga taom qo‘shilmoqda» ko‘rinadi; ikkinchi nusxa yaratilmaydi | ☐      |
+| 18  | Chek dizayni sahifasi telefonda: 58 mm ni tanlang, ko‘rinishni qarang    | Ko‘rinish o‘zgaradi, sahifa yon tomonga siljimaydi                                                      | ☐      |
+| 19  | Mijozlar ekrani (TV) planshetda: buyurtmani «Tayyor» qiling              | Raqam sariq ro‘yxatdan yashil ro‘yxatga silliq o‘tadi, ovozli e’lon bir marta aytiladi                  | ☐      |
+
+## Avtomatik tekshirilganlar (kompyuterda, qurilmasiz)
+
+- Xabarlar oqimining serveri (`/api/live/alerts`) va uning sinovlari (backend testlari).
+- Oqimni o‘qish va takroriy ulanishda bir buyurtmani ikki marta e’lon qilmaslik mantig‘i:
+  `SseReader` va `SeenOrders` sinflari oddiy Java'da `android/test/StreamProbe.java` orqali
+  haqiqiy server bilan ishga tushirilgan.
+- Ekran o‘lchamlari (telefon, planshet, 1024×600, kompyuter) brauzerda skrinshot va
+  gorizontal siljish tekshiruvi bilan ko‘rilgan.
+
+## Qurilmada tekshirilmagan (shuning uchun «ishlaydi» deb aytib bo‘lmaydi)
+
+- Android bildirishnomasi, signal, o‘zbekcha ovoz (TTS) — 3‑5‑sinovlar.
+- Ekran o‘chiq holatda va ilova yopilganda ishlashi — 6‑7‑sinovlar.
+- Qayta yoqilgandan keyin xizmat o‘zi ishga tushishi — 8‑sinov.
+- Wi‑Fi uzilib qaytganda — 9‑sinov.
+- Bildirishnoma ruxsati, batareya cheklovlari — 2‑, 10‑sinovlar.
+
+Natijalarni shu jadvalda belgilab boring; qurilmada o‘tmagan har bir qator uchun ilova
+versiyasi, telefon modeli va Android versiyasini yozib qo‘ying.

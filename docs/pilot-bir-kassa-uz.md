@@ -1,0 +1,61 @@
+# Bitta kassada sinov (pilot) — yangi imkoniyatlar va yangi server
+
+Maqsad: hozirgi mijozlarga **tegmasdan**, bitta restoranning bitta kassasida yangi versiyani
+va (keyinroq) yangi serverni sinab ko‘rish. Hozir hech bir mavjud mijoz ko‘chirilmaydi.
+
+## Sinov paketlari (TEST kanali)
+
+TEST paketlari ishlab turgan tizimdan **alohida**: o‘z ilova nomi, o‘z ma’lumotlar papkasi
+(`FastFood-Test-Data`), o‘z portlari va **faqat sinov** markaziy serveriga
+(`http://127.0.0.1:4100`) ulanadi. Ular haqiqiy litsenziya, Owner hisobi, kalit va bazaga
+umuman ulanmaydi.
+
+| Paket                                   | Fayl                                                             |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| Mijoz dasturi (sinov)                   | `desktop\release-test\FastFood-TEST-Setup-1.11.0.exe`            |
+| Owner dasturi (sinov)                   | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.2.0.exe` |
+| Android (sinov va ishchi uchun bir xil) | `android\release\FastFood-1.11.0.apk`                            |
+
+Paketlar raqamli imzosiz: Windows birinchi ishga tushirishda «Noma’lum nashriyotchi»
+ogohlantirishini ko‘rsatadi («Baribir ishga tushirish»). Fayl yaxlitligini SHA256 bilan
+tekshirish mumkin (`Get-FileHash <fayl>`).
+
+Sinov Owner hisobi va kalitlari faqat shu kompyuterdagi vaqtinchalik papkada, ishlab turgan
+tizimdan butunlay alohida. Ularni ishlab turgan tizimga **ishlatmang** va hech qayerga
+nusxalamang.
+
+## Tartib
+
+1. **Sinov serverini ishga tushiring** (sinov bazasi bilan) va Owner (sinov) dasturini
+   o‘rnating. Sinov mijozi va litsenziyasini yarating.
+2. **Mijoz (sinov)** dasturini bitta kompyuterga o‘rnating, litsenziya kalitini kiriting.
+   Owner'da qurilma «Onlayn» bo‘lishi kerak.
+3. Quyidagilarni bir to‘liq kun davomida tekshiring:
+   - Kassa ekrani butun ekranni egallaydi, «To‘lov qilish» doim ko‘rinadi.
+   - «Mijoz» buyurtmasi → ofitsiant → stol belgilash; stolni qayta ochganda buyurtma tiklanadi.
+   - Chek dizayni: 58/80/maxsus kenglik, sinov chop etish, printerga biriktirish.
+   - Mijozlar ekrani (TV): raqamlar №001 ko‘rinishida, silliq o‘zgaradi, ovozli e’lon.
+   - Owner'da rol bo‘yicha o‘chirish/yoqish va limitlar kassada darrov ta’sir qiladi.
+   - Internet uzilib qaytganda: ruxsat etilgan amallar ishlaydi, navbat tiklanadi.
+4. **Server ko‘chirish bo‘yicha pilot** (faqat tayyor bo‘lgach): `docs/server-kochirish-uz.md`,
+   5‑bo‘lim — shu bitta kassada manzilni yangi serverga almashtiring va bir kun kuzating.
+5. Hammasi joyida bo‘lsa — ishchi (production) paketlarini yig‘ing va **shu bitta kassaga**
+   o‘rnating. Boshqa kassalar va restoranlar o‘z holicha qoladi.
+
+## Ishchi paketlarni yig‘ish (pilotdan keyin)
+
+```
+set CONTROL_URL=https://<haqiqiy-domen>
+set CONTROL_PUBLIC_KEY=<ochiq kalit — control-public.json dagi qiymat>
+node desktop\build.mjs
+set OWNER_URL=https://<haqiqiy-domen>
+node owner-desktop\build.mjs
+```
+
+(PowerShell'da `$env:CONTROL_URL = "…"`.) Maxfiy kalitlar bu buyruqlarga kerak emas.
+
+## Pilotni to‘xtatish
+
+Sinov dasturini o‘chirib, oddiy dasturga qaytish mumkin: ma’lumotlar papkalari bo‘lingan.
+Ishchi kassada muammo bo‘lsa: Litsenziya → Markaziy server manzili orqali oldingi manzilga
+qaytaring; litsenziya va qurilma o‘zgarmaydi.
