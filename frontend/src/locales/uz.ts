@@ -2173,6 +2173,7 @@ export const uz = {
     waitingGuests: 'Stol kutayotgan mijozlar',
     addItems: 'Taom qo‘shish',
     addingTo: 'Buyurtmaga taom qo‘shilmoqda',
+    viewOrder: 'Buyurtmani ko‘rish va tahrirlash',
     itemsAdded: 'Taomlar buyurtmaga qo‘shildi',
     editNote: 'Izohni tahrirlash',
     noteLabel: 'Buyurtma izohi',

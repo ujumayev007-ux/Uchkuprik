@@ -218,6 +218,44 @@ export function ordersRouter(services: Services) {
     return table.id;
   };
 
+  /**
+   * A table keeps one active order (unless the restaurant switched that off): the
+   * order is restored when the table is reopened, so a second copy is refused. Paid-up
+   * and empty orders do not block. Serialized per table so two devices cannot both win.
+   */
+  const assertTableFree = async (
+    tx: Tx,
+    auth: AuthContext,
+    tableId: string | null,
+    exceptOrderId?: string,
+  ) => {
+    if (!tableId || !auth.ordering.singleOrderPerTable) return;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tableId}))`;
+    const open = await tx.order.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        tableId,
+        status: { notIn: ['COMPLETED', 'CANCELLED'] },
+        ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}),
+      },
+      select: {
+        id: true,
+        number: true,
+        total: true,
+        paidTotal: true,
+        refundedTotal: true,
+      },
+    });
+    const blocking = open.find(
+      (order) => order.total - netPaid(order) > 0 && order.total > 0,
+    );
+    if (blocking)
+      throw new AppError(409, 'TABLE_HAS_ORDER', 'tableHasOrder', {
+        orderId: blocking.id,
+        number: blocking.number,
+      });
+  };
+
   router.get(
     '/orders',
     requireAuth(),
@@ -227,6 +265,8 @@ export function ordersRouter(services: Services) {
       const query = parse(
         z.object({
           branchId: z.uuid().optional(),
+          // Active orders of one table (reopening a table restores its order).
+          tableId: z.uuid().optional(),
           scope: z.enum(['active', 'today', 'all']).default('active'),
           limit: z.coerce.number().int().min(1).max(200).default(100),
         }),
@@ -238,6 +278,7 @@ export function ordersRouter(services: Services) {
         where: {
           tenantId: auth.tenantId,
           branchId: branch.id,
+          ...(query.tableId ? { tableId: query.tableId } : {}),
           ...(query.scope === 'active'
             ? {
                 status: {
@@ -336,6 +377,7 @@ export function ordersRouter(services: Services) {
             branch.id,
             input.type === 'DINE_IN' ? input.tableId : null,
           );
+          await assertTableFree(tx, auth, tableId);
           const priced = await priceItems(
             tx,
             auth.tenantId,
@@ -789,6 +831,13 @@ export function ordersRouter(services: Services) {
             input.tableId,
           );
           if (data.tableId !== order.tableId)
+            await assertTableFree(
+              tx,
+              auth,
+              data.tableId as string | null,
+              order.id,
+            );
+          if (data.tableId !== order.tableId)
             tableChange = {
               from: order.tableId,
               to: data.tableId as string | null,
@@ -886,6 +935,7 @@ export function ordersRouter(services: Services) {
         input.tableId,
       );
       if (tableId === order.tableId) return;
+      await assertTableFree(tx, auth, tableId, order.id);
       await tx.order.update({
         where: { id },
         data: { tableId, version: { increment: 1 } },

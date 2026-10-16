@@ -118,6 +118,8 @@ export const messages = {
   ownerMfaSetup: 'Avval ikki bosqichli himoyani yoqing.',
   featureDisabled: 'Bu imkoniyat dastur egasi tomonidan o‘chirilgan.',
   discountLimit: 'Chegirma ruxsat etilgan chegaradan oshib ketdi.',
+  tableHasOrder:
+    'Bu stolda faol buyurtma bor. Mavjud buyurtmaga taom qo‘shing yoki uni tahrirlang.',
   tableNotNeeded: 'Stolni faqat zaldagi (stolli) buyurtmaga belgilash mumkin.',
   offlineNotAllowed:
     'Internet yo‘qligida bu amalga ruxsat berilmagan. Aloqa tiklanishini kuting.',

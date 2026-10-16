@@ -20,6 +20,8 @@ export type OrderingConfig = {
   // «Mijoz»: an order without a table, assigned a table after the guest sits down.
   walkin: boolean;
   tableAssign: boolean;
+  // A table keeps one active order: reopening it restores that order.
+  singleOrderPerTable: boolean;
   discount: {
     percent: boolean;
     fixed: boolean;
@@ -98,6 +100,7 @@ export function buildOrdering(input: Input): OrderingConfig {
     },
     walkin: on('orders.walkin'),
     tableAssign: on('orders.table.assign'),
+    singleOrderPerTable: on('orders.table.single'),
     discount: {
       percent: on('discounts.percent'),
       fixed: on('discounts.fixed'),

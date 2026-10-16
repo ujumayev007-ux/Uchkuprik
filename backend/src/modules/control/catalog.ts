@@ -785,6 +785,13 @@ export const featureCatalog: FeatureDef[] = [
     routes: ['POST /orders/:id/table'],
   }),
   f({
+    key: 'orders.table.single',
+    kind: 'module',
+    group: 'Buyurtma qabul qilish',
+    label: 'Bir stolga bitta faol buyurtma',
+    hint: 'Yoqilgan: stol qayta ochilganda faol buyurtma tiklanadi va ikkinchi nusxa yaratilmaydi. O‘chirilgan: bir stolda bir nechta alohida hisob.',
+  }),
+  f({
     key: 'discounts.percent',
     kind: 'button',
     group: 'Chegirmalar',

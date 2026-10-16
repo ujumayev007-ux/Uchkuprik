@@ -11,6 +11,7 @@ export type Ordering = {
   types: { DINE_IN: boolean; TAKEAWAY: boolean; DELIVERY: boolean };
   walkin: boolean;
   tableAssign: boolean;
+  singleOrderPerTable: boolean;
   discount: {
     percent: boolean;
     fixed: boolean;
@@ -44,6 +45,7 @@ export const defaultOrdering: Ordering = {
   types: { DINE_IN: true, TAKEAWAY: true, DELIVERY: true },
   walkin: true,
   tableAssign: true,
+  singleOrderPerTable: true,
   discount: {
     percent: true,
     fixed: true,

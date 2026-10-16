@@ -321,3 +321,94 @@ describe('permissions are enforced by the backend, per role', () => {
     expect(untouched.table).toBeNull();
   });
 });
+
+describe('one active order per table', () => {
+  const dineIn = (s: Awaited<ReturnType<typeof setup>>, table: string) => ({
+    idempotencyKey: randomUUID(),
+    type: 'DINE_IN',
+    tableId: table,
+    place: true,
+    items: [{ variantId: s.variant.id, quantity: 1 }],
+  });
+
+  it('restores the order of a reopened table and refuses a duplicate', async () => {
+    const s = await setup();
+    const table = s.tables[0]!.id;
+    const first = await post(s.cashier, '/orders', dineIn(s, table)).expect(
+      201,
+    );
+    const second = await post(s.waiter, '/orders', dineIn(s, table));
+    expect(second.status).toBe(409);
+    expect(second.body.code).toBe('TABLE_HAS_ORDER');
+    expect(second.body.details.orderId).toBe(first.body.id);
+
+    // Reopening the table finds the same order, which can be extended and edited.
+    const found = (
+      await s.waiter
+        .get(`/api/orders?scope=active&tableId=${table}`)
+        .expect(200)
+    ).body.orders;
+    expect(found).toHaveLength(1);
+    expect(found[0].id).toBe(first.body.id);
+    await post(s.waiter, `/orders/${first.body.id}/items`, {
+      items: [{ variantId: s.variant.id, quantity: 2 }],
+    }).expect(200);
+    const reopened = (
+      await s.cashier.get(`/api/orders/${first.body.id}`).expect(200)
+    ).body;
+    expect(reopened.items).toHaveLength(2);
+    const events = await ctx.db.orderEvent.findMany({
+      where: { orderId: first.body.id },
+    });
+    expect(events.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['created', 'items_added']),
+    );
+    expect(await ctx.db.order.count({ where: { tableId: table } })).toBe(1);
+  });
+
+  it('serializes simultaneous creation, protects assignment and frees paid tables', async () => {
+    const s = await setup();
+    const table = s.tables[1]!.id;
+    const results = await Promise.all([
+      post(s.cashier, '/orders', dineIn(s, table)),
+      post(s.waiter, '/orders', dineIn(s, table)),
+      post(s.owner, '/orders', dineIn(s, table)),
+    ]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 409)).toHaveLength(2);
+    const winner = results.find((r) => r.status === 201)!.body;
+
+    // A guest order cannot be moved onto the busy table.
+    const guest = await post(s.cashier, '/orders', {
+      idempotencyKey: randomUUID(),
+      type: 'DINE_IN',
+      place: true,
+      items: [{ variantId: s.variant.id, quantity: 1 }],
+    }).expect(201);
+    const busy = await post(s.waiter, `/orders/${guest.body.id}/table`, {
+      tableId: table,
+    });
+    expect(busy.status).toBe(409);
+    expect(busy.body.code).toBe('TABLE_HAS_ORDER');
+    await post(s.waiter, `/orders/${guest.body.id}/table`, {
+      tableId: s.tables[2]!.id,
+    }).expect(200);
+
+    // Once the table's order is paid in full the table accepts the next guests.
+    await post(s.cashier, `/orders/${winner.id}/payments`, {
+      idempotencyKey: randomUUID(),
+      method: 'CASH',
+      amount: winner.total,
+      tendered: winner.total,
+    }).expect(201);
+    await post(s.cashier, '/orders', dineIn(s, table)).expect(201);
+  });
+
+  it('can be switched off by the Owner for restaurants with split bills', async () => {
+    const s = await setup({ 'orders.table.single': { mode: 'OFF' } });
+    const table = s.tables[0]!.id;
+    await post(s.cashier, '/orders', dineIn(s, table)).expect(201);
+    await post(s.cashier, '/orders', dineIn(s, table)).expect(201);
+    expect(await ctx.db.order.count({ where: { tableId: table } })).toBe(2);
+  });
+});

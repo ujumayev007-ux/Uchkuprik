@@ -16,7 +16,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { parsePoint } from './DeliveryPricingCard';
-import { api, post } from '../lib/api';
+import { api, ApiError, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import { useOrdering } from '../lib/ordering';
 import { formatOrderNo } from '../lib/uzbek-number';
@@ -27,6 +27,7 @@ import {
   type OrderType,
 } from '../lib/orders';
 import { useZones } from './DeliveryPage';
+import { OrderDetail } from './OrdersPage';
 import { useFloor } from './FloorPage';
 import {
   useMenu,
@@ -285,10 +286,28 @@ export function PosPage() {
     }
     setAddToId(params.get('buyurtma'));
   }, []);
+  // Reopening a table restores its active order (one per table, kept in the database
+  // until it is paid and closed), so items are added to it instead of a duplicate.
+  const tableOrder = useQuery({
+    queryKey: ['orders', 'table-active', tableId],
+    queryFn: () =>
+      api<{ orders: Order[] }>(`/orders?scope=active&tableId=${tableId}`).then(
+        (data) =>
+          data.orders.find((order) => order.total > 0 && order.due > 0) ?? null,
+      ),
+    enabled:
+      ordering.singleOrderPerTable &&
+      type === 'DINE_IN' &&
+      !!tableId &&
+      !addToId,
+  });
+  const restoredId = !addToId ? (tableOrder.data?.id ?? null) : null;
+  const targetId = addToId ?? restoredId;
+  const [viewing, setViewing] = useState(false);
   const addTo = useQuery({
-    queryKey: ['orders', 'one', addToId],
-    queryFn: () => api<Order>(`/orders/${addToId}`),
-    enabled: !!addToId,
+    queryKey: ['orders', 'one', targetId],
+    queryFn: () => api<Order>(`/orders/${targetId}`),
+    enabled: !!targetId,
   });
   const [customer, setCustomer] = useState({
     name: '',
@@ -373,8 +392,8 @@ export function PosPage() {
     setBusy(true);
     setError(null);
     try {
-      if (addToId) {
-        const updated = await post<Order>(`/orders/${addToId}/items`, {
+      if (targetId) {
+        const updated = await post<Order>(`/orders/${targetId}/items`, {
           items: cart.map((line) => ({
             variantId: line.variant.id,
             quantity: line.quantity,
@@ -458,6 +477,11 @@ export function PosPage() {
       else setPaying(current);
     } catch (caught) {
       setError(caught);
+      // Another device opened the table first: restore its order instead.
+      if (caught instanceof ApiError && caught.code === 'TABLE_HAS_ORDER')
+        await client.invalidateQueries({
+          queryKey: ['orders', 'table-active'],
+        });
     } finally {
       setBusy(false);
     }
@@ -572,25 +596,38 @@ export function PosPage() {
           ✕ {t.common.close}
         </button>
         {needsShift && <ShiftGate />}
-        {addToId && (
+        {targetId && (
           <div className="guest-waiting" role="status">
             <strong>
               {t.ordering.addingTo}
               {addTo.data ? `: ${formatOrderNo(addTo.data.number)}` : ''}
             </strong>
             {addTo.data?.table && <span>{addTo.data.table.name}</span>}
-            <button
-              className="text-link"
-              onClick={() => {
-                setAddToId(null);
-                navigate('/kassa', { replace: true });
-              }}
-            >
-              {t.common.cancel}
-            </button>
+            {addTo.data && (
+              <span className="muted small">
+                {t.pos.total}: {formatMoney(addTo.data.total)} · {t.pos.due}:{' '}
+                {formatMoney(addTo.data.due)}
+              </span>
+            )}
+            <div className="form-actions">
+              <Button size="sm" onClick={() => setViewing(true)}>
+                {t.ordering.viewOrder}
+              </Button>
+              {addToId && (
+                <button
+                  className="text-link"
+                  onClick={() => {
+                    setAddToId(null);
+                    navigate('/kassa', { replace: true });
+                  }}
+                >
+                  {t.common.cancel}
+                </button>
+              )}
+            </div>
           </div>
         )}
-        {!addToId && (
+        {!targetId && (
           <div
             className="segmented"
             role="radiogroup"
@@ -629,7 +666,7 @@ export function PosPage() {
             )}
           </div>
         )}
-        {!addToId && guestMode && (
+        {!targetId && guestMode && (
           <p className="guest-waiting" role="status">
             <strong>{t.ordering.noTable}</strong>
             <span className="muted small">{t.ordering.guestHint}</span>
@@ -654,7 +691,7 @@ export function PosPage() {
             </select>
           </label>
         )}
-        {!addToId && type === 'DELIVERY' && (
+        {!targetId && type === 'DELIVERY' && (
           <div className="stack compact">
             <TextField
               label={t.pos.customerPhone}
@@ -709,7 +746,7 @@ export function PosPage() {
             )}
           </div>
         )}
-        {!addToId && (
+        {!targetId && (
           <details className="cart-extras">
             <summary>
               {t.crm.customerPhone} · {t.crm.promoCode}
@@ -815,7 +852,7 @@ export function PosPage() {
                 cart.length === 0 ||
                 !can(me, 'payments.accept') ||
                 needsShift ||
-                !!addToId
+                !!targetId
               }
               busy={busy}
               onClick={() => void submit(false)}
@@ -836,6 +873,9 @@ export function PosPage() {
             setPicking(null);
           }}
         />
+      )}
+      {viewing && targetId && (
+        <OrderDetail orderId={targetId} onClose={() => setViewing(false)} />
       )}
       {paying && (
         <PaymentDialog
