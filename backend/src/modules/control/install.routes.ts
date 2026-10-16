@@ -248,6 +248,28 @@ export function controlInstallRouter(services: Services) {
     res.json({ ok: true });
   });
 
+  // Server migration: point this install at the new address of the same central server.
+  router.put('/control/link/server', ...sensitive, async (req, res) => {
+    const auth = getAuth(res);
+    const { url } = parse(
+      z.object({ url: z.string().trim().url().max(300) }),
+      req.body,
+    );
+    const runtime = services.controlRuntime;
+    if (!runtime) throw errors.notFound();
+    const adopted = await runtime.relocate(url);
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      actorUserId: auth.userId,
+      action: 'control.server.change',
+      entityType: 'control_link',
+      data: { url, adopted },
+    });
+    if (!adopted)
+      throw new AppError(409, 'SERVER_UNREACHABLE', 'serverUnreachable');
+    res.json({ ok: true });
+  });
+
   // ---- synchronisation queue -------------------------------------------------
 
   router.get('/control/link/sync', ...manage, async (_req, res) => {

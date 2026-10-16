@@ -97,6 +97,9 @@ async function main(): Promise<void> {
         ...(signingKeyPem ? { signingKeyPem } : {}),
         trustedKeys,
         ...(config.CONTROL_URL ? { url: config.CONTROL_URL } : {}),
+        ...(config.CONTROL_RELOCATE_URL
+          ? { relocateTo: config.CONTROL_RELOCATE_URL }
+          : {}),
         ...(config.CONTROL_DEVICE_KEY
           ? { deviceKeyPem: readPem(config.CONTROL_DEVICE_KEY) }
           : {}),

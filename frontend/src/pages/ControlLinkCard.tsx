@@ -222,6 +222,65 @@ function DelegatedFeatures() {
   );
 }
 
+/** Address of the central server; changed after a server migration (verified first). */
+function ServerAddress({
+  current,
+  canManage,
+}: {
+  current: string | null;
+  canManage: boolean;
+}) {
+  const toast = useToast();
+  const client = useQueryClient();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="stack compact">
+      <div className="muted small">
+        {k.server}: <strong>{current ?? '—'}</strong>
+      </div>
+      {canManage && (
+        <form
+          className="stack compact"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError(null);
+            try {
+              await api('/control/link/server', {
+                method: 'PUT',
+                body: { url: value.trim() },
+              });
+              toast(k.serverSaved);
+              setValue('');
+              await client.invalidateQueries();
+            } catch (caught) {
+              setError(caught);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <TextField
+            label={k.serverChange}
+            placeholder="https://server.misol.uz"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+          <p className="muted small">{k.serverHint}</p>
+          <FormError error={error} />
+          <div className="form-actions">
+            <Button type="submit" busy={busy} disabled={!value.trim()}>
+              {k.serverChange}
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 /** Link with the central server: status, activation, sync queue, delegated switches. */
 export function ControlLinkCard() {
   const status = useControlLink();
@@ -328,6 +387,7 @@ export function ControlLinkCard() {
               {data.sync.conflicts} · {k.failed}: {data.sync.failed}
             </p>
             <p className="muted small">{k.queuedNote}</p>
+            <ServerAddress current={data.serverUrl} canManage={!!canManage} />
             {data.internet && (
               <p className="muted small">
                 {k.internet}: {k.notifications}{' '}

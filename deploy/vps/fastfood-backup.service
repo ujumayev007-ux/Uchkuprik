@@ -1,0 +1,7 @@
+[Unit]
+Description=FastFood database backup
+
+[Service]
+Type=oneshot
+User=fastfood
+ExecStart=/opt/fastfood/deploy/vps/backup.sh

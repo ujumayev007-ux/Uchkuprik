@@ -156,6 +156,111 @@ if (fs.existsSync(VENDOR_KEY)) {
     event.returnValue = false;
   });
 
+// ---- server address (changed without rebuilding, e.g. after a server migration) ----
+let serverWin = null;
+const isTestBuild = () => {
+  try {
+    return (
+      JSON.parse(
+        fs.readFileSync(
+          path.join(
+            app.isPackaged ? process.resourcesPath : __dirname,
+            'owner.json',
+          ),
+          'utf8',
+        ),
+      ).test === true
+    );
+  } catch {
+    return false;
+  }
+};
+
+function openServerSettings() {
+  if (serverWin) {
+    serverWin.focus();
+    return;
+  }
+  serverWin = new BrowserWindow({
+    ...(win ? { parent: win, modal: true } : {}),
+    width: 600,
+    height: 440,
+    resizable: false,
+    title: 'Server manzili',
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'server-preload.cjs'),
+    },
+  });
+  serverWin.setMenu(null);
+  serverWin.on('closed', () => {
+    serverWin = null;
+  });
+  void serverWin.loadFile(path.join(__dirname, 'server-settings.html'));
+}
+
+const fromServerWindow = (event) =>
+  serverWin !== null && event.sender === serverWin.webContents;
+
+ipcMain.handle('server:get', (event) => {
+  if (!fromServerWindow(event)) throw new Error('Ruxsat yo‘q');
+  return { url: serverUrl(), custom: fs.existsSync(SETTINGS) };
+});
+
+ipcMain.handle('server:save', async (event, value) => {
+  if (!fromServerWindow(event)) throw new Error('Ruxsat yo‘q');
+  const url = String(value || '')
+    .trim()
+    .replace(/[/]+$/, '');
+  const local =
+    isTestBuild() &&
+    /^http:[/][/](127[.]0[.]0[.]1|localhost):[0-9]+$/.test(url);
+  if (!url.startsWith('https://') && !local)
+    return { ok: false, error: 'Manzil https:// bilan boshlanishi kerak.' };
+  try {
+    const response = await fetch(`${url}/api/control/info`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const info = await response.json();
+    if (!response.ok || info.plane !== true)
+      return { ok: false, error: 'Bu manzil FastFood markaziy serveri emas.' };
+  } catch {
+    return {
+      ok: false,
+      error: 'Manzilga ulanib bo‘lmadi. Internet va manzilni tekshiring.',
+    };
+  }
+  const choice = dialog.showMessageBoxSync(serverWin, {
+    type: 'question',
+    buttons: ['Saqlash', 'Bekor qilish'],
+    defaultId: 1,
+    cancelId: 1,
+    message: `Markaziy server manzili ${url} ga almashtirilsinmi?`,
+    detail:
+      'Faqat o‘zingiz ishongan serverga o‘ting: kirish ma’lumotlaringiz shu serverga yuboriladi.',
+  });
+  if (choice !== 0) return { ok: false, error: 'Bekor qilindi.' };
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(SETTINGS, JSON.stringify({ url }), { mode: 0o600 });
+  setTimeout(() => {
+    app.relaunch();
+    app.exit(0);
+  }, 800);
+  return { ok: true };
+});
+
+ipcMain.handle('server:reset', (event) => {
+  if (!fromServerWindow(event)) throw new Error('Ruxsat yo‘q');
+  fs.rmSync(SETTINGS, { force: true });
+  setTimeout(() => {
+    app.relaunch();
+    app.exit(0);
+  }, 500);
+  return { ok: true };
+});
+
 function menu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -164,6 +269,7 @@ function menu() {
         submenu: [
           { label: 'Yangilash (F5)', role: 'reload' },
           { label: 'To‘liq ekran', role: 'togglefullscreen' },
+          { label: 'Server manzili…', click: () => openServerSettings() },
           { type: 'separator' },
           { label: 'Chiqish', role: 'quit' },
         ],

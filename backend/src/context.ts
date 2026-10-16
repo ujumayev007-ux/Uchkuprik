@@ -38,6 +38,8 @@ export type Services = {
     trustedKeys: string[];
     // Central server address an install reports to.
     url?: string;
+    // Central server only: tell installs to move to this address (server migration).
+    relocateTo?: string;
     // Device private key (PEM) from the launcher's OS secure storage.
     deviceKeyPem?: string;
   };

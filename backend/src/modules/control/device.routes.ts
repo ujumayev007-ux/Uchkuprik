@@ -444,6 +444,8 @@ export function deviceRouter(services: Services) {
       serverTime: at.toISOString(),
       grant: document,
       commands: remaining,
+      // Server migration: the signed answer carries the new address of the centre.
+      relocate: services.control?.relocateTo ?? null,
       update: candidate
         ? {
             version: candidate.version,

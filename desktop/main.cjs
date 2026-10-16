@@ -170,12 +170,31 @@ function controlSettings() {
       (TEST &&
         (String(parsed.url).startsWith('http://127.0.0.1:') ||
           String(parsed.url).startsWith('http://localhost:')));
-    return secure && parsed.publicKey
-      ? {
-          url: String(parsed.url).replace(/[/]+$/, ''),
-          publicKey: parsed.publicKey,
-        }
-      : null;
+    if (!secure || !parsed.publicKey) return null;
+    // The address can be changed without rebuilding (server migration): an address in
+    // %APPDATA%\FastFood-Data\control-server.json (or FASTFOOD_CONTROL_URL) wins over
+    // the one baked into this build. The public key stays the same: a moved server
+    // keeps its signing key. Only https (loopback http in test builds) is accepted.
+    let url = String(parsed.url).replace(/[/]+$/, '');
+    try {
+      const override = String(
+        process.env.FASTFOOD_CONTROL_URL ||
+          JSON.parse(
+            fs.readFileSync(path.join(DATA, 'control-server.json'), 'utf8'),
+          ).url ||
+          '',
+      )
+        .trim()
+        .replace(/[/]+$/, '');
+      const allowed =
+        override.startsWith('https://') ||
+        (TEST &&
+          /^http:[/][/](127[.]0[.]0[.]1|localhost):[0-9]+$/.test(override));
+      if (override && allowed) url = override;
+    } catch {
+      /* no override file */
+    }
+    return { url, publicKey: parsed.publicKey };
   } catch {
     return null;
   }

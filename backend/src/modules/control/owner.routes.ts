@@ -12,7 +12,7 @@ import { verifyTotp } from '../../lib/totp.js';
 import { messages } from '../../messages.js';
 import { passwordSchema } from '../auth/auth.routes.js';
 import { featureCatalog } from './catalog.js';
-import { fingerprintOf, verifyValue } from './keys.js';
+import { fingerprintOf, publicKeyOf, verifyValue } from './keys.js';
 import {
   checkChallenge,
   controlAudit,
@@ -44,8 +44,20 @@ export function ownerRouter(services: Services) {
   const authed = [loadOwner(services), requireOwner()];
   const sensitive = [...authed, requireOwnerReauth(services)];
 
+  // Public and secret-free. The two fingerprints let an operator confirm that a new
+  // server holds the SAME signing key and APP_SECRET_KEY as the old one (a server
+  // migration must keep both, otherwise licences and sealed secrets stop working).
   router.get('/control/info', (_req, res) => {
-    res.json({ plane: true });
+    const pem = services.control?.signingKeyPem;
+    res.json({
+      plane: true,
+      ...(pem
+        ? { signingKey: fingerprintOf(publicKeyOf(pem)).slice(0, 16) }
+        : {}),
+      secretCheck: services.secrets
+        .keyedHash('migration-check', 'ok')
+        .slice(0, 16),
+    });
   });
 
   router.get(

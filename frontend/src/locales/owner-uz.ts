@@ -314,6 +314,11 @@ export const control = {
     queued: 'navbatda',
     conflicts: 'ziddiyat',
     failed: 'xato',
+    server: 'Markaziy server manzili',
+    serverChange: 'Manzilni almashtirish',
+    serverHint:
+      'Server boshqa joyga ko‘chirilganda yangi manzilni kiriting. Litsenziya va qurilma o‘zgarmaydi; manzil tekshiriladi va faqat shu markazdan imzolangan javob qabul qilinsa saqlanadi.',
+    serverSaved: 'Server manzili yangilandi',
     queuedNote:
       'Navbatdagi amallar bajarilgan hisoblanmaydi: markaziy server tasdiqlagandan keyingina yakunlanadi.',
     internet: 'Internet talab qiladigan xizmatlar navbati',

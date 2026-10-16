@@ -1,0 +1,11 @@
+# Copy fastfood-backup.timer and fastfood-backup.service to /etc/systemd/system/, then:
+#   systemctl daemon-reload && systemctl enable --now fastfood-backup.timer
+[Unit]
+Description=Daily FastFood backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

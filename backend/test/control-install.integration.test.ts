@@ -668,6 +668,46 @@ describe('LAN devices on the cashier computer (offline)', () => {
   });
 });
 
+describe('server migration', () => {
+  it('moves installs to the new address announced by the centre, keeping their identity', async () => {
+    await resetLink();
+    const made = await licensed();
+    await activate(made.key);
+    expect(await runtime.beat()).toBe('ok');
+    const before = await install.db.controlLink.findFirstOrThrow();
+    expect(before.serverUrl).toBe('https://central.test');
+    // The old centre announces the new address in its signed answer.
+    central.services.control!.relocateTo = 'https://server.example.uz';
+    expect(await runtime.beat()).toBe('ok');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const after = await install.db.controlLink.findFirstOrThrow();
+    expect(after.serverUrl).toBe('https://server.example.uz');
+    // Same activation, same licence: nothing was reissued.
+    expect(after.activationId).toBe(before.activationId);
+    expect(after.customerId).toBe(before.customerId);
+    expect(await runtime.beat()).toBe('ok');
+    delete central.services.control!.relocateTo;
+  });
+
+  it('only adopts https (or loopback) addresses that answer as the same centre', async () => {
+    await resetLink();
+    const made = await licensed();
+    await activate(made.key);
+    expect(await runtime.beat()).toBe('ok');
+    expect(await runtime.relocate('http://evil.example.com')).toBe(false);
+    expect(await runtime.relocate('ftp://x')).toBe(false);
+    network.down = true;
+    expect(await runtime.relocate('https://down.example.uz')).toBe(false);
+    network.down = false;
+    const row = await install.db.controlLink.findFirstOrThrow();
+    expect(row.serverUrl).toBe('https://central.test');
+    expect(await runtime.relocate('https://manual.example.uz')).toBe(true);
+    expect((await install.db.controlLink.findFirstOrThrow()).serverUrl).toBe(
+      'https://manual.example.uz',
+    );
+  });
+});
+
 describe('cloud edition tenant isolation', () => {
   it("applies each customer's policy only to its own tenant", async () => {
     const { cloudViewProvider } =

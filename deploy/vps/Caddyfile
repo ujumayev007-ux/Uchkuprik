@@ -1,0 +1,20 @@
+# HTTPS reverse proxy for the FastFood central server (Caddy 2).
+# Replace the domain; Caddy obtains and renews the TLS certificate by itself.
+# WebSocket (Socket.io, /api/realtime) works through reverse_proxy without extra
+# settings. flush_interval -1 keeps the Server-Sent Events stream of the Android app
+# (/api/live/alerts) unbuffered.
+control.example.uz {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:8787 {
+		flush_interval -1
+		transport http {
+			read_timeout 90s
+		}
+	}
+}

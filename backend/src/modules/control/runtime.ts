@@ -44,6 +44,8 @@ type BeatResponse = {
   grant: string;
   commands: { id: string; type: string; scope?: string; username?: string }[];
   update: AvailableUpdate | null;
+  // Address the centre has moved to (signed with the same key as the grant).
+  relocate?: string | null;
 };
 
 const LINK_CACHE_MS = 2_000;
@@ -400,6 +402,56 @@ export function createControlRuntime(
       services.events?.publish({ type: 'config.changed', tenantId: tenant.id });
   }
 
+  /** https (or loopback http for test builds) addresses only. */
+  const trimUrl = (value: string) => value.trim().replace(/\/+$/, '');
+  const acceptableUrl = (value: string) =>
+    /^https:\/\/[^\s/]+(\/.*)?$/.test(value) ||
+    /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(value);
+
+  /**
+   * Switches to another address of the SAME central server (a moved server keeps the
+   * database and signing key). The new address must answer a signed heartbeat for this
+   * activation with a document the trusted key signed; only then is it adopted.
+   */
+  async function relocate(target: string): Promise<boolean> {
+    const url = trimUrl(target);
+    if (!acceptableUrl(url)) return false;
+    const row = await db.controlLink.findUnique({ where: { id: 1 } });
+    if (!row) return false;
+    if (row.serverUrl === url) return true;
+    const pem = devicePem(row);
+    if (!pem) return false;
+    try {
+      const probe = await signedPost(
+        { ...row, serverUrl: url },
+        pem,
+        'heartbeat',
+        '/control/device/heartbeat',
+        await heartbeatPayload(),
+      );
+      if (probe.status !== 200) return false;
+      const doc = verifyDocument<BeatResponse>(
+        String(probe.data.response),
+        trusted,
+      );
+      if (
+        !doc ||
+        doc.t !== 'beat' ||
+        doc.activationId !== row.activationId ||
+        doc.seq !== probe.seq
+      )
+        return false;
+      await db.controlLink.update({
+        where: { id: 1 },
+        data: { serverUrl: url, lastError: null },
+      });
+      invalidate();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function beat(): Promise<string> {
     if (beating) return 'busy';
     beating = true;
@@ -469,6 +521,9 @@ export function createControlRuntime(
         },
       });
       clockSuspect = false;
+      // The centre announced a new address: verify it first, then switch.
+      if (doc.relocate && trimUrl(doc.relocate) !== row.serverUrl)
+        void relocate(doc.relocate);
       // New decisions from the Owner reach connected screens and Android devices.
       if (row.policyVersion !== grant.policy.version)
         void announceConfigChange();
@@ -616,6 +671,7 @@ export function createControlRuntime(
     status,
     updateInfo,
     start,
+    relocate,
     invalidate,
     evaluate: evaluateKey,
     newOpId: () => randomUUID(),

@@ -549,3 +549,20 @@ describe('policy', () => {
     expect(JSON.stringify(audit?.data)).toContain('menu.manage');
   });
 });
+
+describe('migration fingerprints', () => {
+  it('publishes non-secret fingerprints so a moved server can be compared with the old one', async () => {
+    const info = (await request(ctx.app).get('/api/control/info').expect(200))
+      .body;
+    expect(info.plane).toBe(true);
+    expect(info.signingKey).toMatch(/^[0-9a-f]{16}$/);
+    expect(info.secretCheck).toMatch(/^[0-9a-f]{16}$/);
+    const text = JSON.stringify(info);
+    expect(text).not.toContain('PRIVATE');
+    expect(text).not.toContain(server.privateKeyPem.slice(40, 80));
+    // Stable: the same keys always give the same values.
+    const again = (await request(ctx.app).get('/api/control/info').expect(200))
+      .body;
+    expect(again).toEqual(info);
+  });
+});

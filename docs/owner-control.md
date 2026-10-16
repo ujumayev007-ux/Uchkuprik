@@ -193,3 +193,24 @@ The Android service logic that does not depend on Android (`SseReader`, `SeenOrd
 is run on a plain JVM by `android/test/StreamProbe.java`.
 **Not verified on a device:** notification, text-to-speech, screen-off and restart
 behaviour of `AlertService` — see `docs/android-sinov-royxati-uz.md`.
+
+### Server portability
+
+The control plane can be moved to another host or a VPS without reissuing licences or
+re-activating installs: see `docs/server-migration.md` (Uzbek: `docs/server-kochirish-uz.md`).
+In short: the same database, `APP_SECRET_KEY` and `CONTROL_SIGNING_KEY`; installs switch by
+themselves when the old server announces the new address (`CONTROL_RELOCATE_URL`, adopted
+only after a signed, verified heartbeat), or by hand (Litsenziya → «Markaziy server
+manzili»); the client EXE honours `%APPDATA%\FastFood-Data\control-server.json` and the Owner
+EXE has Owner → «Server manzili…». `scripts/verify-server.mjs --compare` checks a new
+server against the old one.
+
+### Owner access to hosted restaurant data
+
+For restaurants hosted on the central server (a customer linked to a tenant) the Owner can
+browse branches, devices, roles, employees, settings, receipt templates and orders
+(`/api/control/customers/:id/data/*`): tenant-scoped through the customer record, read-only,
+personal data (employees, orders) behind a fresh password+code, every read audited
+(`data.view.*`), no password/PIN/token hashes selected. The Owner can suspend or restore an
+employee (sessions end at once, audited). Restaurants running on their own computer keep
+their data there; the centre sees only what the install reports.

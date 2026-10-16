@@ -93,6 +93,9 @@ const schema = z
     CONTROL_PUBLIC_KEY: z.string().min(20).max(4000).optional(),
     // Address of the central server an install reports to.
     CONTROL_URL: z.string().url().max(500).optional(),
+    // Set on the OLD central server while moving to a new address: installs learn the
+    // new address from their next signed heartbeat answer and switch by themselves.
+    CONTROL_RELOCATE_URL: z.string().url().max(500).optional(),
     // Install device key (PEM) handed over by the launcher from OS secure storage.
     CONTROL_DEVICE_KEY: z.string().min(40).max(4000).optional(),
     // Bearer token for the Prometheus /api/metrics endpoint; unset disables it.

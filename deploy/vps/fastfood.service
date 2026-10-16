@@ -1,0 +1,28 @@
+# systemd unit for the FastFood central server on a VPS.
+# Install: /etc/systemd/system/fastfood.service, then
+#   systemctl daemon-reload && systemctl enable --now fastfood
+# Secrets live in /etc/fastfood/fastfood.env (mode 600, owner root) — never in this file.
+[Unit]
+Description=FastFood central server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fastfood
+Group=fastfood
+WorkingDirectory=/opt/fastfood
+EnvironmentFile=/etc/fastfood/fastfood.env
+# `npm start` applies pending migrations (non-destructive), then starts the server.
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/fastfood
+
+[Install]
+WantedBy=multi-user.target

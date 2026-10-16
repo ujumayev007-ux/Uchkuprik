@@ -38,7 +38,12 @@ writeFileSync(
   join(stage, 'owner.json'),
   JSON.stringify({ url, ...(TEST ? { test: true } : {}) }),
 );
-for (const name of ['main.cjs', 'preload.cjs'])
+for (const name of [
+  'main.cjs',
+  'preload.cjs',
+  'server-preload.cjs',
+  'server-settings.html',
+])
   copyFileSync(join(here, name), join(stage, name));
 writeFileSync(
   join(stage, 'package.json'),
