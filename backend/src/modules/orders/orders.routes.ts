@@ -10,7 +10,9 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
-import { qrPaymentOf, receiptSettingsOf } from '../settings/settings.routes.js';
+import { qrPaymentOf } from '../settings/settings.routes.js';
+import { resolveTemplate } from '../../printing/resolve-template.js';
+import { receiptTicket } from '../../printing/receipt.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import {
   getAuth,
@@ -1453,6 +1455,78 @@ export function ordersRouter(services: Services) {
   );
 
   // Receipt data; rendering/printing happens on the client or a printer adapter.
+  const buildReceipt = async (
+    auth: AuthContext,
+    id: string,
+    pick: { printerId?: string | undefined; templateId?: string | undefined },
+  ) => {
+    const order = await load(auth, id);
+    const [tenant, branch, cashier] = await Promise.all([
+      db.tenant.findUniqueOrThrow({
+        where: { id: auth.tenantId },
+        include: { profile: true },
+      }),
+      db.branch.findUniqueOrThrow({
+        where: { id: order.branchId },
+        include: { brand: true },
+      }),
+      order.createdById
+        ? db.user.findUnique({
+            where: { id: order.createdById },
+            select: { displayName: true },
+          })
+        : null,
+    ]);
+    const data = serialize(order, { ...auth, permissions: new Set() });
+    return {
+      // A branch trading under a brand prints the brand name and texts.
+      business: {
+        name: branch.brand?.name ?? tenant.name,
+        brand: branch.brand
+          ? {
+              logoUrl: branch.brand.logoUrl,
+              primaryColor: branch.brand.primaryColor,
+            }
+          : null,
+        legalName: tenant.profile?.legalName ?? null,
+        taxId: tenant.profile?.taxId ?? null,
+        phone: tenant.profile?.phone ?? null,
+        header:
+          branch.brand?.receiptHeader ?? tenant.profile?.receiptHeader ?? null,
+        footer:
+          branch.brand?.receiptFooter ?? tenant.profile?.receiptFooter ?? null,
+      },
+      branch: {
+        name: branch.name,
+        address: branch.address,
+        phone: branch.phone,
+      },
+      cashier: cashier?.displayName ?? null,
+      // Template of the printer (or the one picked), else the restaurant default.
+      layout: (
+        await resolveTemplate(db, auth.tenantId, {
+          kind: 'CUSTOMER',
+          printerId: pick.printerId ?? null,
+          templateId: pick.templateId ?? null,
+        })
+      ).settings,
+      // Fiscal sign/QR exist only after a certified fiscal provider registers the receipt.
+      fiscal: (await db.fiscalReceipt.findUnique({
+        where: { orderId: order.id },
+        select: { status: true, fiscalSign: true, qrUrl: true },
+      })) ?? { status: 'NOT_CONFIGURED', fiscalSign: null, qrUrl: null },
+      order: {
+        ...data,
+        items: data.items.filter((item) => item.status === 'ACTIVE'),
+      },
+    };
+  };
+
+  const receiptQuery = z.object({
+    printerId: z.uuid().optional(),
+    templateId: z.uuid().optional(),
+  });
+
   router.get(
     '/orders/:id/receipt',
     requireAuth(),
@@ -1460,63 +1534,129 @@ export function ordersRouter(services: Services) {
     async (req, res) => {
       const auth = getAuth(res);
       const id = parse(z.uuid(), req.params.id);
-      const order = await load(auth, id);
-      const [tenant, branch, cashier] = await Promise.all([
-        db.tenant.findUniqueOrThrow({
-          where: { id: auth.tenantId },
-          include: { profile: true },
-        }),
-        db.branch.findUniqueOrThrow({
-          where: { id: order.branchId },
-          include: { brand: true },
-        }),
-        order.createdById
-          ? db.user.findUnique({
-              where: { id: order.createdById },
-              select: { displayName: true },
-            })
-          : null,
-      ]);
-      const data = serialize(order, { ...auth, permissions: new Set() });
-      res.json({
-        // A branch trading under a brand prints the brand name and texts.
-        business: {
-          name: branch.brand?.name ?? tenant.name,
-          brand: branch.brand
-            ? {
-                logoUrl: branch.brand.logoUrl,
-                primaryColor: branch.brand.primaryColor,
-              }
-            : null,
-          legalName: tenant.profile?.legalName ?? null,
-          taxId: tenant.profile?.taxId ?? null,
-          phone: tenant.profile?.phone ?? null,
-          header:
-            branch.brand?.receiptHeader ??
-            tenant.profile?.receiptHeader ??
-            null,
-          footer:
-            branch.brand?.receiptFooter ??
-            tenant.profile?.receiptFooter ??
-            null,
+      const query = parse(receiptQuery, req.query);
+      res.json(await buildReceipt(auth, id, query));
+    },
+  );
+
+  // Receipt printers a cashier may send a receipt to.
+  router.get(
+    '/receipt-printers',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const { branchId } = parse(
+        z.object({ branchId: z.uuid().optional() }),
+        req.query,
+      );
+      const branch = await resolveBranch(db, auth, branchId);
+      const printers = await db.printer.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          branchId: branch.id,
+          kind: 'RECEIPT',
+          isActive: true,
         },
-        branch: {
-          name: branch.name,
-          address: branch.address,
-          phone: branch.phone,
-        },
-        cashier: cashier?.displayName ?? null,
-        layout: receiptSettingsOf(tenant.profile?.receiptSettings),
-        // Fiscal sign/QR exist only after a certified fiscal provider registers the receipt.
-        fiscal: (await db.fiscalReceipt.findUnique({
-          where: { orderId: order.id },
-          select: { status: true, fiscalSign: true, qrUrl: true },
-        })) ?? { status: 'NOT_CONFIGURED', fiscalSign: null, qrUrl: null },
-        order: {
-          ...data,
-          items: data.items.filter((item) => item.status === 'ACTIVE'),
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, paperWidth: true },
+      });
+      res.json({ printers });
+    },
+  );
+
+  // Sends the customer receipt to a receipt printer, laid out by that printer's template.
+  router.post(
+    '/orders/:id/receipt/print',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const input = parse(
+        z.object({
+          printerId: z.uuid(),
+          templateId: z.uuid().optional(),
+        }),
+        req.body,
+      );
+      const printer = await db.printer.findFirst({
+        where: {
+          id: input.printerId,
+          tenantId: auth.tenantId,
+          kind: 'RECEIPT',
+          isActive: true,
         },
       });
+      if (!printer) throw errors.notFound();
+      const receipt = await buildReceipt(auth, id, {
+        printerId: printer.id,
+        templateId: input.templateId,
+      });
+      const typeLabels = {
+        DINE_IN: 'Zalda',
+        TAKEAWAY: 'Olib ketish',
+        DELIVERY: 'Yetkazib berish',
+      } as const;
+      const methodLabels: Record<string, string> = {
+        CASH: 'Naqd',
+        CARD: 'Karta',
+        LOYALTY: 'Bonus',
+        CLICK: 'Click',
+        PAYME: 'Payme',
+        UZUM: 'Uzum',
+        QR: 'QR',
+        OTHER: 'Boshqa',
+      };
+      const order = receipt.order;
+      const payload = receiptTicket(
+        {
+          business: receipt.business,
+          branch: receipt.branch,
+          cashier: receipt.cashier,
+          number: order.number,
+          dateTime: new Date(order.createdAt)
+            .toISOString()
+            .slice(0, 16)
+            .replace('T', ' '),
+          typeLabel: typeLabels[order.type],
+          table: order.table?.name ?? null,
+          items: order.items.map((item) => ({
+            name: `${item.productName}${
+              item.variantName === 'Standart' ? '' : ` (${item.variantName})`
+            }`,
+            modifiers: (item.modifiers as { name: string }[]).map(
+              (modifier) => modifier.name,
+            ),
+            note: item.note,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice + item.modifiersTotal,
+            lineTotal: item.lineTotal,
+          })),
+          subtotal: order.subtotal,
+          discountTotal: order.discountTotal,
+          serviceCharge: order.serviceCharge,
+          total: order.total,
+          payments: order.payments.map((payment) => ({
+            label: methodLabels[payment.method] ?? payment.method,
+            amount: payment.tendered ?? payment.amount,
+            change: payment.change,
+          })),
+          due: order.due,
+        },
+        receipt.layout,
+      );
+      const job = await db.printJob.create({
+        data: {
+          tenantId: auth.tenantId,
+          printerId: printer.id,
+          orderId: id,
+          kind: 'RECEIPT',
+          purpose: 'NEW',
+          payload,
+        },
+      });
+      res.status(201).json({ jobId: job.id });
     },
   );
 

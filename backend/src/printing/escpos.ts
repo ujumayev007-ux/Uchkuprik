@@ -50,6 +50,35 @@ export class EscPos {
       `${l.slice(0, columns - r.length - 1)}${' '.repeat(space)}${r}`,
     );
   }
+  /** Line height in dots (ESC 3). */
+  lineSpacing(dots: number) {
+    return this.raw(ESC, 0x33, Math.max(0, Math.min(255, dots)));
+  }
+  /** Smaller letters (font B, 9 dots wide) or the standard font A. */
+  smallFont(on: boolean) {
+    return this.raw(ESC, 0x4d, on ? 1 : 0);
+  }
+  /** Left margin and printable width in dots (GS L, GS W). */
+  area(leftDots: number, widthDots: number) {
+    const left = Math.max(0, Math.min(65535, leftDots));
+    const width = Math.max(64, Math.min(65535, widthDots));
+    return this.raw(GS, 0x4c, left & 255, left >> 8).raw(
+      GS,
+      0x57,
+      width & 255,
+      width >> 8,
+    );
+  }
+  /** Paper feed in dots (ESC J), split into steps of at most 255. */
+  feedDots(dots: number) {
+    let left = Math.max(0, Math.round(dots));
+    while (left > 0) {
+      const step = Math.min(255, left);
+      this.raw(ESC, 0x4a, step);
+      left -= step;
+    }
+    return this;
+  }
   feed(lines = 3) {
     return this.raw(ESC, 0x64, lines);
   }

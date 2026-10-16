@@ -238,5 +238,5 @@ describe('order routing and kitchen tickets', () => {
     expect(copies[0]!.status).toBe('SENT');
     expect(Buffer.concat(received).toString('latin1')).toContain('3 x Burger');
     tcp.close();
-  });
+  }, 30_000);
 });

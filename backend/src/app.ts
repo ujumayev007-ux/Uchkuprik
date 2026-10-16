@@ -47,6 +47,7 @@ import { hrRouter } from './modules/hr/hr.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
+import { receiptTemplatesRouter } from './modules/printing/receipt-templates.routes.js';
 import { menuRouter } from './modules/menu/menu.routes.js';
 import { onlineRouter } from './modules/online/online.routes.js';
 import { paymentsRouter } from './modules/payments/payments.routes.js';
@@ -224,6 +225,7 @@ export function createApp({
       reportsRouter,
       kitchenRouter,
       printersRouter,
+      receiptTemplatesRouter,
       inventoryRouter,
       onlineRouter,
       crmRouter,

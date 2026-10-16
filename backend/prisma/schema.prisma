@@ -2975,3 +2975,38 @@ model FeatureSetting {
   @@id([tenantId, featureKey, roleKey])
   @@map("feature_settings")
 }
+
+// Named receipt / ticket templates (paper width, margins, fonts, visible fields). The
+// restaurant's original single layout stays in TenantProfile.receiptSettings and acts
+// as the default; templates are assigned to a printer, a department or a receipt type.
+model ReceiptTemplate {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  // CUSTOMER (customer receipt) or KITCHEN (kitchen ticket).
+  kind      String   @default("CUSTOMER")
+  settings  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments ReceiptAssignment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("receipt_templates")
+}
+
+model ReceiptAssignment {
+  tenantId   String @db.Uuid
+  // PRINTER, STATION (department) or TYPE (default of a receipt kind).
+  targetType String
+  // Printer id, kitchen station id, or the kind (CUSTOMER / KITCHEN) for TYPE.
+  targetId   String
+  templateId String @db.Uuid
+
+  template ReceiptTemplate @relation(fields: [tenantId, templateId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, targetType, targetId])
+  @@index([tenantId, templateId])
+  @@map("receipt_assignments")
+}

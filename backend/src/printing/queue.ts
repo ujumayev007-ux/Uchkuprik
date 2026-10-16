@@ -2,6 +2,8 @@ import { Socket } from 'node:net';
 import type { Services } from '../context.js';
 import { loadOrderSettings } from '../modules/orders/settings.js';
 import { kitchenTicket } from './escpos.js';
+import { columnsForWidth } from './receipt-template.js';
+import { resolveTemplate } from './resolve-template.js';
 import { ticketTemplateOf } from './template.js';
 
 const MAX_ATTEMPTS = 6;
@@ -156,10 +158,32 @@ export async function enqueueKitchenTickets(
       const cancelled = forPrinter(printer, removed);
       if (items.length === 0 && cancelled.length === 0) continue;
       const update = printedBefore;
-      const layout = ticketTemplateOf(printer.station?.ticketTemplate);
+      const station = ticketTemplateOf(printer.station?.ticketTemplate);
+      // A named template assigned to this printer or department takes over.
+      const named = await resolveTemplate(tx, order.tenantId, {
+        kind: 'KITCHEN',
+        printerId: printer.id,
+        stationId: printer.stationId,
+      });
+      const custom = named.source === 'DEFAULT' ? null : named.settings;
+      const layout = custom
+        ? {
+            ...station,
+            header: custom.title || station.header,
+            footer: custom.thankYou || station.footer,
+            largeItems: custom.largeItems,
+            showWaiter: custom.showWaiter,
+            showNotes: custom.showNotes,
+          }
+        : station;
       const single = kitchenTicket({
         stationName: printer.station?.name ?? null,
-        columns: printer.paperWidth === 58 ? 32 : 48,
+        columns: custom
+          ? columnsForWidth(
+              custom.widthMm,
+              custom.marginLeftMm + custom.marginRightMm,
+            )
+          : columnsForWidth(printer.paperWidth),
         number: order.number,
         typeLabel: typeLabels[order.type],
         table: order.table?.name ?? null,

@@ -1,3 +1,4 @@
+import { columnsForWidth } from '../../printing/receipt-template.js';
 import { kitchenTicket } from '../../printing/escpos.js';
 import {
   ticketTemplateOf,
@@ -173,7 +174,7 @@ export function kitchenRouter(services: Services) {
               createdAt: now(),
               timezone: 'Asia/Tashkent',
               waiter: auth.displayName,
-              columns: printer.paperWidth === 58 ? 32 : 48,
+              columns: columnsForWidth(printer.paperWidth),
               template: layout,
               items: [
                 {

@@ -550,3 +550,25 @@ tr.clickable {
   word-break: break-all;
   font-size: 12px;
 }
+
+/* Template-driven receipts: width, margins and font come from inline styles. */
+.receipt.receipt-sheet {
+  margin: 0 auto;
+}
+.receipt-logo {
+  display: block;
+  margin: 0 auto 4px;
+  max-width: 100%;
+  height: auto;
+}
+.receipt-print-button {
+  margin: 12px auto;
+  display: block;
+  max-width: 320px;
+}
+@media print {
+  .receipt.receipt-sheet {
+    margin: 0;
+    box-shadow: none;
+  }
+}

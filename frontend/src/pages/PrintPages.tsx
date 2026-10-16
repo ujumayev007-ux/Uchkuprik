@@ -3,10 +3,15 @@ import { useEffect } from 'react';
 import { useParams } from 'react-router';
 import { ErrorState, LoadingState } from '../components/ui';
 import { t } from '../i18n';
-import type { ReceiptLayout } from './ReceiptDesignPage';
+import {
+  ReceiptSheet,
+  sampleSheet,
+  type SheetData,
+} from '../components/ReceiptSheet';
+import { normalizeLayout, pageCss } from '../lib/receipt';
 import { api } from '../lib/api';
-import { formatDateTime, formatMoney } from '../lib/format';
-import type { Order, ShiftSummary } from '../lib/orders';
+import { formatDateTime } from '../lib/format';
+import type { ShiftSummary } from '../lib/orders';
 import { ShiftTotals } from './ShiftPage';
 
 type Business = {
@@ -46,154 +51,61 @@ function Header({
   );
 }
 
+/**
+ * Customer receipt. The printer/template come from the address
+ * (?printer=<id>&template=<id>) or, by default, from the restaurant's assignments.
+ * The page is exactly as wide as the paper; its length follows the content.
+ */
 export function ReceiptPage() {
   const { id } = useParams();
+  const params = new URLSearchParams(window.location.search);
+  const query = [
+    params.get('printer') ? `printerId=${params.get('printer')}` : '',
+    params.get('template') ? `templateId=${params.get('template')}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
   const receipt = useQuery({
-    queryKey: ['receipt', id],
+    queryKey: ['receipt', id, query],
     queryFn: () =>
-      api<{
-        business: Business;
-        branch: { name: string; address: string | null };
-        cashier: string | null;
-        layout?: ReceiptLayout;
-        order: Order & {
-          items: (Order['items'][number] & {
-            components?: { name: string; quantity: number }[];
-          })[];
-        };
-      }>(`/orders/${id}/receipt`),
+      api<{ layout?: unknown } & SheetData>(
+        `/orders/${id}/receipt${query ? `?${query}` : ''}`,
+      ),
   });
   useAutoPrint(receipt.isSuccess);
   if (receipt.isPending) return <LoadingState />;
   if (receipt.error) return <ErrorState error={receipt.error} />;
-  const { business, branch, cashier, order } = receipt.data;
-  const layout: ReceiptLayout = receipt.data.layout ?? {
-    paperWidth: '80',
-    fontSize: 'normal',
-    showBusinessName: true,
-    showLegalName: true,
-    showTaxId: true,
-    showBranch: true,
-    showPhone: true,
-    showCashier: true,
-    showOrderType: true,
-    showModifiers: true,
-    showPayments: true,
-    title: '',
-    extraLines: '',
-    thankYou: '',
-  };
+  const layout = normalizeLayout(receipt.data.layout);
   return (
-    <div
-      className={`receipt paper-${layout.paperWidth} font-${layout.fontSize}`}
-    >
-      {layout.title && <strong className="center block">{layout.title}</strong>}
-      <Header
-        business={{
-          ...business,
-          name: layout.showBusinessName ? business.name : '',
-          legalName: layout.showLegalName ? business.legalName : null,
-          taxId: layout.showTaxId ? business.taxId : null,
-          phone: layout.showPhone ? (business.phone ?? null) : null,
-        }}
-        branch={layout.showBranch ? branch : { name: '', address: null }}
-      />
-      <div className="receipt-meta">
-        <span>
-          {t.receipt.order} {t.orders.number}
-          {order.number}
-        </span>
-        <span>{formatDateTime(order.createdAt)}</span>
-        {layout.showOrderType && (
-          <span>
-            {t.pos.types[order.type]}
-            {order.table ? ` · ${order.table.name}` : ''}
-          </span>
-        )}
-        {layout.showCashier && cashier && (
-          <span>
-            {t.receipt.cashier}: {cashier}
-          </span>
-        )}
-      </div>
-      <table>
-        <tbody>
-          {order.items.map((item) => (
-            <tr key={item.id}>
-              <td>
-                {item.productName}{' '}
-                {item.variantName !== 'Standart' && `(${item.variantName})`}
-                {layout.showModifiers && item.modifiers.length > 0 && (
-                  <div className="small">
-                    + {item.modifiers.map((m) => m.name).join(', ')}
-                  </div>
-                )}
-                {layout.showModifiers && (item.components ?? []).length > 0 && (
-                  <div className="small">
-                    {(item.components ?? [])
-                      .map((part) => `${part.quantity}× ${part.name}`)
-                      .join(', ')}
-                  </div>
-                )}
-                <div className="small">
-                  {item.quantity} ×{' '}
-                  {formatMoney(item.unitPrice + item.modifiersTotal)}
-                </div>
-              </td>
-              <td className="right">{formatMoney(item.lineTotal)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <dl className="totals">
-        {order.discountTotal > 0 && (
-          <>
-            <dt>{t.pos.discount}</dt>
-            <dd>−{formatMoney(order.discountTotal)}</dd>
-          </>
-        )}
-        {order.serviceCharge > 0 && (
-          <>
-            <dt>{t.pos.serviceCharge}</dt>
-            <dd>{formatMoney(order.serviceCharge)}</dd>
-          </>
-        )}
-        <dt className="strong">{t.pos.total}</dt>
-        <dd className="strong">{formatMoney(order.total)}</dd>
-        {layout.showPayments &&
-          order.payments.map((payment) => (
-            <div key={payment.id} className="totals-row">
-              <dt>{t.payment.methods[payment.method]}</dt>
-              <dd>{formatMoney(payment.tendered ?? payment.amount)}</dd>
-              {payment.change ? (
-                <>
-                  <dt>{t.payment.change}</dt>
-                  <dd>{formatMoney(payment.change)}</dd>
-                </>
-              ) : null}
-            </div>
-          ))}
-        {order.due > 0 && (
-          <>
-            <dt className="strong">{t.pos.due}</dt>
-            <dd className="strong">{formatMoney(order.due)}</dd>
-          </>
-        )}
-      </dl>
-      <footer className="receipt-footer">
-        {layout.extraLines && <div className="pre">{layout.extraLines}</div>}
-        {business.footer && <div>{business.footer}</div>}
-        <div>{layout.thankYou || t.receipt.thanks}</div>
-        {/* Fiscal QR and receipt numbers require an authorized fiscal provider (Phase 8). */}
-        <div className="small">{t.receipt.notFiscal}</div>
-      </footer>
+    <>
+      <style>{pageCss(layout)}</style>
+      <ReceiptSheet layout={layout} data={receipt.data} />
       <button
-        className="btn btn-primary btn-md no-print"
+        className="btn btn-primary btn-md no-print receipt-print-button"
         onClick={() => window.print()}
       >
         {t.receipt.print}
       </button>
-    </div>
+    </>
+  );
+}
+
+/** Test print of the unsaved designer settings (opened by the designer). */
+export function ReceiptTestPage() {
+  const raw = sessionStorage.getItem('ff-receipt-test');
+  const layout = normalizeLayout(raw ? JSON.parse(raw) : {});
+  useAutoPrint(true);
+  return (
+    <>
+      <style>{pageCss(layout)}</style>
+      <ReceiptSheet layout={layout} data={sampleSheet()} />
+      <button
+        className="btn btn-primary btn-md no-print receipt-print-button"
+        onClick={() => window.print()}
+      >
+        {t.receipt.print}
+      </button>
+    </>
   );
 }
 

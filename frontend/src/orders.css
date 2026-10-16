@@ -310,3 +310,22 @@
     animation: none;
   }
 }
+
+/* Receipt designer. */
+.tpl-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.receipt-preview-scroll {
+  overflow: auto;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  max-width: 100%;
+}
+.receipt-preview-scroll .receipt-sheet {
+  max-width: none;
+  flex: none;
+}

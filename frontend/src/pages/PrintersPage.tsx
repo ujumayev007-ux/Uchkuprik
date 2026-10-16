@@ -124,14 +124,41 @@ function PrinterForm({
         )}
         <SelectField
           label={t.printers.paper}
-          value={String(form.paperWidth)}
+          value={
+            form.paperWidth === 58 || form.paperWidth === 80
+              ? String(form.paperWidth)
+              : 'custom'
+          }
           onChange={(e) =>
-            setForm({ ...form, paperWidth: Number(e.target.value) })
+            setForm({
+              ...form,
+              paperWidth:
+                e.target.value === 'custom' ? 72 : Number(e.target.value),
+            })
           }
         >
           <option value="80">80 mm</option>
           <option value="58">58 mm</option>
+          <option value="custom">{t.receiptTpl.custom}</option>
         </SelectField>
+        {form.paperWidth !== 58 && form.paperWidth !== 80 && (
+          <TextField
+            label={t.receiptTpl.widthMm}
+            type="number"
+            min={40}
+            max={112}
+            value={form.paperWidth}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                paperWidth: Math.min(
+                  112,
+                  Math.max(40, Math.round(Number(e.target.value)) || 40),
+                ),
+              })
+            }
+          />
+        )}
         <SelectField
           label={t.printers.fallback}
           hint={t.printers.fallbackHint}

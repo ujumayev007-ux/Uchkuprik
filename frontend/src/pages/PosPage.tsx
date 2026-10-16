@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { can, useMe } from '../auth/session';
 import { PaymentDialog } from '../components/PaymentDialog';
+import { PrintReceipt } from '../components/PrintReceipt';
 import {
   Button,
   Dialog,
@@ -901,17 +902,7 @@ export function PosPage() {
               </div>
             )}
             <div className="form-actions center">
-              <Button
-                onClick={() =>
-                  window.open(
-                    `/chek/${result.order.id}`,
-                    '_blank',
-                    'noopener,width=420,height=700',
-                  )
-                }
-              >
-                {t.payment.printReceipt}
-              </Button>
+              <PrintReceipt orderId={result.order.id} />
               <Button variant="primary" onClick={() => setResult(null)}>
                 {t.payment.newOrder}
               </Button>

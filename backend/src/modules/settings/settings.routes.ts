@@ -9,6 +9,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
 import { errors, parse } from '../../http/errors.js';
+import {
+  fromLegacyLayout,
+  receiptTemplateSchema,
+} from '../../printing/receipt-template.js';
 import { audit } from '../audit/audit.js';
 import {
   getAuth,
@@ -314,7 +318,7 @@ export function settingsRouter(services: Services) {
     const profile = await db.tenantProfile.findUnique({
       where: { tenantId: auth.tenantId },
     });
-    res.json(receiptSettingsOf(profile?.receiptSettings));
+    res.json(fromLegacyLayout(profile?.receiptSettings));
   });
 
   router.put(
@@ -323,7 +327,8 @@ export function settingsRouter(services: Services) {
     requirePermission('settings.manage'),
     async (req, res) => {
       const auth = getAuth(res);
-      const input = parse(receiptSettingsSchema, req.body);
+      // The restaurant's default template (full template settings; old fields included).
+      const input = parse(receiptTemplateSchema, req.body);
       await db.$transaction(async (tx) => {
         await tx.tenantProfile.upsert({
           where: { tenantId: auth.tenantId },

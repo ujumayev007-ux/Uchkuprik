@@ -5,6 +5,7 @@ import { can, useMe } from '../auth/session';
 import { DisplayModeSwitch, OrderBoard } from '../components/OrderBoard';
 import { TableAssignDialog } from '../components/TableAssignDialog';
 import { PaymentDialog } from '../components/PaymentDialog';
+import { PrintReceipt } from '../components/PrintReceipt';
 import {
   Badge,
   Button,
@@ -563,17 +564,7 @@ export function OrderDetail({
           )}
           <FormError error={error} />
           <div className="form-actions">
-            <Button
-              onClick={() =>
-                window.open(
-                  `/chek/${o.id}`,
-                  '_blank',
-                  'noopener,width=420,height=700',
-                )
-              }
-            >
-              {t.payment.printReceipt}
-            </Button>
+            <PrintReceipt orderId={o.id} />
             {o.status === 'DRAFT' && (
               <Button
                 busy={busy}

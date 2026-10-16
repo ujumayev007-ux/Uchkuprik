@@ -37,7 +37,8 @@ const printerInput = z.object({
   isActive: z.boolean().default(true),
   // Kitchen tickets that keep failing are copied once to this printer.
   fallbackPrinterId: z.uuid().nullable().optional(),
-  paperWidth: z.union([z.literal(58), z.literal(80)]).default(80),
+  // 58 and 80 mm are the common widths; other widths are custom (40-112 mm).
+  paperWidth: z.number().int().min(40).max(112).default(80),
 });
 
 export function printersRouter(services: Services) {

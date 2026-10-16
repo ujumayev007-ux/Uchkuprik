@@ -167,7 +167,11 @@ export const featureCatalog: FeatureDef[] = [
     kind: 'button',
     group: 'Kassa va buyurtmalar',
     label: 'Chek chiqarish',
-    routes: ['GET /orders/:id/receipt'],
+    routes: [
+      'GET /orders/:id/receipt',
+      'POST /orders/:id/receipt/print',
+      'GET /receipt-printers',
+    ],
   }),
   f({
     key: 'orders.approve',
@@ -254,6 +258,15 @@ export const featureCatalog: FeatureDef[] = [
       '* /print-jobs',
       '* /print-jobs/*',
     ],
+  }),
+  f({
+    key: 'receipts.design',
+    kind: 'module',
+    group: 'Oshxona',
+    label: 'Chek dizayni va shablonlar (58/80 mm va boshqa kenglik)',
+    hint: 'Shablonlarni printer, bo‘lim yoki chek turiga biriktirish va sinov chop etish.',
+    menuPath: '/chek-dizayni',
+    routes: ['* /receipt-templates', '* /receipt-templates/*'],
   }),
   // ---- Ombor ----
   f({

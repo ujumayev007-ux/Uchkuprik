@@ -44,7 +44,7 @@ import { QueuePage } from './pages/QueuePage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PosPage } from './pages/PosPage';
 import { DeliverySheetPage } from './pages/DeliverySheetPage';
-import { ReceiptPage, ZReportPage } from './pages/PrintPages';
+import { ReceiptPage, ReceiptTestPage, ZReportPage } from './pages/PrintPages';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { PlatformBillingPage } from './pages/PlatformBillingPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
@@ -255,6 +255,14 @@ const router = createBrowserRouter([
     element: (
       <SessionOnly>
         <DeliverySheetPage />
+      </SessionOnly>
+    ),
+  },
+  {
+    path: '/chek-sinov',
+    element: (
+      <SessionOnly>
+        <ReceiptTestPage />
       </SessionOnly>
     ),
   },
