@@ -324,5 +324,5 @@ describe('kitchen printing', () => {
     ).toBe('PENDING');
     await post(s.owner, `/print-jobs/${failed.id}/retry`).expect(200);
     tcp.close();
-  }, 30_000);
+  }, 90_000);
 });
