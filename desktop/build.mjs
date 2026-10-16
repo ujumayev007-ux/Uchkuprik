@@ -144,7 +144,8 @@ await build({
   config: {
     appId: `uz.fastfood.desktop.${TEST ? 'test.' : ''}v${slug}`,
     productName: `FastFood ${TEST ? 'TEST ' : ''}${version}`,
-    executableName: 'FastFood',
+    // A TEST build installs into its own folder so it never overwrites the working app.
+    executableName: TEST ? 'FastFoodTest' : 'FastFood',
     directories: {
       output: join(here, TEST ? 'release-test' : 'release'),
       buildResources: join(here, 'build'),

@@ -10,12 +10,12 @@ TEST paketlari ishlab turgan tizimdan **alohida**: o‘z ilova nomi, o‘z ma’
 (`http://127.0.0.1:4100`) ulanadi. Ular haqiqiy litsenziya, Owner hisobi, kalit va bazaga
 umuman ulanmaydi.
 
-| Paket                                         | Fayl                                                             |
-| --------------------------------------------- | ---------------------------------------------------------------- |
-| Umumiy kassa dasturi (Kassa+Ofitsiant+Oshxona) | `desktop\release-test\FastFood-TEST-Setup-1.12.0.exe`            |
-| Restoran Admin dasturi (sinov)                | `admin-desktop\release-test\FastFood-Admin-TEST-Setup-1.0.0.exe` |
-| Owner dasturi (sinov)                         | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.3.0.exe` |
-| Ofitsiant Android (sinov va ishchi uchun bir xil) | `android\release\FastFood-1.12.0.apk`                        |
+| Paket                                             | Fayl                                                             |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| Umumiy kassa dasturi (Kassa+Ofitsiant+Oshxona)    | `desktop\release-test\FastFood-TEST-Setup-1.12.0.exe`            |
+| Restoran Admin dasturi (sinov)                    | `admin-desktop\release-test\FastFood-Admin-TEST-Setup-1.0.0.exe` |
+| Owner dasturi (sinov)                             | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.3.0.exe` |
+| Ofitsiant Android (sinov va ishchi uchun bir xil) | `android\release\FastFood-1.12.0.apk`                            |
 
 **Sinov serverini ishga tushirish** (Owner dasturi shunga ulanadi; kompyuter qayta
 yoqilsa, qayta ishga tushiring):
@@ -63,9 +63,27 @@ set CONTROL_PUBLIC_KEY=<ochiq kalit — control-public.json dagi qiymat>
 node desktop\build.mjs
 set OWNER_URL=https://<haqiqiy-domen>
 node owner-desktop\build.mjs
+node admin-desktop\build.mjs
 ```
 
+Admin dasturi uchun `ADMIN_URL` ixtiyoriy (https): bo‘sh qoldirilsa, dastur birinchi ishga
+tushganda restoran serveri manzilini o‘zi so‘raydi.
+
 (PowerShell'da `$env:CONTROL_URL = "…"`.) Maxfiy kalitlar bu buyruqlarga kerak emas.
+
+## Sinov dasturlari ishlab turgan dasturga tegmaydi
+
+Sinov (TEST) mijoz dasturi alohida papkaga (`%LOCALAPPDATA%\Programs\FastFoodTest`),
+alohida ma’lumotlar papkasiga (`FastFood-Test-Data`) va 8788‑portga o‘rnatiladi. Ishchi
+FastFood (`%LOCALAPPDATA%\Programs\FastFood`, 8787‑port, `FastFood-Data`) o‘zgarmaydi.
+
+## Restoran Admin dasturi
+
+Admin dasturi restoran serveriga (kassa kompyuteri) ulanadi. Birinchi ishga tushganda manzilni
+so‘raydi (masalan `192.168.1.11`, sinovda `127.0.0.1`) va uni tekshirib saqlaydi; keyinroq
+menyudan «Server manzili…» orqali o‘zgartirish mumkin. Oddiy `http` faqat mahalliy tarmoq
+manzillari uchun qabul qilinadi. Server o‘chiq bo‘lsa, o‘zbekcha xato sahifasi chiqadi va u
+o‘zi qayta ulanadi.
 
 ## Pilotni to‘xtatish
 

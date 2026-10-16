@@ -43,7 +43,7 @@ Quyidagi ekranlar kompyuterda brauzer oynasida o‘lchamlarga qarab tekshirilgan
 | 18  | Chek dizayni sahifasi telefonda: 58 mm ni tanlang, ko‘rinishni qarang    | Ko‘rinish o‘zgaradi, sahifa yon tomonga siljimaydi                                                      | ☐      |
 | 19  | Mijozlar ekrani (TV) planshetda: buyurtmani «Tayyor» qiling              | Raqam sariq ro‘yxatdan yashil ro‘yxatga silliq o‘tadi, ovozli e’lon bir marta aytiladi                  | ☐      |
 
-| 20  | Ilovani oching va ofitsiant sifatida kiring                              | Ilova to‘g‘ridan-to‘g‘ri ofitsiant ekranini (Stollar) ochadi                                            | ☐      |
+| 20 | Ilovani oching va ofitsiant sifatida kiring | Ilova to‘g‘ridan-to‘g‘ri ofitsiant ekranini (Stollar) ochadi | ☐ |
 
 ## Avtomatik tekshirilganlar (kompyuterda, qurilmasiz)
 

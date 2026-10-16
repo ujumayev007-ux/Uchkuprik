@@ -92,7 +92,15 @@ Barcha mijozlarni birdan ko‘chirmang.
 FastFood serveri ekanini tekshiradi, tasdiq so‘raydi va qayta ishga tushadi. Qurilma kaliti va
 tasdiqlangan qurilma saqlanib qoladi.
 
-## 8. Orqaga qaytish
+## 8. Restoran Admin dasturi va Android
+
+Admin EXE va Android ilovasi **markaziy serverga emas, restoran serveriga** (kassa kompyuteri
+yoki restoran manzili) ulanadi. Markaziy serverni ko‘chirish ularga ta’sir qilmaydi.
+Restoran serverining manzili o‘zgarsa, Admin dasturida «Server manzili…», Android'da ilovaning
+sozlamalar oynasi orqali yangi manzil kiritiladi — qayta yig‘ish shart emas. Chek shablonlari
+va logotiplar bazada saqlanadi, shuning uchun baza zaxirasi ularni ham o‘z ichiga oladi.
+
+## 9. Orqaga qaytish
 
 - DNS ni o‘zgartirishdan oldin: yangi serverni to‘xtating — hech narsa buzilmaydi.
 - DNS dan keyin: DNS ni eski serverga qaytaring (eski server va uning bazasi saqlangan bo‘lsin).

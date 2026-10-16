@@ -231,12 +231,12 @@ and in the restaurant's own audit log (`user.password.reset.owner`, …), with n
 
 ### Application packages
 
-| Package                    | For                                                                       | Connects to                                    |
-| -------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------- |
-| FastFood (client EXE)      | Shared POS: Cashier, Waiter and Kitchen panels, server + database inside  | itself (and the central server for licences)   |
-| FastFood Admin (EXE)       | Restaurant administrator: staff, roles, tables, printers, settings, menu  | the restaurant's server address (set on start) |
-| FastFood Owner (EXE)       | The Owner (SUPER_OWNER)                                                   | the central server                             |
-| FastFood (Android APK)     | Waiter: opens the waiter screen, alerts for guest orders                  | the restaurant computer's address              |
+| Package                | For                                                                      | Connects to                                    |
+| ---------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| FastFood (client EXE)  | Shared POS: Cashier, Waiter and Kitchen panels, server + database inside | itself (and the central server for licences)   |
+| FastFood Admin (EXE)   | Restaurant administrator: staff, roles, tables, printers, settings, menu | the restaurant's server address (set on start) |
+| FastFood Owner (EXE)   | The Owner (SUPER_OWNER)                                                  | the central server                             |
+| FastFood (Android APK) | Waiter: opens the waiter screen, alerts for guest orders                 | the restaurant computer's address              |
 
 After sign-in the client EXE opens the panel that matches the account (waiter → Waiter,
 cashier → Cashier, kitchen → Kitchen; managers land on the dashboard) and the menu offers
