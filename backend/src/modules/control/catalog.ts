@@ -272,6 +272,25 @@ export const featureCatalog: FeatureDef[] = [
       '* /settings/receipt',
     ],
   }),
+  // ---- Dizayn va reklama ----
+  f({
+    key: 'design.admin',
+    kind: 'module',
+    group: 'Dizayn va reklama',
+    label: 'Restoran Admini o‘z dizaynini sozlay oladi',
+    hint: 'Yoqilsa, Admin kirish ekrani va panellar uslubini, xush kelibsiz xabarini va logotipni o‘zgartiradi. Owner belgilagan qiymatlar ustidan faqat shu cheklovlar ichida.',
+    menuPath: '/dizayn',
+    defaultMode: 'OFF',
+    routes: [],
+  }),
+  f({
+    key: 'ads.display',
+    kind: 'module',
+    group: 'Dizayn va reklama',
+    label: 'Reklama va e’lonlarni ko‘rsatish',
+    hint: 'O‘chirilsa, bu restoranga Owner reklamalari yuborilmaydi.',
+    routes: [],
+  }),
   // ---- Ombor ----
   f({
     key: 'inventory.view',
@@ -1103,6 +1122,9 @@ const openRoutes = [
   'POST /public/register',
   'GET /metrics',
   'GET /health/*',
+  // Design and advertising: the sign-in screen must always work; handlers check the rest.
+  '* /branding',
+  '* /branding/*',
   // Platform administration of the cloud edition (not part of a restaurant).
   '* /platform/*',
   'GET /tenant/export',

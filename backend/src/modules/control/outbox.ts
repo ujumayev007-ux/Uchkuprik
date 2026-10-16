@@ -211,3 +211,38 @@ export async function scheduleDailySummaries(services: Services) {
     });
   }
 }
+
+/**
+ * Display counters of advertisements: one cumulative operation per campaign, day and
+ * panel whenever the numbers changed (the centre keeps the larger value, so retries
+ * and repeated reports never double count).
+ */
+export async function scheduleAdStats(services: Services) {
+  const { db } = services;
+  const rows = await db.$queryRaw<
+    {
+      campaignId: string;
+      day: Date;
+      panel: string;
+      shown: number;
+      closed: number;
+    }[]
+  >`SELECT "campaignId", "day", "panel", "shown", "closed" FROM "ad_stats"
+     WHERE "shown" > "shownSent" OR "closed" > "closedSent" LIMIT 200`;
+  for (const row of rows) {
+    const day = row.day.toISOString().slice(0, 10);
+    await enqueueOperation(db, {
+      type: 'ad_stats',
+      opId: `as-${row.campaignId.slice(0, 8)}-${day}-${row.panel}-${row.shown}-${row.closed}`,
+      data: {
+        campaignId: row.campaignId,
+        day,
+        panel: row.panel,
+        shown: row.shown,
+        closed: row.closed,
+      },
+    });
+    await db.$executeRaw`UPDATE "ad_stats" SET "shownSent" = ${row.shown}, "closedSent" = ${row.closed}
+       WHERE "campaignId" = ${row.campaignId}::uuid AND "day" = ${row.day} AND "panel" = ${row.panel}`;
+  }
+}

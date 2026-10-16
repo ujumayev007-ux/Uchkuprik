@@ -20,9 +20,12 @@ import {
 import {
   flushOutbox,
   outboxSummary,
+  scheduleAdStats,
   scheduleDailySummaries,
 } from './outbox.js';
 import { evaluateKey } from './policy.js';
+import type { BrandingBundle } from '../branding/bundle.js';
+import { sha256Of, sniffMedia } from '../branding/media.js';
 import { loadAdminData, unlinkedView, type ControlView } from './view.js';
 
 type Transport = typeof fetch;
@@ -46,6 +49,8 @@ type BeatResponse = {
   update: AvailableUpdate | null;
   // Address the centre has moved to (signed with the same key as the grant).
   relocate?: string | null;
+  // Design and advertising of this restaurant (only when the install's copy is outdated).
+  branding?: BrandingBundle | null;
 };
 
 const LINK_CACHE_MS = 2_000;
@@ -332,6 +337,7 @@ export function createControlRuntime(
       currentUser: session?.user.displayName ?? null,
       os: `${os.type()} ${os.release()}`.slice(0, 80),
       ackCommands: ackIds.slice(0, 20),
+      brandingVersion: await completeBrandingVersion(),
       branches,
       terminals: devices.map((device) => ({
         localId: device.id,
@@ -362,7 +368,7 @@ export function createControlRuntime(
   async function signedPost(
     row: ControlLink,
     pem: string,
-    type: 'heartbeat' | 'sync',
+    type: 'heartbeat' | 'sync' | 'media',
     path: string,
     payload: object,
   ) {
@@ -400,6 +406,127 @@ export function createControlRuntime(
       .catch(() => null);
     if (tenant)
       services.events?.publish({ type: 'config.changed', tenantId: tenant.id });
+  }
+
+  // ---- design and advertising from the centre ----------------------------------
+
+  /** The bundle version, reported to the centre only when every file is stored here. */
+  async function completeBrandingVersion(): Promise<string | undefined> {
+    const cached = await db.brandingCache.findUnique({ where: { id: 1 } });
+    if (!cached) return undefined;
+    const bundle = cached.bundle as unknown as BrandingBundle;
+    const have = await db.brandingMedia.findMany({
+      where: { id: { in: bundle.media.map((media) => media.id) } },
+      select: { id: true, sha256: true },
+    });
+    const complete = bundle.media.every((media) =>
+      have.some((row) => row.id === media.id && row.sha256 === media.sha256),
+    );
+    return complete ? cached.version : undefined;
+  }
+
+  let applyingBranding = false;
+  let brandingWork: Promise<void> = Promise.resolve();
+  /** Stores a signed bundle, fetches its files, then tells open screens to reload. */
+  async function applyBranding(
+    row: ControlLink,
+    pem: string,
+    bundle: BrandingBundle,
+  ) {
+    if (applyingBranding) return;
+    applyingBranding = true;
+    try {
+      if (
+        !bundle ||
+        typeof bundle.v !== 'string' ||
+        !Array.isArray(bundle.ads) ||
+        !Array.isArray(bundle.media)
+      )
+        return;
+      await db.brandingCache.upsert({
+        where: { id: 1 },
+        create: {
+          id: 1,
+          version: bundle.v,
+          bundle: bundle as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          version: bundle.v,
+          bundle: bundle as unknown as Prisma.InputJsonValue,
+          receivedAt: sysNow(),
+        },
+      });
+      for (const media of bundle.media) {
+        const have = await db.brandingMedia.findUnique({
+          where: { id: media.id },
+          select: { sha256: true },
+        });
+        if (have?.sha256 === media.sha256) continue;
+        try {
+          const result = await signedPost(
+            row,
+            pem,
+            'media',
+            '/control/device/media',
+            { id: media.id },
+          );
+          if (result.status !== 200) continue;
+          const bytes = Buffer.from(String(result.data.data ?? ''), 'base64');
+          const found = sniffMedia(bytes);
+          // The signed bundle's checksum decides: anything else is discarded.
+          if (!found || sha256Of(bytes) !== media.sha256) continue;
+          await db.brandingMedia.upsert({
+            where: { id: media.id },
+            create: {
+              id: media.id,
+              kind: found.kind,
+              mime: found.mime,
+              name: 'markaziy',
+              sizeBytes: bytes.length,
+              sha256: media.sha256,
+              data: bytes,
+            },
+            update: {
+              kind: found.kind,
+              mime: found.mime,
+              sizeBytes: bytes.length,
+              sha256: media.sha256,
+              data: bytes,
+            },
+          });
+        } catch {
+          /* The next heartbeat retries: the bundle stays incomplete until then. */
+        }
+      }
+      // Files nobody refers to any more (bundle or the restaurant's own design) go away.
+      const own = await db.tenantDesign.findMany({ select: { config: true } });
+      const keep = new Set<string>(bundle.media.map((media) => media.id));
+      for (const id of JSON.stringify(own).match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+      ) ?? [])
+        keep.add(id);
+      await db.brandingMedia.deleteMany({
+        where: { id: { notIn: [...keep] }, name: 'markaziy' },
+      });
+      await announceBrandingChange();
+    } finally {
+      applyingBranding = false;
+    }
+  }
+
+  async function announceBrandingChange() {
+    const tenant = await db.tenant
+      .findFirst({
+        where: { kind: 'BUSINESS' },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (tenant)
+      services.events?.publish({
+        type: 'branding.changed',
+        tenantId: tenant.id,
+      });
   }
 
   /** https (or loopback http for test builds) addresses only. */
@@ -527,6 +654,10 @@ export function createControlRuntime(
       // New decisions from the Owner reach connected screens and Android devices.
       if (row.policyVersion !== grant.policy.version)
         void announceConfigChange();
+      if (doc.branding)
+        brandingWork = applyBranding(row, pem, doc.branding).catch(
+          () => undefined,
+        );
       available = doc.update;
       ackIds = [];
       for (const command of doc.commands) {
@@ -647,6 +778,7 @@ export function createControlRuntime(
             lastSummaries = Date.now();
             await scheduleDailySummaries(services).catch(() => undefined);
           }
+          await scheduleAdStats(services).catch(() => undefined);
         }
       } catch {
         services.logger.warn('Control check-in failed');
@@ -672,6 +804,8 @@ export function createControlRuntime(
     updateInfo,
     start,
     relocate,
+    // Resolves when the last received design/advertising bundle has been stored.
+    brandingSettled: () => brandingWork,
     invalidate,
     evaluate: evaluateKey,
     newOpId: () => randomUUID(),

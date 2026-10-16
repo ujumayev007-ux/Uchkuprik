@@ -48,6 +48,8 @@ export type RealtimeEvent =
     }
   // Owner or Admin changed settings: panels and Android devices reload them.
   | { type: 'config.changed'; tenantId: string }
+  // Owner (or delegated Admin) changed the design or advertising: screens reload it.
+  | { type: 'branding.changed'; tenantId: string }
   | { type: 'menu.changed'; tenantId: string }
   | { type: 'inventory.changed'; tenantId: string };
 

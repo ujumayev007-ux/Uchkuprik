@@ -16,6 +16,8 @@ import {
   verifyValue,
 } from './keys.js';
 import { controlAudit } from './owner.js';
+import { buildBundle } from '../branding/bundle.js';
+import { AD_PANELS } from '../branding/bundle.js';
 
 const publicKeySchema = z.string().regex(/^[A-Za-z0-9_-]{40,200}$/);
 const text = (max: number) => z.string().trim().min(1).max(max);
@@ -33,6 +35,7 @@ export const syncOperationTypes = [
   'offline_event',
   'audit_event',
   'license_event',
+  'ad_stats',
 ] as const;
 
 const operationSchema = z.object({
@@ -215,7 +218,10 @@ export function deviceRouter(services: Services) {
   });
 
   /** Verifies the device signature, freshness and counter; returns the activation. */
-  async function authenticateDevice(req: Request, type: 'heartbeat' | 'sync') {
+  async function authenticateDevice(
+    req: Request,
+    type: 'heartbeat' | 'sync' | 'media',
+  ) {
     const body = parse(envelope, req.body);
     const at = now();
     const activation = await db.controlActivation.findUnique({
@@ -278,6 +284,8 @@ export function deviceRouter(services: Services) {
     model: text(80).nullable().optional(),
     os: text(80).nullable().optional(),
     ackCommands: z.array(z.string().max(64)).max(20).default([]),
+    // Version of the branding bundle this install holds completely (media included).
+    brandingVersion: z.string().max(40).optional(),
     branches: z
       .array(
         z.object({
@@ -437,6 +445,41 @@ export function deviceRouter(services: Services) {
     });
     const key = services.control?.signingKeyPem;
     if (!key) throw errors.forbidden();
+    // Design and advertising for this restaurant; sent only when the install's copy differs.
+    const bundle = await buildBundle(db, activation.customerId, at).catch(
+      () => null,
+    );
+    const branding =
+      bundle && bundle.v !== beat.brandingVersion ? bundle : null;
+    if (bundle) {
+      if (bundle.v === beat.brandingVersion)
+        await db.adDelivery
+          .updateMany({
+            where: { activationId: activation.id, ackedAt: null },
+            data: { ackedAt: at },
+          })
+          .catch(() => undefined);
+      else
+        for (const ad of bundle.ads)
+          await db.adDelivery
+            .upsert({
+              where: {
+                campaignId_activationId: {
+                  campaignId: ad.id,
+                  activationId: activation.id,
+                },
+              },
+              create: {
+                campaignId: ad.id,
+                customerId: activation.customerId,
+                activationId: activation.id,
+                version: ad.version,
+                sentAt: at,
+              },
+              update: { version: ad.version, sentAt: at, ackedAt: null },
+            })
+            .catch(() => undefined);
+    }
     const response = signDocument(key, {
       t: 'beat',
       activationId: activation.id,
@@ -446,6 +489,7 @@ export function deviceRouter(services: Services) {
       commands: remaining,
       // Server migration: the signed answer carries the new address of the centre.
       relocate: services.control?.relocateTo ?? null,
+      branding,
       update: candidate
         ? {
             version: candidate.version,
@@ -459,6 +503,64 @@ export function deviceRouter(services: Services) {
     });
     res.json({ response });
   });
+
+  /** One branding file for an install; the install verifies it against the signed bundle's sha256. */
+  router.post('/control/device/media', beatLimiter, async (req, res) => {
+    const { activation, body } = await authenticateDevice(req, 'media');
+    const { id } = parse(z.object({ id: z.uuid() }), body.payload);
+    if (
+      activation.status !== 'ACTIVE' ||
+      activation.license.status !== 'ACTIVE' ||
+      activation.customer.status !== 'ACTIVE'
+    )
+      throw new AppError(403, 'DEVICE_BLOCKED', 'deviceBlocked');
+    // Only files the restaurant's own bundle refers to are handed out.
+    const bundle = await buildBundle(db, activation.customerId);
+    if (!bundle.media.some((media) => media.id === id)) throw errors.notFound();
+    const row = await db.brandingMedia.findUnique({ where: { id } });
+    if (!row) throw errors.notFound();
+    res.json({
+      id,
+      mime: row.mime,
+      sha256: row.sha256,
+      data: Buffer.from(row.data).toString('base64'),
+    });
+  });
+
+  /** Display counters reported by an install: cumulative values, applied idempotently. */
+  async function applyAdStats(customerId: string, data: unknown) {
+    const parsed = z
+      .object({
+        campaignId: z.uuid(),
+        day: z.string().regex(/^d{4}-d{2}-d{2}$/),
+        panel: z.enum(AD_PANELS),
+        shown: z.number().int().min(0).max(1_000_000),
+        closed: z.number().int().min(0).max(1_000_000),
+      })
+      .safeParse(data);
+    if (!parsed.success) return;
+    const { campaignId, day, panel, shown, closed } = parsed.data;
+    if (!(await db.adCampaign.findUnique({ where: { id: campaignId } })))
+      return;
+    const dayDate = new Date(`${day}T00:00:00.000Z`);
+    const where = {
+      campaignId_customerId_day_panel: {
+        campaignId,
+        customerId,
+        day: dayDate,
+        panel,
+      },
+    };
+    const existing = await db.adStat.findUnique({ where });
+    await db.adStat.upsert({
+      where,
+      create: { campaignId, customerId, day: dayDate, panel, shown, closed },
+      update: {
+        shown: Math.max(existing?.shown ?? 0, shown),
+        closed: Math.max(existing?.closed ?? 0, closed),
+      },
+    });
+  }
 
   router.post('/control/device/sync', beatLimiter, async (req, res) => {
     const { activation, body, at } = await authenticateDevice(req, 'sync');
@@ -548,6 +650,10 @@ export function deviceRouter(services: Services) {
           receivedAt: at,
         },
       });
+      if (status === 'APPLIED' && operation.type === 'ad_stats')
+        await applyAdStats(activation.customerId, operation.data).catch(
+          () => undefined,
+        );
       results.push({
         opId: operation.opId,
         status,

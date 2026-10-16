@@ -117,6 +117,12 @@ export const messages = {
   ownerDeviceRevoked: 'Bu qurilma bloklangan.',
   ownerMfaSetup: 'Avval ikki bosqichli himoyani yoqing.',
   featureDisabled: 'Bu imkoniyat dastur egasi tomonidan o‘chirilgan.',
+  mediaInvalid:
+    'Fayl qabul qilinmadi. Faqat PNG, JPEG, WEBP, GIF rasmlari va MP4/WEBM videolar mumkin.',
+  mediaTooLarge: 'Fayl hajmi juda katta (rasm 3 MB, video 20 MB gacha).',
+  mediaInUse:
+    'Bu fayl reklama yoki dizaynda ishlatilmoqda. Avval uni olib tashlang.',
+  adInvalid: 'Reklama ma’lumotlari noto‘g‘ri.',
   discountLimit: 'Chegirma ruxsat etilgan chegaradan oshib ketdi.',
   serverUnreachable:
     'Yangi server manzili javob bermadi yoki bu o‘rnatish uchun tasdiqlanmadi. Manzilni tekshiring.',

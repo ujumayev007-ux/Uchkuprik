@@ -3010,3 +3010,131 @@ model ReceiptAssignment {
   @@index([tenantId, templateId])
   @@map("receipt_assignments")
 }
+
+// ---- Branding: central advertising and remote design (additive) ----
+
+// Uploaded advertising / branding pictures and videos. Only validated image/video
+// bytes are stored (never SVG or HTML). The central copy is the source; installs keep
+// a verified copy (sha256 from the signed bundle) for offline display.
+model BrandingMedia {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  kind      String
+  mime      String
+  name      String
+  sizeBytes Int
+  sha256    String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([sha256])
+  @@map("branding_media")
+}
+
+// Design decided by the Owner. key = "global" (all restaurants) or a customer id.
+model BrandingDesign {
+  key         String   @id
+  config      Json
+  version     Int      @default(1)
+  updatedAt   DateTime @updatedAt
+  updatedById String?  @db.Uuid
+
+  @@map("branding_designs")
+}
+
+// Design chosen by a restaurant Admin when the Owner delegated it (feature design.admin).
+model TenantDesign {
+  tenantId    String   @id @db.Uuid
+  config      Json
+  version     Int      @default(1)
+  updatedAt   DateTime @updatedAt
+  updatedById String?  @db.Uuid
+
+  @@map("tenant_designs")
+}
+
+model AdCampaign {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  title        String
+  // TEXT | IMAGE | VIDEO
+  kind         String
+  // FULLSCREEN | POPUP | BANNER
+  format       String
+  text         String?
+  mediaId      String?   @db.Uuid
+  // ADMIN | CASHIER | WAITER | KITCHEN | CUSTOMER
+  panels       String[]
+  // ALL | SELECTED
+  targetMode   String    @default("ALL")
+  durationSec  Int       @default(10)
+  closable     Boolean   @default(true)
+  autoCloseSec Int?
+  startsAt     DateTime?
+  endsAt       DateTime?
+  // Minimum minutes between two displays on one screen, and a daily cap.
+  everyMinutes Int       @default(0)
+  maxPerDay    Int?
+  priority     Int       @default(0)
+  // DRAFT | ACTIVE | PAUSED
+  status       String    @default("DRAFT")
+  version      Int       @default(1)
+  createdById  String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  targets AdTarget[]
+
+  @@index([status])
+  @@map("ad_campaigns")
+}
+
+model AdTarget {
+  campaignId String @db.Uuid
+  customerId String @db.Uuid
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, customerId])
+  @@index([customerId])
+  @@map("ad_targets")
+}
+
+// Display counters per campaign, restaurant, day and panel. On an install the rows are
+// written locally and reported to the centre as cumulative values (idempotent).
+model AdStat {
+  campaignId String   @db.Uuid
+  customerId String   @db.Uuid
+  day        DateTime @db.Date
+  panel      String
+  shown      Int      @default(0)
+  closed     Int      @default(0)
+  // Install side: what the centre has already been told.
+  shownSent  Int      @default(0)
+  closedSent Int      @default(0)
+
+  @@id([campaignId, customerId, day, panel])
+  @@map("ad_stats")
+}
+
+// Which install received which campaign version (central side).
+model AdDelivery {
+  campaignId   String    @db.Uuid
+  customerId   String    @db.Uuid
+  activationId String    @db.Uuid
+  version      Int
+  sentAt       DateTime  @default(now())
+  ackedAt      DateTime?
+
+  @@id([campaignId, activationId])
+  @@index([customerId])
+  @@map("ad_deliveries")
+}
+
+// Install side: the last signed branding bundle (design + campaigns) for offline use.
+model BrandingCache {
+  id         Int      @id @default(1)
+  version    String
+  bundle     Json
+  receivedAt DateTime @default(now())
+
+  @@map("branding_cache")
+}

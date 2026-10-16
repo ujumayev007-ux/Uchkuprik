@@ -32,6 +32,8 @@ import {
   licenseRouter,
 } from './modules/license/license.routes.js';
 import { loadSession } from './modules/auth/session.js';
+import { brandingRouter } from './modules/branding/branding.routes.js';
+import { brandingOwnerRouter } from './modules/branding/owner.routes.js';
 import { dataRouter } from './modules/control/data.routes.js';
 import { deviceRouter } from './modules/control/device.routes.js';
 import { enforceControl } from './modules/control/enforce.js';
@@ -202,6 +204,15 @@ export function createApp({
         limit: '2mb',
       }),
     );
+    // Advertising and design pictures/videos: raw bodies, validated by their own bytes.
+    app.use(
+      '/api/control/media',
+      express.raw({ type: () => true, limit: '21mb' }),
+    );
+    app.use(
+      '/api/branding/admin/media',
+      express.raw({ type: () => true, limit: '4mb' }),
+    );
     // The merchant QR picture may be larger than ordinary JSON requests.
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
     app.use('/api', express.json({ limit: '100kb' }));
@@ -227,6 +238,7 @@ export function createApp({
       kitchenRouter,
       printersRouter,
       receiptTemplatesRouter,
+      brandingRouter,
       inventoryRouter,
       onlineRouter,
       crmRouter,
@@ -249,6 +261,7 @@ export function createApp({
         ownerRouter,
         manageRouter,
         dataRouter,
+        brandingOwnerRouter,
         deviceRouter,
       ])
         app.use('/api', router(services));

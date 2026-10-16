@@ -108,6 +108,7 @@ export function attachRealtime(
     if (
       event.type === 'menu.changed' ||
       event.type === 'inventory.changed' ||
+      event.type === 'branding.changed' ||
       event.type === 'config.changed'
     )
       io.to(tenantRoom(event.tenantId)).emit(event.type, {});
