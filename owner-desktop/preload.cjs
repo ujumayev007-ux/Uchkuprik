@@ -7,6 +7,13 @@ contextBridge.exposeInMainWorld('fastfoodOwner', {
   sign: (value) => ipcRenderer.invoke('owner:sign', value),
 });
 
+// Only the "cannot reach the server" page (a local file) may use these two calls; the
+// main process refuses them from any other page.
+contextBridge.exposeInMainWorld('ownerConn', {
+  retry: () => ipcRenderer.invoke('conn:retry'),
+  settings: () => ipcRenderer.invoke('conn:settings'),
+});
+
 // Same local vendor tools as the customer app's vendor panel (present and working
 // only when this computer holds the vendor's private signing key).
 const isVendor = ipcRenderer.sendSync('vendor:isVendor') === true;

@@ -121,16 +121,35 @@ function SessionOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Which desktop application hosts this page: the Restaurant Admin shell announces itself. */
+function shellKind(): 'admin' | 'pos' {
+  const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
+    .fastfoodShell;
+  return shell?.kind === 'admin' ? 'admin' : 'pos';
+}
+
+/** Managers (reports, staff or settings) land on the dashboard, terminal staff on their panel. */
+function manages(me: Me | null | undefined) {
+  return (
+    can(me, 'reports.view') ||
+    can(me, 'users.manage') ||
+    can(me, 'settings.manage')
+  );
+}
+
 function Home() {
   const { data: me } = useMe();
   if (me?.tenantKind === 'PLATFORM')
     return <Navigate to="/platforma/bizneslar" replace />;
-  // Terminal staff start on the POS screen.
+  // The Restaurant Admin application always starts on the management dashboard.
+  if (shellKind() === 'admin') return <DashboardPage />;
+  // The shared POS application shows the staff member's own panel after sign-in; the
+  // menu then offers only the other panels their permissions allow.
   if (me?.roleKeys.includes('waiter') && !can(me, 'reports.view'))
     return <Navigate to="/ofitsiant" replace />;
-  if (me?.authMethod === 'PIN' && can(me, 'pos.access'))
+  if (can(me, 'pos.access') && (me?.authMethod === 'PIN' || !manages(me)))
     return <Navigate to="/kassa" replace />;
-  if (me?.authMethod === 'PIN' && can(me, 'kitchen.access'))
+  if (can(me, 'kitchen.access') && (me?.authMethod === 'PIN' || !manages(me)))
     return <Navigate to="/oshxona" replace />;
   if (
     can(me, 'delivery.courier') &&

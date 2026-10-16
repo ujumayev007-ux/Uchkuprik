@@ -29,3 +29,7 @@ owner-desktop/stage
 owner-desktop/release
 desktop/release-test
 owner-desktop/release-test
+admin-desktop/node_modules
+admin-desktop/stage
+admin-desktop/release
+admin-desktop/release-test

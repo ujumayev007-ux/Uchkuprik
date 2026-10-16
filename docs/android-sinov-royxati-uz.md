@@ -1,6 +1,6 @@
 # Android ofitsiant ilovasi — qurilmada sinov ro‘yxati
 
-Versiya 1.11.0. Bu ilovaning bildirishnoma xizmati (AlertService) hali **haqiqiy qurilmada sinalmagan**:
+Versiya 1.12.0. Bu ilovaning bildirishnoma xizmati (AlertService) hali **haqiqiy qurilmada sinalmagan**:
 rivojlantirish kompyuterida planshet ham, emulyator ham yo‘q. Quyidagi ro‘yxatni birinchi
 planshetda bajaring va natijani belgilang. Hamma qadam o‘tmaguncha ilovani «tayyor» deb
 hisoblamang.
@@ -30,7 +30,7 @@ Eslatma: ba'zi telefonlar (Xiaomi, Huawei, Samsung) fondagi ilovalarni tez o‘c
 6‑ va 7‑sinov o‘tmasa: Sozlamalar → Ilovalar → FastFood → Batareya → «Cheklovsiz» qiling
 va «Avtomatik ishga tushirish» (Autostart) ruxsatini bering.
 
-## Qurilmada ko‘rib chiqiladigan ekranlar (versiya 1.11.0)
+## Qurilmada ko‘rib chiqiladigan ekranlar (versiya 1.12.0)
 
 Quyidagi ekranlar kompyuterda brauzer oynasida o‘lchamlarga qarab tekshirilgan, lekin
 **haqiqiy telefon/planshetda ko‘rilmagan**. Birinchi planshet/telefonda ko‘zdan kechiring:
@@ -42,6 +42,8 @@ Quyidagi ekranlar kompyuterda brauzer oynasida o‘lchamlarga qarab tekshirilgan
 | 17  | Stolni qayta oching (ofitsiant yoki kassa)                               | Stoldagi faol buyurtma tiklanadi, «Buyurtmaga taom qo‘shilmoqda» ko‘rinadi; ikkinchi nusxa yaratilmaydi | ☐      |
 | 18  | Chek dizayni sahifasi telefonda: 58 mm ni tanlang, ko‘rinishni qarang    | Ko‘rinish o‘zgaradi, sahifa yon tomonga siljimaydi                                                      | ☐      |
 | 19  | Mijozlar ekrani (TV) planshetda: buyurtmani «Tayyor» qiling              | Raqam sariq ro‘yxatdan yashil ro‘yxatga silliq o‘tadi, ovozli e’lon bir marta aytiladi                  | ☐      |
+
+| 20  | Ilovani oching va ofitsiant sifatida kiring                              | Ilova to‘g‘ridan-to‘g‘ri ofitsiant ekranini (Stollar) ochadi                                            | ☐      |
 
 ## Avtomatik tekshirilganlar (kompyuterda, qurilmasiz)
 

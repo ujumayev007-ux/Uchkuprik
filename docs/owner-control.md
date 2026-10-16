@@ -214,3 +214,42 @@ personal data (employees, orders) behind a fresh password+code, every read audit
 (`data.view.*`), no password/PIN/token hashes selected. The Owner can suspend or restore an
 employee (sessions end at once, audited). Restaurants running on their own computer keep
 their data there; the centre sees only what the install reports.
+
+### Forgotten passwords and PINs (Owner)
+
+The Owner sets a **new** password or PIN for a restaurant Admin or employee without ever
+seeing the old one (Owner → customer → «Restoran ma’lumotlari» → Xodimlar → «Parol / PIN
+tiklash»; API `POST /api/control/customers/:id/data/users/:userId/password` or `/pin`).
+It needs a fresh password + code (step-up) and an explicit `confirm: true`; the password
+must meet the normal rule (10+ characters, letters and digits). Only a hash is stored (the
+same hashing as normal sign-in), the new secret is never written to a log or an audit row,
+every session of the employee ends, the account is unlocked and the employee must choose
+their own password at the next sign-in. The reset touches the user row and its sessions
+only: the tenant, the database, orders, history and the licence are never recreated or
+changed. It is audited centrally (`data.user.password.reset`, `data.user.pin.set|remove`)
+and in the restaurant's own audit log (`user.password.reset.owner`, …), with no secret.
+
+### Application packages
+
+| Package                    | For                                                                       | Connects to                                    |
+| -------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------- |
+| FastFood (client EXE)      | Shared POS: Cashier, Waiter and Kitchen panels, server + database inside  | itself (and the central server for licences)   |
+| FastFood Admin (EXE)       | Restaurant administrator: staff, roles, tables, printers, settings, menu  | the restaurant's server address (set on start) |
+| FastFood Owner (EXE)       | The Owner (SUPER_OWNER)                                                   | the central server                             |
+| FastFood (Android APK)     | Waiter: opens the waiter screen, alerts for guest orders                  | the restaurant computer's address              |
+
+After sign-in the client EXE opens the panel that matches the account (waiter → Waiter,
+cashier → Cashier, kitchen → Kitchen; managers land on the dashboard) and the menu offers
+only the other panels the account's permissions and the Owner's switches allow. The server
+enforces the same rules. The Admin EXE always opens the management dashboard; it stores no
+restaurant data and no password, accepts plain `http` only for local-network addresses,
+and its address can be changed later (menu «Server manzili…») without rebuilding.
+
+### Local test central server
+
+`node scripts/test-control-plane.mjs setup | start | status | code | stop` runs an isolated
+TEST central server on `http://127.0.0.1:4100` with its own database
+(`fastfood_control_pilot`), its own throw-away signing key and a test Owner. Secrets live in
+`%LOCALAPPDATA%\FastFood-TestControl`, never in the repository, and nothing in a production
+installer contains them (the Owner and Admin build scripts refuse a production build whose
+files contain test flags, a local address or test credentials).

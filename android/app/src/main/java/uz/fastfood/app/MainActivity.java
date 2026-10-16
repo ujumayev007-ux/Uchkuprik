@@ -307,7 +307,8 @@ public class MainActivity extends Activity {
             }
         });
         web.addJavascriptInterface(new AlertBridge(), "FastFoodAndroid");
-        web.loadUrl(server + (pendingPath != null ? pendingPath : "/"));
+        // The Android app is the waiter panel: it opens the waiter screen after sign-in.
+        web.loadUrl(server + (pendingPath != null ? pendingPath : "/ofitsiant"));
         pendingPath = null;
         setContentView(web);
     }

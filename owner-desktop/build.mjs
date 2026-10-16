@@ -43,6 +43,7 @@ for (const name of [
   'preload.cjs',
   'server-preload.cjs',
   'server-settings.html',
+  'connection-error.html',
 ])
   copyFileSync(join(here, name), join(stage, name));
 writeFileSync(
@@ -55,6 +56,21 @@ writeFileSync(
     author: 'FAST FOOD',
   }),
 );
+
+// A production installer must carry only the public server address: no test flag,
+// no local address and nothing that looks like a test Owner credential.
+if (!TEST) {
+  const baked = readFileSync(join(stage, 'owner.json'), 'utf8');
+  if (/"test"|127\.0\.0\.1|localhost/.test(baked))
+    throw new Error('A production Owner build must not contain test settings.');
+  for (const name of ['main.cjs', 'preload.cjs', 'connection-error.html'])
+    if (
+      /owner\.test@|mfaSecret|Test-[A-Za-z0-9_-]{8,}-1/.test(
+        readFileSync(join(stage, name), 'utf8'),
+      )
+    )
+      throw new Error(`Test credentials found in ${name}; build refused.`);
+}
 
 const { build } = require('electron-builder');
 await build({

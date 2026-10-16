@@ -1,0 +1,21 @@
+{
+  "name": "fastfood-admin",
+  "productName": "FastFood Admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FAST FOOD restoran administratori dasturi — restoran serveriga ulanadi.",
+  "author": "FAST FOOD",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node build.mjs"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

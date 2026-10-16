@@ -10,11 +10,24 @@ TEST paketlari ishlab turgan tizimdan **alohida**: o‘z ilova nomi, o‘z ma’
 (`http://127.0.0.1:4100`) ulanadi. Ular haqiqiy litsenziya, Owner hisobi, kalit va bazaga
 umuman ulanmaydi.
 
-| Paket                                   | Fayl                                                             |
-| --------------------------------------- | ---------------------------------------------------------------- |
-| Mijoz dasturi (sinov)                   | `desktop\release-test\FastFood-TEST-Setup-1.11.0.exe`            |
-| Owner dasturi (sinov)                   | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.2.0.exe` |
-| Android (sinov va ishchi uchun bir xil) | `android\release\FastFood-1.11.0.apk`                            |
+| Paket                                         | Fayl                                                             |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| Umumiy kassa dasturi (Kassa+Ofitsiant+Oshxona) | `desktop\release-test\FastFood-TEST-Setup-1.12.0.exe`            |
+| Restoran Admin dasturi (sinov)                | `admin-desktop\release-test\FastFood-Admin-TEST-Setup-1.0.0.exe` |
+| Owner dasturi (sinov)                         | `owner-desktop\release-test\FastFood-Owner-TEST-Setup-1.3.0.exe` |
+| Ofitsiant Android (sinov va ishchi uchun bir xil) | `android\release\FastFood-1.12.0.apk`                        |
+
+**Sinov serverini ishga tushirish** (Owner dasturi shunga ulanadi; kompyuter qayta
+yoqilsa, qayta ishga tushiring):
+
+```
+node scripts/test-control-plane.mjs setup     (faqat birinchi marta)
+node scripts/test-control-plane.mjs start
+node scripts/test-control-plane.mjs code      (Owner emaili, paroli va kirish kodi)
+```
+
+Server ishlamayotgan bo‘lsa, Owner dasturi «Markaziy serverga ulanib bo‘lmadi» sahifasini
+ko‘rsatadi (Qayta urinish va Server manzili tugmalari bilan) va server yoqilgach o‘zi ulanadi.
 
 Paketlar raqamli imzosiz: Windows birinchi ishga tushirishda «Noma’lum nashriyotchi»
 ogohlantirishini ko‘rsatadi («Baribir ishga tushirish»). Fayl yaxlitligini SHA256 bilan

@@ -278,6 +278,60 @@ function menu() {
   );
 }
 
+// ---- cannot reach the central server: a clear Uzbek page with retry and settings ----
+let currentUrl = '';
+let onErrorPage = false;
+const ERROR_PAGE = path.join(__dirname, 'connection-error.html');
+const fromErrorPage = (event) => {
+  const frameUrl = String(event.senderFrame?.url || '');
+  return (
+    win !== null &&
+    event.sender === win.webContents &&
+    frameUrl.startsWith('file:') &&
+    frameUrl.includes('connection-error.html')
+  );
+};
+
+async function showConnectionError(reason) {
+  if (!win || win.isDestroyed()) return;
+  onErrorPage = true;
+  try {
+    fs.appendFileSync(
+      path.join(DATA, 'owner.log'),
+      `${new Date().toISOString()} connection error ${currentUrl}: ${reason}\n`,
+    );
+  } catch {
+    /* logging must never break the app */
+  }
+  await win.loadFile(ERROR_PAGE, {
+    query: { url: currentUrl, reason: String(reason).slice(0, 160) },
+  });
+}
+
+ipcMain.handle('conn:retry', async (event) => {
+  if (!fromErrorPage(event) || !currentUrl) return { ok: false };
+  try {
+    const response = await fetch(`${currentUrl}/api/control/info`, {
+      signal: AbortSignal.timeout(6000),
+    });
+    const info = await response.json();
+    if (!response.ok || info.plane !== true) return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+  onErrorPage = false;
+  void win
+    .loadURL(`${currentUrl}/owner`)
+    .catch((error) => showConnectionError(error.message));
+  return { ok: true };
+});
+
+ipcMain.handle('conn:settings', (event) => {
+  if (!fromErrorPage(event)) throw new Error('Ruxsat yo‘q');
+  openServerSettings();
+  return { ok: true };
+});
+
 async function boot() {
   const url = serverUrl();
   if (!url) {
@@ -289,6 +343,7 @@ async function boot() {
     return;
   }
   const origin = new URL(url).origin;
+  currentUrl = url;
   // The Owner console needs no device permissions at all.
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, done) =>
     done(false),
@@ -317,9 +372,20 @@ async function boot() {
       void shell.openExternal(target);
     return { action: 'deny' };
   });
+  // A failed load (server down, wrong address, no internet) shows a clear page with
+  // retry instead of a blank window or a technical error box.
+  win.webContents.on(
+    'did-fail-load',
+    (_event, code, description, _target, isMainFrame) => {
+      if (isMainFrame && code !== -3 && !onErrorPage)
+        void showConnectionError(`${description} (${code})`);
+    },
+  );
   // Fail early (and clearly) when the OS cannot protect the device key.
   identity();
-  await win.loadURL(`${url}/owner`);
+  await win.loadURL(`${url}/owner`).catch((error) => {
+    if (!onErrorPage) return showConnectionError(error.message);
+  });
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
