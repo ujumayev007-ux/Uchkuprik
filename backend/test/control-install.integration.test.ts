@@ -629,6 +629,43 @@ describe('LAN devices on the cashier computer (offline)', () => {
       }),
     ).toBe('CASHIER_PANEL_ONLY');
   });
+
+  it('keeps table assignment on the Cashier panel and lets waiter alerts run on the LAN', async () => {
+    const t = await lanSetup();
+    const lan = '::ffff:192.168.1.50';
+    const table = '/orders/00000000-0000-4000-8000-000000000000/table';
+    // A waiter tablet (registered device) cannot change tables while offline.
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: table,
+        remote: lan,
+        cookie: t.kitchenCookie,
+        panel: 'cashier',
+      }),
+    ).toBe('CASHIER_PANEL_ONLY');
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: table,
+        remote: lan,
+        cookie: t.cashierCookie,
+        panel: 'cashier',
+      }),
+    ).toBe('allowed');
+    // Live alerts reach registered tablets over the LAN, not unknown machines.
+    expect(
+      await through(t, {
+        method: 'GET',
+        path: '/live/alerts',
+        remote: lan,
+        cookie: t.kitchenCookie,
+      }),
+    ).toBe('allowed');
+    expect(
+      await through(t, { method: 'GET', path: '/live/alerts', remote: lan }),
+    ).toBe('LOCAL_DEVICE_REQUIRED');
+  });
 });
 
 describe('cloud edition tenant isolation', () => {

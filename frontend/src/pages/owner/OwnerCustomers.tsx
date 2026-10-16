@@ -547,7 +547,12 @@ export function CustomersTab({ catalog }: { catalog: FeatureDef[] }) {
               <Badge tone={customer.status === 'ACTIVE' ? 'success' : 'danger'}>
                 {c.status[customer.status]}
               </Badge>
-              <Button size="sm" onClick={() => setSelected(customer.id)}>
+              <Button
+                size="sm"
+                aria-label={customer.name}
+                title={customer.name}
+                onClick={() => setSelected(customer.id)}
+              >
                 ⚙
               </Button>
             </li>

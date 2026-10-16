@@ -27,12 +27,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -249,23 +245,8 @@ public class AlertService extends Service {
             http.disconnect();
             throw new Exception("HTTP " + code);
         }
-        try (BufferedReader reader = new BufferedReader(
-            new InputStreamReader(http.getInputStream(), StandardCharsets.UTF_8))) {
-            String event = null;
-            StringBuilder data = new StringBuilder();
-            String line;
-            while (running && (line = reader.readLine()) != null) {
-                if (line.isEmpty()) {
-                    if (event != null && data.length() > 0) handle(event, data.toString());
-                    event = null;
-                    data.setLength(0);
-                } else if (line.startsWith("event:")) {
-                    event = line.substring(6).trim();
-                } else if (line.startsWith("data:")) {
-                    if (data.length() > 0) data.append('\n');
-                    data.append(line.substring(5).trim());
-                }
-            }
+        try {
+            SseReader.read(http.getInputStream(), () -> running, this::handle);
         } finally {
             http.disconnect();
         }
@@ -326,27 +307,10 @@ public class AlertService extends Service {
 
     /** Each order id is announced once, across reconnects and restarts. */
     private synchronized boolean firstTime(String orderId) {
-        long now = System.currentTimeMillis();
-        JSONObject seen;
-        try {
-            seen = new JSONObject(prefs().getString("seen", "{}"));
-        } catch (JSONException error) {
-            seen = new JSONObject();
-        }
-        if (seen.has(orderId)) return false;
-        Iterator<String> keys = seen.keys();
-        Set<String> stale = new LinkedHashSet<>();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            if (now - seen.optLong(key, 0) > SEEN_TTL_MS) stale.add(key);
-        }
-        for (String key : stale) seen.remove(key);
-        try {
-            seen.put(orderId, now);
-        } catch (JSONException ignored) {
-        }
-        prefs().edit().putString("seen", seen.toString()).apply();
-        return true;
+        SeenOrders seen = new SeenOrders(prefs().getString("seen2", ""), SEEN_TTL_MS);
+        boolean fresh = seen.markIfNew(orderId, System.currentTimeMillis());
+        if (fresh) prefs().edit().putString("seen2", seen.serialize()).apply();
+        return fresh;
     }
 
     private static String formatNumber(int number) {

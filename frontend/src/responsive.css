@@ -200,7 +200,8 @@ canvas {
     grid-template-columns: 1fr;
   }
   .tabs {
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 }
 
@@ -212,5 +213,50 @@ canvas {
   .queue-screen .live-dot {
     width: 20px;
     height: 20px;
+  }
+}
+
+/* Owner policy matrix: one card per feature on narrow screens. */
+@media (max-width: 760px) {
+  .policy-table thead {
+    display: none;
+  }
+  .policy-table,
+  .policy-table tbody,
+  .policy-table tr,
+  .policy-table td {
+    display: block;
+    width: 100%;
+  }
+  .policy-table tr {
+    margin-bottom: 10px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  .policy-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 4px;
+    border: 0;
+  }
+  .policy-table td[data-label]::before {
+    content: attr(data-label);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .policy-table td:first-child,
+  .policy-table td[colspan] {
+    display: block;
+  }
+  .policy-table td[colspan] {
+    padding: 0;
+  }
+  .policy-table select {
+    max-width: 60%;
   }
 }

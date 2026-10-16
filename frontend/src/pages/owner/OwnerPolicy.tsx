@@ -249,7 +249,7 @@ export function PolicyEditor({
       </div>
 
       <div className="table-wrap">
-        <table className="table">
+        <table className="table policy-table">
           <thead>
             <tr>
               <th>{p.feature}</th>
@@ -281,7 +281,7 @@ export function PolicyEditor({
                         {def.hint ? ` · ${def.hint}` : ''}
                       </div>
                     </td>
-                    <td>
+                    <td data-label={p.mode}>
                       <select
                         aria-label={`${def.label}: ${p.mode}`}
                         value={mode}
@@ -296,7 +296,7 @@ export function PolicyEditor({
                         <option value="ADMIN">{p.modes.ADMIN}</option>
                       </select>
                     </td>
-                    <td>
+                    <td data-label={p.online}>
                       <input
                         type="checkbox"
                         aria-label={`${def.label}: ${p.online}`}
@@ -307,7 +307,7 @@ export function PolicyEditor({
                         }
                       />
                     </td>
-                    <td>
+                    <td data-label={p.offline}>
                       {def.offlineCapable && !reportOnly ? (
                         <input
                           type="checkbox"
@@ -324,7 +324,7 @@ export function PolicyEditor({
                         <span className="muted small">{p.never}</span>
                       )}
                     </td>
-                    <td>
+                    <td data-label={p.valuesTitle}>
                       {!reportOnly && (
                         <button
                           className="text-link"
