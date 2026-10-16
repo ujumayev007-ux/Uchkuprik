@@ -260,3 +260,82 @@ canvas {
     max-width: 60%;
   }
 }
+
+/* ---- POS fills the screen (desktops, terminals, tablets in landscape) ------- */
+@media (min-width: 821px) {
+  .shell.pos-mode {
+    height: 100svh;
+    overflow: hidden;
+  }
+  .shell.pos-mode .shell-main {
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .shell.pos-mode .shell-content {
+    flex: 1;
+    min-height: 0;
+    max-width: none;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .shell.pos-mode .shell-content > .pos {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    padding-bottom: 0;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 480px);
+    align-items: stretch;
+    gap: 14px;
+  }
+  .shell.pos-mode .pos-catalog {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .shell.pos-mode .pos-grid {
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(clamp(120px, 11vw, 190px), 1fr)
+    );
+    align-content: start;
+  }
+  .shell.pos-mode .pos-cart {
+    position: static;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 0;
+  }
+  /* Totals and the pay buttons stay visible however long the cart is. */
+  .shell.pos-mode .cart-footer {
+    position: sticky;
+    bottom: 0;
+    margin-top: auto;
+    padding: 10px 0 14px;
+    border-top: 1px solid var(--line);
+    z-index: 2;
+  }
+  .shell.pos-mode .cart-lines {
+    min-height: 60px;
+  }
+}
+@media (max-width: 820px) {
+  .pos-cart.open {
+    padding-bottom: 0;
+  }
+  .pos-cart.open .cart-footer {
+    position: sticky;
+    bottom: 0;
+    margin-top: auto;
+    padding: 10px 0 14px;
+    border-top: 1px solid var(--line);
+    z-index: 2;
+  }
+}
+.pos-catalog > * {
+  flex-shrink: 0;
+}

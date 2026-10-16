@@ -297,3 +297,16 @@
 .queue-columns .ready .tv-list li {
   color: #fff;
 }
+
+.queue-board {
+  display: contents;
+}
+.tv-list li,
+.tv-row {
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .queue-columns .ready .tv-list li {
+    animation: none;
+  }
+}

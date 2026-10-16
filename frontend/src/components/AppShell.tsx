@@ -537,7 +537,9 @@ export function AppShell() {
 
   return (
     <div
-      className={`shell ${menuOpen ? 'menu-open' : ''} ${compact ? 'compact' : ''}`}
+      className={`shell ${menuOpen ? 'menu-open' : ''} ${compact ? 'compact' : ''} ${
+        location.pathname.startsWith('/kassa') ? 'pos-mode' : ''
+      }`}
     >
       <aside className="sidebar" aria-label={t.nav.openMenu}>
         <div className="sidebar-brand">

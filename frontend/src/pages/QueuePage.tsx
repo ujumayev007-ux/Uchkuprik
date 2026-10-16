@@ -6,6 +6,7 @@ import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
 import { t } from '../i18n';
 import { api, ApiError } from '../lib/api';
 import { defaultOrdering, type Ordering } from '../lib/ordering';
+import { useFlip } from '../lib/flip';
 import { useRealtime } from '../lib/realtime';
 import { formatOrderNo, readyAnnouncement } from '../lib/uzbek-number';
 import { speak } from '../lib/voice';
@@ -68,6 +69,8 @@ export function QueuePage() {
   const [overlayDismissed, setOverlayDismissed] = useState(false);
   const announced = useRef<Map<string, number> | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const board = useRef<HTMLDivElement | null>(null);
+  useFlip(board);
 
   useEffect(() => {
     document.documentElement.dataset.theme = 'dark';
@@ -173,64 +176,78 @@ export function QueuePage() {
           title={online ? t.live.online : t.live.offline}
         />
       </header>
-      {display.layout === 'single' ? (
-        <div
-          className="queue-columns"
-          style={{ ['--tv-columns' as string]: 1 }}
-        >
-          <section>
-            <ul className="tv-list single" aria-label={t.queue.title}>
-              {showReady &&
-                ready.map((item) => (
-                  <li key={`r-${item.key}`} className="tv-row is-ready">
-                    <b>{formatOrderNo(item.number)}</b>
-                    <span>{t.ordering.tv.ready}</span>
-                  </li>
-                ))}
-              {showPreparing &&
-                preparing.map((number) => (
-                  <li key={`p-${number}`} className="tv-row is-preparing">
-                    <b>{formatOrderNo(number)}</b>
-                    <span>{t.ordering.tv.preparing}</span>
-                  </li>
-                ))}
-            </ul>
-            {empty && <p className="muted">{t.ordering.tv.empty}</p>}
-          </section>
-        </div>
-      ) : (
-        <div
-          className="queue-columns"
-          style={{ ['--tv-columns' as string]: Math.max(1, columns) }}
-        >
-          {showPreparing && (
-            <section className="preparing">
-              <h2 className="tv-title">
-                {t.ordering.tv.preparing}
-                <span className="tv-count">{preparing.length}</span>
-              </h2>
-              <ul className="tv-list">
-                {preparing.map((number) => (
-                  <li key={number}>{formatOrderNo(number)}</li>
-                ))}
+      <div ref={board} className="queue-board">
+        {display.layout === 'single' ? (
+          <div
+            className="queue-columns"
+            style={{ ['--tv-columns' as string]: 1 }}
+          >
+            <section>
+              <ul className="tv-list single" aria-label={t.queue.title}>
+                {showReady &&
+                  ready.map((item) => (
+                    <li
+                      key={`r-${item.key}`}
+                      data-flip={`n${item.number}`}
+                      className="tv-row is-ready"
+                    >
+                      <b>{formatOrderNo(item.number)}</b>
+                      <span>{t.ordering.tv.ready}</span>
+                    </li>
+                  ))}
+                {showPreparing &&
+                  preparing.map((number) => (
+                    <li
+                      key={`p-${number}`}
+                      data-flip={`n${number}`}
+                      className="tv-row is-preparing"
+                    >
+                      <b>{formatOrderNo(number)}</b>
+                      <span>{t.ordering.tv.preparing}</span>
+                    </li>
+                  ))}
               </ul>
+              {empty && <p className="muted">{t.ordering.tv.empty}</p>}
             </section>
-          )}
-          {showReady && (
-            <section className="ready">
-              <h2 className="tv-title">
-                {t.queue.ready}
-                <span className="tv-count">{ready.length}</span>
-              </h2>
-              <ul className="tv-list">
-                {ready.map((item) => (
-                  <li key={item.key}>{formatOrderNo(item.number)}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div
+            className="queue-columns"
+            style={{ ['--tv-columns' as string]: Math.max(1, columns) }}
+          >
+            {showPreparing && (
+              <section className="preparing">
+                <h2 className="tv-title">
+                  {t.ordering.tv.preparing}
+                  <span className="tv-count">{preparing.length}</span>
+                </h2>
+                <ul className="tv-list">
+                  {preparing.map((number) => (
+                    <li key={number} data-flip={`n${number}`}>
+                      {formatOrderNo(number)}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {showReady && (
+              <section className="ready">
+                <h2 className="tv-title">
+                  {t.queue.ready}
+                  <span className="tv-count">{ready.length}</span>
+                </h2>
+                <ul className="tv-list">
+                  {ready.map((item) => (
+                    <li key={item.key} data-flip={`n${item.number}`}>
+                      {formatOrderNo(item.number)}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        )}
+      </div>
       {!sound && !overlayDismissed && display.voice.enabled && (
         <div className="tv-sound-overlay">
           <div className="stack center">
