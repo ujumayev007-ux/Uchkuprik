@@ -133,7 +133,9 @@ function base32Decode(text) {
   let bits = 0;
   let value = 0;
   const bytes = [];
-  for (const char of String(text).toUpperCase().replace(/[\s=-]+/g, '')) {
+  for (const char of String(text)
+    .toUpperCase()
+    .replace(/[\s=-]+/g, '')) {
     const index = alphabet.indexOf(char);
     if (index < 0) return null;
     value = (value << 5) | index;
@@ -153,10 +155,9 @@ function totpAt(secret, step) {
   counter.writeBigUInt64BE(BigInt(step));
   const digest = crypto.createHmac('sha1', key).update(counter).digest();
   const offset = digest[digest.length - 1] & 15;
-  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(
-    6,
-    '0',
-  );
+  return String(
+    (digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000,
+  ).padStart(6, '0');
 }
 
 function readRemembered() {
@@ -195,7 +196,9 @@ ipcMain.handle('owner:remember:get', (event) => {
 ipcMain.handle('owner:remember:set', (event, value) => {
   if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
   if (!safeStorage.isEncryptionAvailable())
-    throw new Error('Operatsion tizimning xavfsiz saqlash imkoniyati mavjud emas.');
+    throw new Error(
+      'Operatsion tizimning xavfsiz saqlash imkoniyati mavjud emas.',
+    );
   const email = String(value?.email || '')
     .trim()
     .toLowerCase()

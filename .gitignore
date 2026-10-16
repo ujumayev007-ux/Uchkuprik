@@ -33,4 +33,4 @@ admin-desktop/node_modules
 admin-desktop/stage
 admin-desktop/release
 admin-desktop/release-test
-owner-desktop/release-prod
+owner-desktop/release-prod*
