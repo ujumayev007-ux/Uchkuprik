@@ -223,6 +223,16 @@ export async function resolveBranding(
   if (hosted) {
     customerId = hosted.id;
     bundle = await buildBundle(db, hosted.id, at);
+  } else if (services.control?.plane) {
+    // The central server is not an install: its own sign-in screen (no restaurant yet)
+    // uses the Owner's global design.
+    const globalRow = await db.brandingDesign.findUnique({
+      where: { key: 'global' },
+    });
+    bundle = {
+      ...emptyBundle(),
+      design: resolveDesign(layerOf(globalRow?.config)),
+    };
   } else {
     const [row, link] = await Promise.all([
       db.brandingCache.findUnique({ where: { id: 1 } }),
@@ -233,16 +243,6 @@ export async function resolveBranding(
     ]);
     customerId = link?.customerId ?? null;
     if (row) bundle = row.bundle as unknown as BrandingBundle;
-    else if (services.control?.plane && !tenantId) {
-      // The central server's own sign-in screen uses the Owner's global design.
-      const globalRow = await db.brandingDesign.findUnique({
-        where: { key: 'global' },
-      });
-      bundle = {
-        ...emptyBundle(),
-        design: resolveDesign(layerOf(globalRow?.config)),
-      };
-    }
   }
   let delegated = false;
   let design = bundle.design;

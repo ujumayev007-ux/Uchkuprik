@@ -236,7 +236,8 @@ function ServerAddress({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   return (
-    <div className="stack compact">
+    <details className="stack compact">
+      <summary className="muted small">{k.serverAdvanced}</summary>
       <div className="muted small">
         {k.server}: <strong>{current ?? '—'}</strong>
       </div>
@@ -277,7 +278,7 @@ function ServerAddress({
           </div>
         </form>
       )}
-    </div>
+    </details>
   );
 }
 

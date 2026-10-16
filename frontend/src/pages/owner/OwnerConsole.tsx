@@ -17,7 +17,9 @@ import {
   setOwnerReauthPrompt,
   type FeatureDef,
 } from '../../lib/owner';
+import { AdsTab } from './OwnerAds';
 import { CustomersTab } from './OwnerCustomers';
+import { DesignTab } from './OwnerDesign';
 import { DevicesTab } from './OwnerDevices';
 import { AuditTab, OverviewTab, ReleasesTab, SecurityTab } from './OwnerMisc';
 
@@ -251,6 +253,8 @@ type Tab =
   | 'releases'
   | 'security'
   | 'audit'
+  | 'ads'
+  | 'design'
   | 'local';
 
 /** SUPER_OWNER console: shown on the central server after Owner sign-in. */
@@ -291,6 +295,8 @@ export function OwnerConsole({ local }: { local?: ReactNode }) {
     ['releases', o.tabs.releases],
     ['security', o.tabs.security],
     ['audit', o.tabs.audit],
+    ['ads', o.tabs.ads],
+    ['design', o.tabs.design],
     ...(local ? ([['local', o.tabs.local]] as [Tab, string][]) : []),
   ];
   return (
@@ -328,6 +334,8 @@ export function OwnerConsole({ local }: { local?: ReactNode }) {
         />
       )}
       {tab === 'audit' && <AuditTab />}
+      {tab === 'ads' && <AdsTab />}
+      {tab === 'design' && <DesignTab />}
       {tab === 'local' && local}
       <ReauthHost />
     </div>

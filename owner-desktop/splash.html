@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'"
+    />
+    <title>FAST FOOD</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        background: #f8f7f4;
+        color: #24272c;
+      }
+      .mark {
+        width: 84px;
+        height: 84px;
+        margin: 0 auto 18px;
+        border-radius: 24px;
+        display: grid;
+        place-content: center;
+        font:
+          800 44px system-ui,
+          sans-serif;
+        background: #e95324;
+        color: #fff;
+        animation: pulse 1.8s ease-in-out infinite;
+      }
+      h1 {
+        margin: 0;
+        letter-spacing: 3px;
+        font-size: 22px;
+        font-weight: 800;
+      }
+      p {
+        margin: 10px 0 0;
+        color: #747775;
+      }
+      .dots {
+        display: inline-flex;
+        gap: 6px;
+        margin-top: 22px;
+      }
+      .dots i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #e95324;
+        animation: dot 1.2s ease-in-out infinite;
+      }
+      .dots i:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .dots i:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      @keyframes pulse {
+        50% {
+          transform: scale(1.06);
+        }
+      }
+      @keyframes dot {
+        0%,
+        80%,
+        100% {
+          opacity: 0.25;
+        }
+        40% {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark">F</div>
+      <h1>FAST FOOD</h1>
+      <p>Server ishga tushmoqda. Iltimos, biroz kuting…</p>
+      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    </main>
+  </body>
+</html>

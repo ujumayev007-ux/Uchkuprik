@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
+import { useBusy } from '../lib/busy';
 import { formatMoney } from '../lib/format';
 import { newKey, type Order, type PaymentMethod } from '../lib/orders';
 import { QrPayPanel, useQrPayment } from './QrPayPanel';
@@ -23,6 +24,8 @@ export function PaymentDialog({
   onPaid: (order: Order, change: number | null) => void;
 }) {
   const client = useQueryClient();
+  // Taking a payment is never interrupted.
+  useBusy('payment');
   const [current, setCurrent] = useState(order);
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [amount, setAmount] = useState<number | null>(order.due);

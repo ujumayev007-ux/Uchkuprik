@@ -27,7 +27,7 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   return (
-    <AuthLayout title={t.auth.title} subtitle={t.auth.subtitle}>
+    <AuthLayout title={t.auth.title} subtitle={t.auth.subtitle} tenant={tenant}>
       <form
         className="stack"
         onSubmit={async (event) => {

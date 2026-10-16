@@ -14,8 +14,100 @@
     <link rel="apple-touch-icon" href="/icon-maskable.svg" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>FAST FOOD — Tizim holati</title>
+    <style>
+      /* Branded boot screen: shown until the application has drawn (no host name, no logo of anyone else). */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        background: #f8f7f4;
+        color: #24272c;
+        font-family: 'DM Sans', system-ui, sans-serif;
+      }
+      #boot-splash .mark {
+        width: 84px;
+        height: 84px;
+        margin: 0 auto 18px;
+        border-radius: 24px;
+        display: grid;
+        place-content: center;
+        font:
+          800 44px 'Manrope',
+          system-ui,
+          sans-serif;
+        background: #e95324;
+        color: #fff;
+        animation: boot-pulse 1.8s ease-in-out infinite;
+      }
+      #boot-splash h1 {
+        margin: 0;
+        letter-spacing: 3px;
+        font:
+          800 22px 'Manrope',
+          system-ui,
+          sans-serif;
+      }
+      #boot-splash p {
+        margin: 8px 0 0;
+        color: #747775;
+      }
+      @keyframes boot-pulse {
+        50% {
+          transform: scale(1.06);
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        #boot-splash {
+          background: #171b1b;
+          color: #f1f3ed;
+        }
+      }
+    </style>
+    <script>
+      // Apply the last known skin before the first paint, so a restart does not flash the
+      // classic look. Everything is read from this device's own copy (works offline).
+      try {
+        var path = location.pathname;
+        var skin = null;
+        if (/^/(kirish|pin)/.test(path)) {
+          var tenant = localStorage.getItem('ff-last-tenant') || '';
+          var login = JSON.parse(
+            localStorage.getItem('ff-branding-login:' + tenant) || 'null',
+          );
+          skin = login && login.login && login.login.skin;
+        } else {
+          var me = JSON.parse(localStorage.getItem('ff-branding-me') || 'null');
+          var panel = /^/kassa/.test(path)
+            ? 'cashier'
+            : /^/ofitsiant/.test(path)
+              ? 'waiter'
+              : /^/oshxona/.test(path)
+                ? 'kitchen'
+                : /^/navbat/.test(path)
+                  ? 'customer'
+                  : 'admin';
+          skin = me && me.design && me.design.panels[panel].skin;
+        }
+        if (skin && skin !== 'classic')
+          document.documentElement.dataset.skin = skin;
+        var saved = localStorage.getItem('ff-theme');
+        if (saved) document.documentElement.dataset.theme = saved;
+      } catch (error) {
+        /* Storage unavailable: the classic look is used. */
+      }
+    </script>
   </head>
   <body>
+    <div id="boot-splash" role="status" aria-label="Yuklanmoqda">
+      <div>
+        <div class="mark">F</div>
+        <h1>FAST FOOD</h1>
+        <p>Restoran boshqaruv tizimi</p>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

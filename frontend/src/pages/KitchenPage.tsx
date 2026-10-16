@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { can, useMe } from '../auth/session';
+import { useBusy } from '../lib/busy';
 import {
   Badge,
   Button,
@@ -87,6 +88,8 @@ function elapsed(fromIso: string, now: number) {
 }
 
 export function KitchenPage() {
+  // The kitchen is never covered by advertisements (small banners only).
+  useBusy('kitchen');
   const { data: me } = useMe();
   const client = useQueryClient();
   const toast = useToast();

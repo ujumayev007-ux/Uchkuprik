@@ -406,6 +406,38 @@ function menu() {
 let currentUrl = '';
 let onErrorPage = false;
 const ERROR_PAGE = path.join(__dirname, 'connection-error.html');
+const SPLASH_PAGE = path.join(__dirname, 'splash.html');
+
+/** True only for our own server's health answer (never a hosting interstitial page). */
+async function healthy(url) {
+  try {
+    const response = await fetch(`${url}/api/health/live`, {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) return false;
+    const body = await response.json();
+    return body.status === 'ok';
+  } catch {
+    return false;
+  }
+}
+
+/** Shows the branded splash while the server wakes up, then opens the console. */
+async function openConsole(url, waitMs) {
+  onErrorPage = false;
+  await win.loadFile(SPLASH_PAGE);
+  const end = Date.now() + waitMs;
+  let ok = await healthy(url);
+  while (!ok && Date.now() < end && win && !win.isDestroyed()) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    ok = await healthy(url);
+  }
+  if (!win || win.isDestroyed()) return;
+  if (!ok) return showConnectionError('server javob bermadi');
+  await win.loadURL(`${url}/owner`).catch((error) => {
+    if (!onErrorPage) return showConnectionError(error.message);
+  });
+}
 const fromErrorPage = (event) => {
   const frameUrl = String(event.senderFrame?.url || '');
   return (
@@ -434,15 +466,7 @@ async function showConnectionError(reason) {
 
 ipcMain.handle('conn:retry', async (event) => {
   if (!fromErrorPage(event) || !currentUrl) return { ok: false };
-  try {
-    const response = await fetch(`${currentUrl}/api/control/info`, {
-      signal: AbortSignal.timeout(6000),
-    });
-    const info = await response.json();
-    if (!response.ok || info.plane !== true) return { ok: false };
-  } catch {
-    return { ok: false };
-  }
+  if (!(await healthy(currentUrl))) return { ok: false };
   onErrorPage = false;
   void win
     .loadURL(`${currentUrl}/owner`)
@@ -507,9 +531,9 @@ async function boot() {
   );
   // Fail early (and clearly) when the OS cannot protect the device key.
   identity();
-  await win.loadURL(`${url}/owner`).catch((error) => {
-    if (!onErrorPage) return showConnectionError(error.message);
-  });
+  // The server may be asleep (a cold start takes up to a minute or two): a branded
+  // splash is shown meanwhile and the console opens by itself.
+  await openConsole(url, 120_000);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();

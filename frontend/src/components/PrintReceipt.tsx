@@ -4,12 +4,15 @@ import { useMe } from '../auth/session';
 import { Button, useToast } from './ui';
 import { t } from '../i18n';
 import { api, errorMessage, post } from '../lib/api';
+import { useBusy } from '../lib/busy';
 
 /**
  * Receipt buttons: open the receipt in the browser (laid out by the template of the
  * chosen printer, or the restaurant default) or send it straight to a receipt printer.
  */
 export function PrintReceipt({ orderId }: { orderId: string }) {
+  // Printing is never interrupted.
+  useBusy('print');
   const { data: me } = useMe();
   const toast = useToast();
   const branchId = me?.activeBranchId;

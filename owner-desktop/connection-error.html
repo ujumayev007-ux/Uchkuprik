@@ -65,10 +65,7 @@
   <body>
     <main>
       <h1>Markaziy serverga ulanib bo‘lmadi</h1>
-      <p>
-        FastFood Owner <code id="url">…</code> manziliga ulanishga urindi, lekin
-        server javob bermadi.
-      </p>
+      <p>FastFood Owner markaziy serverga ulana olmadi.</p>
       <p>
         Internet ulanishini va server yoqilganini tekshiring. Server
         ko‘chirilgan bo‘lsa, yangi manzilni «Server manzili» orqali kiriting.
@@ -79,7 +76,11 @@
         <button id="settings">Server manzili…</button>
       </div>
       <div id="status"></div>
-      <p id="detail" class="muted" style="font-size: 12px"></p>
+      <details style="margin-top: 18px; font-size: 12px; color: #747775">
+        <summary>Texnik ma’lumot</summary>
+        <p>Manzil: <code id="url">—</code></p>
+        <p id="detail"></p>
+      </details>
     </main>
     <script>
       const $ = (id) => document.getElementById(id);

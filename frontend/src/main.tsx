@@ -9,6 +9,8 @@ import {
 } from 'react-router';
 import { can, hasFeature, useMe, type Me } from './auth/session';
 import { AppShell } from './components/AppShell';
+import { BrandingHost, PublicBrandingHost } from './components/BrandingHost';
+import { ServerWake } from './components/ServerWake';
 import { ErrorState, LoadingState, ToastProvider } from './components/ui';
 import { t } from './i18n';
 import { ApiError } from './lib/api';
@@ -56,6 +58,7 @@ import { DeveloperPage } from './pages/DeveloperPage';
 import { InsightsPage } from './pages/InsightsPage';
 import { LicensePage } from './pages/LicensePage';
 import { WaiterPage } from './pages/WaiterPage';
+import { DesignPage } from './pages/DesignPage';
 import { ReceiptDesignPage } from './pages/ReceiptDesignPage';
 import { QrPaymentPage } from './pages/QrPaymentPage';
 import { VendorPage } from './pages/VendorPage';
@@ -74,6 +77,7 @@ import './pos.css';
 import './kitchen.css';
 import './orders.css';
 import './public.css';
+import './skins.css';
 import './responsive.css';
 
 /** The next step a partially authenticated session must complete, if any. */
@@ -258,13 +262,38 @@ const router = createBrowserRouter([
     ),
   },
   // Public customer pages: no staff session required.
-  { path: '/t/:token', element: <TableMenuPage /> },
-  { path: '/r/:slug', element: <WebsiteMenuPage /> },
-  { path: '/buyurtma/:token', element: <TrackingPage /> },
+  {
+    path: '/t/:token',
+    element: (
+      <>
+        <PublicBrandingHost />
+        <TableMenuPage />
+      </>
+    ),
+  },
+  {
+    path: '/r/:slug',
+    element: (
+      <>
+        <PublicBrandingHost />
+        <WebsiteMenuPage />
+      </>
+    ),
+  },
+  {
+    path: '/buyurtma/:token',
+    element: (
+      <>
+        <PublicBrandingHost />
+        <TrackingPage />
+      </>
+    ),
+  },
   {
     path: '/navbat',
     element: (
       <SessionOnly>
+        <BrandingHost forcePanel="customer" />
         <QueuePage />
       </SessionOnly>
     ),
@@ -647,6 +676,14 @@ const router = createBrowserRouter([
           </Guard>
         ),
       },
+      {
+        path: '/dizayn',
+        element: (
+          <Guard allow={(me) => can(me, 'settings.manage')}>
+            <DesignPage />
+          </Guard>
+        ),
+      },
       { path: '/litsenziya', element: <LicensePage /> },
       { path: '/sotuvchi', element: <VendorPage /> },
       {
@@ -705,11 +742,16 @@ registerServiceWorker();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element is missing.');
+// The branded boot splash from index.html goes away as soon as the application drew.
+requestAnimationFrame(() =>
+  requestAnimationFrame(() => document.getElementById('boot-splash')?.remove()),
+);
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <RouterProvider router={router} />
+        <ServerWake />
       </ToastProvider>
     </QueryClientProvider>
   </React.StrictMode>,

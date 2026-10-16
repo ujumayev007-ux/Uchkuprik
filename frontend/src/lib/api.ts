@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { reportFailure, reportOk } from './serverState';
 
 export class ApiError extends Error {
   constructor(
@@ -52,8 +53,22 @@ export async function api<T = unknown>(
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError')
       throw error;
+    reportFailure();
     throw new ApiError(0, 'NETWORK', t.common.errorOffline);
   }
+  // A gateway error, or an HTML page where our JSON should be (a host that is still
+  // waking up), means the server is not ready: never treat it as an answer. A JSON
+  // answer, even a 503 from our own rules, is always real.
+  const isJson = (response.headers.get('content-type') ?? '').includes('json');
+  if (
+    !isJson &&
+    response.status !== 204 &&
+    (response.ok || [502, 503, 504].includes(response.status))
+  ) {
+    reportFailure();
+    throw new ApiError(0, 'NETWORK', t.common.errorOffline);
+  }
+  reportOk();
   if (response.status === 204) return undefined as T;
   const payload = (await response.json().catch(() => null)) as {
     code?: string;

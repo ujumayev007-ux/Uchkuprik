@@ -25,6 +25,8 @@ import {
 import { isVendorComputer } from '../pages/VendorPage';
 import { PendingOrders } from './PendingOrders';
 import { StaffAnnouncer, VoiceButton } from './StaffAnnouncer';
+import { useBranding } from '../lib/branding';
+import { BrandingHost } from './BrandingHost';
 import { ReauthDialog } from './ReauthDialog';
 import { useTheme, useToast } from './ui';
 
@@ -312,6 +314,12 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'settings.manage'),
   },
   {
+    to: '/dizayn',
+    label: t.design.nav,
+    icon: '🎨',
+    visible: (me) => can(me, 'settings.manage'),
+  },
+  {
     to: '/sotuvchi',
     label: t.nav.vendor,
     icon: '★',
@@ -513,14 +521,20 @@ export function AppShell() {
   const toast = useToast();
   const license = useLicense(me?.tenantKind === 'BUSINESS');
   useDeviceHeartbeat();
+  const branding = useBranding(me?.tenantKind === 'BUSINESS');
   const online = useRealtime(
     me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
   );
   if (!me) return null;
   // Menus the vendor switched off for this install (via the licence).
   const hidden = license.data?.hiddenMenus ?? [];
+  // The design page appears only while the Owner delegated design to the Admin.
+  const delegated = branding.data?.delegated ?? false;
   const items = navItems.filter(
-    (item) => item.visible(me) && !hidden.includes(item.to),
+    (item) =>
+      item.visible(me) &&
+      !hidden.includes(item.to) &&
+      (item.to !== '/dizayn' || delegated),
   );
   const menuDisabled = hidden.some(
     (path) =>
@@ -732,6 +746,7 @@ export function AppShell() {
         />
       )}
       <ReauthDialog />
+      <BrandingHost />
     </div>
   );
 }

@@ -1,0 +1,540 @@
+/*
+ * Six skins for the sign-in screen and for every panel (classic = the original design,
+ * which has no override). A skin only redefines the colour tokens the whole interface
+ * already uses, so every page follows it. Dark-only skins (premium, luxury) ignore the
+ * light/dark toggle; the others have a light and a dark variant.
+ * Selected remotely: <html data-skin="…">.
+ */
+
+/* ---- Premium: black and gold ------------------------------------------------ */
+[data-skin='premium'],
+[data-skin='premium'][data-theme='light'],
+[data-skin='premium'][data-theme='dark'] {
+  color-scheme: dark;
+  color: #f3ead2;
+  background: #0d0d0d;
+  --surface: #181818;
+  --surface-2: #232220;
+  --text: #f3ead2;
+  --muted: #b3a98f;
+  --line: #34312a;
+  --accent: #d4af37;
+  --accent-soft: #2b2514;
+  --green: #8bd3a8;
+  --green-soft: #1d2a22;
+  --danger: #ff8a7a;
+  --danger-soft: #3b1f1b;
+  --warning: #f3c063;
+  --warning-soft: #3a2f1a;
+  --on-accent: #14110a;
+  --shadow: 0 24px 70px -30px #000c;
+}
+
+/* ---- Luxury restaurant: burgundy and gold ------------------------------------ */
+[data-skin='luxury'],
+[data-skin='luxury'][data-theme='light'],
+[data-skin='luxury'][data-theme='dark'] {
+  color-scheme: dark;
+  color: #f6e9d6;
+  background: #1c0a10;
+  --surface: #2a1018;
+  --surface-2: #381a24;
+  --text: #f6e9d6;
+  --muted: #cbaaa2;
+  --line: #4f2833;
+  --accent: #c9a24d;
+  --accent-soft: #3a2a1e;
+  --green: #98d6b0;
+  --green-soft: #22302a;
+  --danger: #ff9a8a;
+  --danger-soft: #45201f;
+  --warning: #f0c470;
+  --warning-soft: #3d2f1f;
+  --on-accent: #220c12;
+  --shadow: 0 24px 70px -30px #000c;
+}
+
+/* ---- Modern blue -------------------------------------------------------------- */
+[data-skin='blue'] {
+  color: #14243b;
+  background: #f1f6fc;
+  --surface: #ffffff;
+  --surface-2: #e9f0fa;
+  --text: #14243b;
+  --muted: #566a86;
+  --line: #d7e2f1;
+  --accent: #1e63d6;
+  --accent-soft: #e2ecfd;
+  --green: #1c7d5a;
+  --green-soft: #e3f4ec;
+  --on-accent: #ffffff;
+  --shadow: 0 20px 65px -35px #1a3c7a55;
+}
+[data-skin='blue'][data-theme='dark'],
+:root[data-theme='dark'] [data-skin='blue'] {
+  color: #e8f0fc;
+  background: #0d1625;
+  --surface: #15233a;
+  --surface-2: #1d2e4b;
+  --text: #e8f0fc;
+  --muted: #9db1cf;
+  --line: #29415f;
+  --accent: #6aa6ff;
+  --accent-soft: #1b2f52;
+  --green: #83d9ae;
+  --green-soft: #1c3a30;
+  --on-accent: #08131f;
+  --shadow: 0 20px 65px -35px #0009;
+}
+
+/* ---- Emerald green ------------------------------------------------------------ */
+[data-skin='emerald'] {
+  color: #11291d;
+  background: #f1f8f3;
+  --surface: #ffffff;
+  --surface-2: #e5f2ea;
+  --text: #11291d;
+  --muted: #557163;
+  --line: #d3e6da;
+  --accent: #12875a;
+  --accent-soft: #dcf2e6;
+  --green: #12875a;
+  --green-soft: #dcf2e6;
+  --on-accent: #ffffff;
+  --shadow: 0 20px 65px -35px #0f5a3a55;
+}
+[data-skin='emerald'][data-theme='dark'],
+:root[data-theme='dark'] [data-skin='emerald'] {
+  color: #e6f4ec;
+  background: #0c1913;
+  --surface: #14261d;
+  --surface-2: #1c3428;
+  --text: #e6f4ec;
+  --muted: #9ab9a8;
+  --line: #28483b;
+  --accent: #4ed19b;
+  --accent-soft: #1a3a2c;
+  --green: #4ed19b;
+  --green-soft: #1a3a2c;
+  --on-accent: #06150e;
+  --shadow: 0 20px 65px -35px #0009;
+}
+
+/* ---- Minimal light ------------------------------------------------------------ */
+[data-skin='minimal'] {
+  color: #1d1f23;
+  background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #f0f0f2;
+  --text: #1d1f23;
+  --muted: #6b6f76;
+  --line: #e3e4e8;
+  --accent: #3a3f47;
+  --accent-soft: #ececef;
+  --green: #2f7d57;
+  --green-soft: #eaf4ee;
+  --on-accent: #ffffff;
+  --shadow: 0 18px 55px -38px #1d1f2355;
+}
+[data-skin='minimal'][data-theme='dark'],
+:root[data-theme='dark'] [data-skin='minimal'] {
+  color: #eceef0;
+  background: #131416;
+  --surface: #1c1d20;
+  --surface-2: #26282c;
+  --text: #eceef0;
+  --muted: #9b9fa7;
+  --line: #34373c;
+  --accent: #cdd0d6;
+  --accent-soft: #2a2c30;
+  --green: #83d9ae;
+  --green-soft: #203c30;
+  --on-accent: #131416;
+  --shadow: 0 18px 55px -38px #000a;
+}
+
+/* Buttons on the accent colour keep readable text in every skin. */
+[data-skin] .btn-primary {
+  color: var(--on-accent);
+}
+[data-skin] .brand-mark {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---- Sign-in screen ------------------------------------------------------------ */
+.auth-page[data-login-skin='premium'] {
+  background:
+    radial-gradient(circle at 50% -10%, #3a2f12, transparent 55%),
+    radial-gradient(circle at 100% 100%, #1a1710, transparent 45%), #0d0d0d;
+}
+.auth-page[data-login-skin='premium'] .auth-card {
+  border-color: #6b5a22;
+  box-shadow:
+    0 0 0 1px #d4af3722,
+    0 30px 80px -30px #000;
+}
+.auth-page[data-login-skin='luxury'] {
+  background:
+    radial-gradient(circle at 20% 0%, #5a1b2c, transparent 55%),
+    radial-gradient(circle at 100% 100%, #2b1015, transparent 50%), #1c0a10;
+}
+.auth-page[data-login-skin='luxury'] .auth-card {
+  border: 1px solid #c9a24d88;
+  box-shadow:
+    0 0 0 6px #c9a24d14,
+    0 30px 80px -30px #000;
+}
+.auth-page[data-login-skin='blue'] {
+  background:
+    radial-gradient(circle at 15% 0%, #cfe0fb, transparent 50%),
+    radial-gradient(circle at 100% 100%, #e6effc, transparent 45%), #f1f6fc;
+}
+:root[data-theme='dark'] .auth-page[data-login-skin='blue'] {
+  background:
+    radial-gradient(circle at 15% 0%, #16305a, transparent 50%), #0d1625;
+}
+.auth-page[data-login-skin='emerald'] {
+  background:
+    radial-gradient(circle at 15% 0%, #c9ecd9, transparent 50%),
+    radial-gradient(circle at 100% 100%, #e3f4eb, transparent 45%), #f1f8f3;
+}
+:root[data-theme='dark'] .auth-page[data-login-skin='emerald'] {
+  background:
+    radial-gradient(circle at 15% 0%, #14402e, transparent 50%), #0c1913;
+}
+.auth-page[data-login-skin='minimal'] {
+  background: #f7f7f8;
+}
+:root[data-theme='dark'] .auth-page[data-login-skin='minimal'] {
+  background: #131416;
+}
+.auth-page[data-login-skin='minimal'] .auth-card {
+  box-shadow: none;
+  border-radius: 14px;
+}
+
+/* A background picture chosen by the Owner: the card stays readable on top of it. */
+.auth-page.has-bg {
+  background-image: var(--auth-bg);
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+.auth-page.has-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
+  pointer-events: none;
+}
+.auth-page.has-bg > * {
+  position: relative;
+}
+.auth-logo {
+  display: block;
+  max-height: 72px;
+  max-width: 70%;
+  margin: 0 auto 14px;
+  object-fit: contain;
+}
+.auth-welcome {
+  margin: 8px 0 14px;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* ---- Splash (shown while the application or the server wakes up) ------------------ */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  background: var(--splash-bg, #f8f7f4);
+  color: var(--splash-fg, #24272c);
+}
+.splash-mark {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 18px;
+  border-radius: 24px;
+  display: grid;
+  place-content: center;
+  font:
+    800 44px 'Manrope',
+    system-ui,
+    sans-serif;
+  background: var(--accent, #e95324);
+  color: var(--on-accent, #fff);
+  animation: splash-pulse 1.8s ease-in-out infinite;
+}
+.splash-logo {
+  max-height: 96px;
+  max-width: 60vw;
+  margin: 0 auto 18px;
+  display: block;
+  animation: splash-pulse 1.8s ease-in-out infinite;
+}
+.splash h1 {
+  margin: 0;
+  letter-spacing: 3px;
+  font:
+    800 22px 'Manrope',
+    system-ui,
+    sans-serif;
+}
+.splash p {
+  margin: 8px 0 0;
+  color: var(--muted, #747775);
+}
+.splash-dots {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 22px;
+}
+.splash-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent, #e95324);
+  animation: splash-dot 1.2s ease-in-out infinite;
+}
+.splash-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.splash-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes splash-pulse {
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes splash-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-mark,
+  .splash-logo,
+  .splash-dots i {
+    animation: none;
+  }
+}
+
+/* ---- Advertisements ------------------------------------------------------------------ */
+.ad-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 900;
+  max-width: min(720px, calc(100vw - 24px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+}
+.ad-banner img,
+.ad-banner video {
+  max-height: 56px;
+  max-width: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.ad-banner-text {
+  flex: 1;
+  line-height: 1.35;
+}
+.ad-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: color-mix(in srgb, #000 62%, transparent);
+}
+.ad-overlay.fullscreen {
+  background: #000;
+  padding: 0;
+}
+.ad-card {
+  position: relative;
+  max-width: min(880px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 52px 28px 30px;
+  min-width: min(460px, 100%);
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.ad-overlay.fullscreen .ad-card {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: 0;
+  border: 0;
+  justify-content: center;
+}
+.ad-card img,
+.ad-card video {
+  max-width: 100%;
+  max-height: 68vh;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.ad-overlay.fullscreen .ad-card img,
+.ad-overlay.fullscreen .ad-card video {
+  max-height: 82vh;
+}
+.ad-text {
+  font-size: clamp(18px, 3.2vw, 34px);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.ad-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+}
+.ad-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--accent);
+  transform-origin: left;
+  animation: ad-timer var(--ad-time, 10s) linear forwards;
+}
+@keyframes ad-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* ---- Server waking up ------------------------------------------------------------------ */
+.wake-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  color: var(--text);
+}
+
+/* ---- Skin previews (Owner and Admin design screens) ------------------------------------ */
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.skin-choice {
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+}
+.skin-choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+.skin-preview {
+  padding: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+}
+.skin-preview-card {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+}
+.skin-preview-card i {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+}
+.skin-preview-card i:first-child {
+  width: 55%;
+  height: 10px;
+  background: var(--text);
+}
+.skin-preview-card b {
+  display: block;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--accent);
+}
+.skin-choice-name {
+  display: block;
+  padding: 8px 10px 2px;
+  font-weight: 700;
+}
+.skin-choice-hint {
+  display: block;
+  padding: 0 10px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.design-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+input[type='color'] {
+  width: 72px;
+  min-height: 42px;
+  padding: 3px;
+  border-radius: 10px;
+  cursor: pointer;
+}

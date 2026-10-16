@@ -47,6 +47,7 @@ for (const name of [
   'server-preload.cjs',
   'server-settings.html',
   'connection-error.html',
+  'splash.html',
 ])
   copyFileSync(join(here, name), join(stage, name));
 writeFileSync(

@@ -98,6 +98,10 @@ export function useRealtime(branchId: string | null | undefined) {
       void client.invalidateQueries({ queryKey: ['control-link'] });
       for (const listener of listeners) listener('config.changed', payload);
     });
+    // The Owner changed the design or advertisements: reload them without a restart.
+    socket.on('branding.changed', () => {
+      void client.invalidateQueries({ queryKey: ['branding'] });
+    });
     socket.on(
       'menu.changed',
       () => void client.invalidateQueries({ queryKey: ['menu'] }),

@@ -61,6 +61,13 @@ export function brandingRouter(services: Services) {
       login: design.login,
       panels: design.panels,
       splash: design.splash,
+      // Guest-facing pages (menu, order tracking) show the Customer-panel advertising.
+      ...(req.query.ads === 'customer'
+        ? {
+            ads: adsForPanel(bundle.ads, 'CUSTOMER'),
+            serverTime: (services.now?.() ?? new Date()).toISOString(),
+          }
+        : {}),
     });
   });
 

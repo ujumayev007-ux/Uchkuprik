@@ -111,7 +111,10 @@ async function reachable(url) {
     const response = await fetch(`${url}/api/health/live`, {
       signal: AbortSignal.timeout(6000),
     });
-    return response.ok;
+    if (!response.ok) return false;
+    // Our own server's answer only (never a hosting interstitial page).
+    const body = await response.json();
+    return body.status === 'ok';
   } catch {
     return false;
   }
@@ -255,6 +258,17 @@ async function boot() {
     await connectPage('setup');
     return;
   }
+  // The server may still be waking up: a branded splash is shown and the application
+  // opens by itself once the server answers.
+  await win.loadFile(path.join(__dirname, 'splash.html'));
+  const end = Date.now() + 120_000;
+  let ok = await reachable(currentUrl);
+  while (!ok && Date.now() < end && !win.isDestroyed()) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    ok = await reachable(currentUrl);
+  }
+  if (win.isDestroyed()) return;
+  if (!ok) return showError('server javob bermadi');
   await win
     .loadURL(`${currentUrl}/`)
     .catch((error) => showError(error.message));

@@ -41,7 +41,7 @@ const baked = JSON.stringify({
   ...(TEST ? { test: true } : {}),
 });
 writeFileSync(join(stage, 'admin.json'), baked);
-for (const name of ['main.cjs', 'preload.cjs', 'connect.html'])
+for (const name of ['main.cjs', 'preload.cjs', 'connect.html', 'splash.html'])
   copyFileSync(join(here, name), join(stage, name));
 writeFileSync(
   join(stage, 'package.json'),

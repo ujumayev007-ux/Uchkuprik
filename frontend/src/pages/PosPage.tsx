@@ -18,6 +18,7 @@ import {
 import { t } from '../i18n';
 import { parsePoint } from './DeliveryPricingCard';
 import { api, ApiError, post } from '../lib/api';
+import { useBusy } from '../lib/busy';
 import { formatMoney } from '../lib/format';
 import { useOrdering } from '../lib/ordering';
 import { formatOrderNo } from '../lib/uzbek-number';
@@ -263,6 +264,8 @@ export function PosPage() {
   const [query, setQuery] = useState('');
   const [picking, setPicking] = useState<Product | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
+  // A sale in progress is never covered by an advertisement.
+  useBusy('pos-sale', cart.length > 0);
   const ordering = useOrdering();
   const navigate = useNavigate();
   const allowedTypes = (['TAKEAWAY', 'DINE_IN', 'DELIVERY'] as const).filter(

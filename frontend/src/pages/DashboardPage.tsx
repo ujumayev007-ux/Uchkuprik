@@ -2,15 +2,22 @@ import { Link } from 'react-router';
 import { useMe } from '../auth/session';
 import { navItems, useBranches } from '../components/AppShell';
 import { Badge, PageHeader } from '../components/ui';
+import { useBranding } from '../lib/branding';
 import { ClockCard } from './AttendancePage';
 import { t } from '../i18n';
 
 export function DashboardPage() {
   const { data: me } = useMe();
   const branches = useBranches(me?.tenantKind === 'BUSINESS');
+  const branding = useBranding(me?.tenantKind === 'BUSINESS');
   if (!me) return null;
   const branch = branches.data?.find((item) => item.id === me.activeBranchId);
-  const links = navItems.filter((item) => item.to !== '/' && item.visible(me));
+  const links = navItems.filter(
+    (item) =>
+      item.to !== '/' &&
+      item.visible(me) &&
+      (item.to !== '/dizayn' || branding.data?.delegated),
+  );
   return (
     <>
       <PageHeader

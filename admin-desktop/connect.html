@@ -82,10 +82,7 @@
     <main>
       <section id="error" hidden>
         <h1>Restoran serveriga ulanib bo‘lmadi</h1>
-        <p>
-          FastFood Admin <code id="url">…</code> manziliga ulanishga urindi,
-          lekin server javob bermadi.
-        </p>
+        <p>FastFood Admin restoran serveriga ulana olmadi.</p>
         <p>
           Kassa kompyuteri yoqilganini, FastFood dasturi ishlayotganini va bir
           xil Wi‑Fi tarmog‘ida ekaningizni tekshiring. Dastur o‘zi har 10
@@ -95,7 +92,11 @@
           <button class="primary" id="retry">Qayta urinish</button>
           <button id="change">Server manzilini o‘zgartirish</button>
         </div>
-        <p id="detail" style="font-size: 12px"></p>
+        <details style="margin-top: 18px; font-size: 12px; color: #747775">
+          <summary>Texnik ma’lumot</summary>
+          <p>Manzil: <code id="url">—</code></p>
+          <p id="detail"></p>
+        </details>
       </section>
       <section id="setup" hidden>
         <h1>Restoran serveri manzili</h1>
