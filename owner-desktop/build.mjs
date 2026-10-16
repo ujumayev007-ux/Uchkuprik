@@ -23,6 +23,9 @@ const { version } = JSON.parse(
 // BUILD_CHANNEL=test: isolated TEST installer that may point at a local http
 // address (127.0.0.1) and uses its own app id and output folder.
 const TEST = process.env.BUILD_CHANNEL === 'test';
+// OWNER_BUILD_OUT lets a build write elsewhere (e.g. when antivirus locks the default folder).
+const outDir =
+  process.env.OWNER_BUILD_OUT || join(here, TEST ? 'release-test' : 'release');
 const url = (process.env.OWNER_URL || '').trim();
 const localOk =
   TEST && /^http:[/][/](127[.]0[.]0[.]1|localhost):[0-9]+$/.test(url);
@@ -80,7 +83,7 @@ await build({
     productName: TEST ? 'FastFood Owner TEST' : 'FastFood Owner',
     executableName: TEST ? 'FastFoodOwnerTest' : 'FastFoodOwner',
     electronVersion: require('electron/package.json').version,
-    directories: { output: join(here, TEST ? 'release-test' : 'release') },
+    directories: { output: outDir },
     files: ['**/*', '!owner.json'],
     extraResources: [{ from: join(stage, 'owner.json'), to: 'owner.json' }],
     asar: true,
@@ -94,7 +97,7 @@ await build({
     },
   },
 });
-const out = join(here, TEST ? 'release-test' : 'release');
+const out = outDir;
 const name = `FastFood-Owner${TEST ? '-TEST' : ''}-Setup-${version}.exe`;
 if (!existsSync(join(out, name)))
   throw new Error('Owner installer was not produced.');
