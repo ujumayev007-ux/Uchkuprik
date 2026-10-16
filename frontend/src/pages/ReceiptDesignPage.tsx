@@ -18,6 +18,7 @@ import { api, errorMessage } from '../lib/api';
 import {
   columnsForWidth,
   logoFromFile,
+  rasterizeLogo,
   normalizeLayout,
   type ReceiptLayout,
 } from '../lib/receipt';
@@ -144,20 +145,21 @@ export function ReceiptDesignPage() {
   const save = async () => {
     setBusy(true);
     try {
+      const sized = { ...form, logoRaster: await rasterizeLogo(form) };
       if (key === 'default') {
-        await api('/settings/receipt', { method: 'PUT', body: form });
+        await api('/settings/receipt', { method: 'PUT', body: sized });
         await client.invalidateQueries({ queryKey: ['receipt-layout'] });
       } else if (key === 'new') {
         const created = await api<{ id: string }>('/receipt-templates', {
           method: 'POST',
-          body: { name, kind, settings: form },
+          body: { name, kind, settings: sized },
         });
         await refresh();
         setKey(created.id);
       } else {
         await api(`/receipt-templates/${key}`, {
           method: 'PUT',
-          body: { name, kind, settings: form },
+          body: { name, kind, settings: sized },
         });
       }
       toast(k.saved);
@@ -451,6 +453,20 @@ export function ReceiptDesignPage() {
               value={form.logoWidthPct}
               onChange={num('logoWidthPct', 10, 100)}
             />
+            <SelectField
+              label={k.logoAlign}
+              value={form.logoAlign}
+              onChange={(event) =>
+                set(
+                  'logoAlign',
+                  event.target.value as ReceiptLayout['logoAlign'],
+                )
+              }
+            >
+              <option value="left">{k.alignLeft}</option>
+              <option value="center">{k.alignCenter}</option>
+              <option value="right">{k.alignRight}</option>
+            </SelectField>
             <p className="muted small">{k.logoHint}</p>
           </fieldset>
 
@@ -582,7 +598,14 @@ export function ReceiptDesignPage() {
                     try {
                       await api('/receipt-templates/test-print', {
                         method: 'POST',
-                        body: { printerId: testPrinter, kind, settings: form },
+                        body: {
+                          printerId: testPrinter,
+                          kind,
+                          settings: {
+                            ...form,
+                            logoRaster: await rasterizeLogo(form),
+                          },
+                        },
                       });
                       toast(k.testSent);
                     } catch (caught) {

@@ -79,6 +79,34 @@ export class EscPos {
     }
     return this;
   }
+  /**
+   * A 1-bit image (GS v 0): `widthDots` is a multiple of 8, `data` has widthDots / 8
+   * bytes per row, black = 1. Positioned by the current alignment.
+   */
+  raster(widthDots: number, heightDots: number, data: Uint8Array) {
+    const bytesPerRow = widthDots >> 3;
+    if (
+      widthDots % 8 !== 0 ||
+      bytesPerRow < 1 ||
+      bytesPerRow > 255 ||
+      heightDots < 1 ||
+      heightDots > 1023 ||
+      data.length !== bytesPerRow * heightDots
+    )
+      return this;
+    this.raw(
+      GS,
+      0x76,
+      0x30,
+      0,
+      bytesPerRow & 255,
+      bytesPerRow >> 8,
+      heightDots & 255,
+      heightDots >> 8,
+    );
+    for (const byte of data) this.chunks.push(byte);
+    return this;
+  }
   feed(lines = 3) {
     return this.raw(ESC, 0x64, lines);
   }

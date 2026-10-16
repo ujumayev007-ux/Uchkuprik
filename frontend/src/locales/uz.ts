@@ -2261,8 +2261,12 @@ export const uz = {
     logoRemove: 'Logotipni olib tashlash',
     showLogo: 'Logotipni chiqarish',
     logoWidth: 'Logotip kengligi (%)',
+    logoAlign: 'Logotip joylashuvi',
+    alignLeft: 'Chapda',
+    alignCenter: 'O‘rtada',
+    alignRight: 'O‘ngda',
     logoHint:
-      'Logotip brauzerdan chop etishda va ko‘rinishda chiqadi; termal printerga yuborilganda biznes nomi chop etiladi.',
+      'Logotip ko‘rinishda va brauzerdan chop etishda rangli, termal printerda oq-qora nuqtalar bilan chiqadi (saqlaganingizda yoki sinov chop etganingizda tayyorlanadi). Haqiqiy printerda tekshirib ko‘ring.',
     fields: 'Chekda ko‘rinadigan maydonlar',
     showWaiter: 'Ofitsiant',
     showOrderNumber: 'Buyurtma raqami',

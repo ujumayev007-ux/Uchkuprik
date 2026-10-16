@@ -15,6 +15,8 @@ export type ReceiptLayout = {
   showLogo: boolean;
   logo: string;
   logoWidthPct: number;
+  logoAlign: 'left' | 'center' | 'right';
+  logoRaster: { w: number; h: number; data: string } | null;
   showBusinessName: boolean;
   showLegalName: boolean;
   showTaxId: boolean;
@@ -52,6 +54,8 @@ export const defaultLayout: ReceiptLayout = {
   showLogo: false,
   logo: '',
   logoWidthPct: 60,
+  logoAlign: 'center',
+  logoRaster: null,
   showBusinessName: true,
   showLegalName: true,
   showTaxId: true,
@@ -146,4 +150,62 @@ export async function logoFromFile(file: File): Promise<string> {
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   const png = canvas.toDataURL('image/png');
   return png.length <= 240_000 ? png : canvas.toDataURL('image/jpeg', 0.7);
+}
+
+/** Printable width in dots of a thermal printer (mirrors the server). */
+const printableDots = (widthMm: number) =>
+  Math.max(160, (widthMm - (widthMm <= 60 ? 10 : 8)) * 8);
+
+/**
+ * The logo as a 1-bit picture sized for the paper: width follows the chosen percentage
+ * of the printable width (rounded to whole bytes), black dots where the picture is dark.
+ * Returns null when there is no logo to print.
+ */
+export async function rasterizeLogo(
+  layout: ReceiptLayout,
+): Promise<ReceiptLayout['logoRaster']> {
+  if (!layout.showLogo || !layout.logo) return null;
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('IMAGE'));
+    image.src = layout.logo;
+  });
+  const printable =
+    printableDots(layout.widthMm) -
+    (layout.marginLeftMm + layout.marginRightMm) * 8;
+  const width = Math.max(
+    8,
+    Math.min(
+      Math.floor(printable / 8) * 8,
+      Math.round((printable * layout.logoWidthPct) / 100 / 8) * 8,
+    ),
+  );
+  const height = Math.max(
+    1,
+    Math.min(400, Math.round((image.height * width) / image.width)),
+  );
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('CANVAS');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const bytes = new Uint8Array((width >> 3) * height);
+  for (let y = 0; y < height; y += 1)
+    for (let x = 0; x < width; x += 1) {
+      const at = (y * width + x) * 4;
+      const luminance =
+        0.299 * (pixels[at] ?? 255) +
+        0.587 * (pixels[at + 1] ?? 255) +
+        0.114 * (pixels[at + 2] ?? 255);
+      if (luminance < 150)
+        bytes[y * (width >> 3) + (x >> 3)]! |= 0x80 >> (x & 7);
+    }
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return { w: width, h: height, data: btoa(binary) };
 }

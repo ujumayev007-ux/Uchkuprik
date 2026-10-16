@@ -85,6 +85,63 @@ describe('receipt layout engine', () => {
     for (const line of narrow.split('\n'))
       expect(line.replace(/[^\x20-\x7e]/g, '').length).toBeLessThanOrEqual(40);
   });
+
+  it('prints the logo as a 1-bit picture with the chosen alignment, never a clipped one', () => {
+    const w = 128;
+    const h = 16;
+    const data = Buffer.alloc((w >> 3) * h, 0xff).toString('base64');
+    const find = (bytes: number[], ...pattern: number[]) =>
+      bytes.findIndex((_byte, index) =>
+        pattern.every((value, offset) => bytes[index + offset] === value),
+      );
+    const withLogo = Array.from(
+      receiptTicket(
+        sampleReceipt(),
+        settings({
+          showLogo: true,
+          logoAlign: 'right',
+          logoRaster: { w, h, data },
+        }),
+      ),
+    );
+    // ESC a 2 (right) then GS v 0 with 16 bytes per row and 16 rows.
+    const at = find(
+      withLogo,
+      0x1b,
+      0x61,
+      0x02,
+      0x1d,
+      0x76,
+      0x30,
+      0,
+      16,
+      0,
+      16,
+      0,
+    );
+    expect(at).toBeGreaterThan(-1);
+    expect(withLogo.slice(at + 11, at + 11 + 4)).toEqual([255, 255, 255, 255]);
+    // Hidden logo or a picture wider than the paper prints nothing extra.
+    const off = Array.from(
+      receiptTicket(sampleReceipt(), settings({ logoRaster: { w, h, data } })),
+    );
+    expect(find(off, 0x1d, 0x76, 0x30)).toBe(-1);
+    const tooWide = Array.from(
+      receiptTicket(
+        sampleReceipt(),
+        settings({
+          widthMm: 58,
+          showLogo: true,
+          logoRaster: {
+            w: 512,
+            h: 2,
+            data: Buffer.alloc(64 * 2).toString('base64'),
+          },
+        }),
+      ),
+    );
+    expect(find(tooWide, 0x1d, 0x76, 0x30)).toBe(-1);
+  });
 });
 
 async function setup(features: Record<string, unknown> = {}) {

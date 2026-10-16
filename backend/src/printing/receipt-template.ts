@@ -34,6 +34,20 @@ export const receiptTemplateSchema = z.object({
   showLogo: z.boolean().default(false),
   logo: dataImage.default(''),
   logoWidthPct: z.number().int().min(10).max(100).default(60),
+  logoAlign: z.enum(['left', 'center', 'right']).default('center'),
+  // The logo as a 1-bit picture for thermal printers, made by the designer at the
+  // chosen size (width is a multiple of 8 dots, 1 bit per dot, black = 1).
+  logoRaster: z
+    .object({
+      w: z.number().int().min(8).max(832).multipleOf(8),
+      h: z.number().int().min(1).max(400),
+      data: z
+        .string()
+        .max(48_000)
+        .regex(/^[A-Za-z0-9+/=]+$/),
+    })
+    .nullable()
+    .default(null),
   showBusinessName: z.boolean().default(true),
   showLegalName: z.boolean().default(true),
   showTaxId: z.boolean().default(true),

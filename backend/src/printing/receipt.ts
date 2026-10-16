@@ -45,7 +45,8 @@ const SPACING_DOTS = { tight: 24, normal: 30, loose: 42 } as const;
 /**
  * Customer receipt for ESC/POS printers (58 mm, 80 mm or a custom width), following a
  * template: margins, font, line spacing, visible fields and content-driven or fixed
- * length. The logo is shown on browser receipts; thermal printing uses the name.
+ * length. The logo is printed as a 1-bit picture (when the designer made one) and shown
+ * as the uploaded image on browser receipts.
  */
 export function receiptTicket(
   data: ReceiptData,
@@ -81,6 +82,19 @@ export function receiptTicket(
   };
   const big = settings.fontSize === 'large';
 
+  if (settings.showLogo && settings.logoRaster) {
+    const { w, h, data } = settings.logoRaster;
+    const bytes = Buffer.from(data, 'base64');
+    // Only a picture that fits the printable width is sent (never a clipped one).
+    if (
+      w <= printableDots(settings.widthMm) - marginsMm * 8 &&
+      bytes.length === (w >> 3) * h
+    ) {
+      doc.align(settings.logoAlign).raster(w, h, bytes);
+      // The picture does not end with a line feed: advance the paper past it.
+      doc.feedDots(8);
+    }
+  }
   doc.align('center');
   if (settings.title) {
     doc.bold(true);

@@ -49,7 +49,11 @@ export function ReceiptSheet({
           className="receipt-logo"
           src={layout.logo}
           alt=""
-          style={{ width: `${layout.logoWidthPct}%` }}
+          style={{
+            width: `${layout.logoWidthPct}%`,
+            marginLeft: layout.logoAlign === 'left' ? 0 : 'auto',
+            marginRight: layout.logoAlign === 'right' ? 0 : 'auto',
+          }}
         />
       )}
       {layout.title && <strong className="center block">{layout.title}</strong>}
