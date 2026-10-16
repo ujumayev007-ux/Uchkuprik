@@ -58,6 +58,9 @@ const api = (agent: request.Agent) => ({
     agent.post(`/api${path}`).set('Origin', ORIGIN).send(body),
 });
 
+const jsonOf = (value: unknown) =>
+  JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+
 function nextCode(secret: string) {
   ctx.clock.offsetMs += 31_000;
   return totpCode(secret, currentStep(Date.now() + ctx.clock.offsetMs));
@@ -202,7 +205,7 @@ describe('Owner access to hosted restaurant data', () => {
     expect(other.map((o: { id: string }) => o.id)).toEqual([b.order.id]);
 
     // No credentials or tokens anywhere.
-    const everything = JSON.stringify([
+    const everything = jsonOf([
       overview,
       branches,
       devices,
@@ -311,6 +314,122 @@ describe('Owner access to hosted restaurant data', () => {
         { status: 'DISABLED' },
       )
       .expect(404);
+  });
+
+  it('resets a forgotten password without touching the restaurant data', async () => {
+    const a = await restaurant();
+    const owner = await ownerSession(true);
+    const cashier = ctx.agent();
+    await login(cashier, a.tenant.slug, 'kassir').expect(200);
+    await cashier.get('/api/auth/me').expect(200);
+    const users = (
+      await api(owner)
+        .get(`/control/customers/${a.customer.id}/data/users?q=kassir`)
+        .expect(200)
+    ).body.users;
+    const url = `/control/customers/${a.customer.id}/data/users/${users[0].id}/password`;
+    const before = {
+      tenants: await ctx.db.tenant.count(),
+      orders: await ctx.db.order.count({
+        where: { tenantId: a.tenant.tenant.id },
+      }),
+      customer: await ctx.db.controlCustomer.findUniqueOrThrow({
+        where: { id: a.customer.id },
+      }),
+    };
+    // Confirmation is required, and the new password must be strong.
+    await api(owner).post(url, { password: 'Yangi-parol-2026' }).expect(400);
+    await api(owner)
+      .post(url, { password: 'qisqa', confirm: true })
+      .expect(400);
+    await api(owner)
+      .post(url, { password: 'Yangi-parol-2026', confirm: true })
+      .expect(200);
+    // The old password and the old session are gone; the new password works.
+    await cashier.get('/api/auth/me').expect(401);
+    expect(
+      (await login(ctx.agent(), a.tenant.slug, 'kassir')).status,
+    ).toBeGreaterThanOrEqual(400);
+    await login(
+      ctx.agent(),
+      a.tenant.slug,
+      'kassir',
+      'Yangi-parol-2026',
+    ).expect(200);
+    // History, tenant and licence record are unchanged.
+    expect(await ctx.db.tenant.count()).toBe(before.tenants);
+    expect(
+      await ctx.db.order.count({ where: { tenantId: a.tenant.tenant.id } }),
+    ).toBe(before.orders);
+    const after = await ctx.db.controlCustomer.findUniqueOrThrow({
+      where: { id: a.customer.id },
+    });
+    expect(after.tenantId).toBe(before.customer.tenantId);
+    // Only a hash is stored and the audit rows never contain the password.
+    const stored = await ctx.db.user.findUniqueOrThrow({
+      where: { id: users[0].id },
+    });
+    expect(stored.passwordHash).not.toContain('Yangi-parol-2026');
+    const rows = jsonOf([
+      await ctx.db.controlAuditLog.findMany({
+        where: { customerId: a.customer.id },
+      }),
+      await ctx.db.auditLog.findMany({
+        where: { tenantId: a.tenant.tenant.id },
+      }),
+    ]);
+    expect(rows).not.toContain('Yangi-parol-2026');
+    expect(
+      await ctx.db.controlAuditLog.count({
+        where: {
+          customerId: a.customer.id,
+          action: 'data.user.password.reset',
+        },
+      }),
+    ).toBe(1);
+    // Another restaurant's employee cannot be reached through this customer.
+    const b = await restaurant();
+    const foreign = (
+      await api(await ownerSession(true))
+        .get(`/control/customers/${b.customer.id}/data/users`)
+        .expect(200)
+    ).body.users[0];
+    await api(owner)
+      .post(
+        `/control/customers/${a.customer.id}/data/users/${foreign.id}/password`,
+        { password: 'Yangi-parol-2026', confirm: true },
+      )
+      .expect(404);
+  });
+
+  it('sets and removes a PIN, ending PIN sessions only', async () => {
+    const a = await restaurant();
+    const owner = await ownerSession(true);
+    const users = (
+      await api(owner)
+        .get(`/control/customers/${a.customer.id}/data/users?q=kassir`)
+        .expect(200)
+    ).body.users;
+    const url = `/control/customers/${a.customer.id}/data/users/${users[0].id}/pin`;
+    await api(owner).post(url, { pin: '4821' }).expect(400);
+    await api(owner).post(url, { pin: '12', confirm: true }).expect(400);
+    await api(owner).post(url, { pin: '4821', confirm: true }).expect(200);
+    const set = await ctx.db.user.findUniqueOrThrow({
+      where: { id: users[0].id },
+    });
+    expect(set.pinHash).not.toBeNull();
+    expect(set.pinHash).not.toContain('4821');
+    await api(owner).post(url, { pin: null, confirm: true }).expect(200);
+    const removed = await ctx.db.user.findUniqueOrThrow({
+      where: { id: users[0].id },
+    });
+    expect(removed.pinHash).toBeNull();
+    const rows = jsonOf(
+      await ctx.db.controlAuditLog.findMany({
+        where: { customerId: a.customer.id },
+      }),
+    );
+    expect(rows).not.toContain('4821');
   });
 });
 

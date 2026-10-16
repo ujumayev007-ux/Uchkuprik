@@ -213,6 +213,22 @@ export const owner = {
     suspend: 'To‘xtatish',
     restore: 'Qayta yoqish',
     suspendAsk: 'Xodim to‘xtatilsinmi? Uning sessiyalari darhol tugaydi.',
+    reset: 'Parol / PIN tiklash',
+    resetTitle: 'Yangi parol yoki PIN o‘rnatish',
+    resetHint:
+      'Eski parol ko‘rsatilmaydi va kerak emas. Yangi parol faqat shifrlangan holda saqlanadi, buyurtmalar, litsenziya va tarix o‘zgarmaydi.',
+    newPassword: 'Yangi parol (kamida 10 belgi, harf va raqam)',
+    newPin: 'Yangi PIN (4 raqam)',
+    generate: 'Parol o‘ylab topish',
+    removePin: 'PIN ni o‘chirish',
+    setPassword: 'Parolni almashtirish',
+    setPin: 'PIN o‘rnatish',
+    resetDone:
+      'Saqlandi. Xodimning barcha sessiyalari tugadi. Parolni xodimga xavfsiz yo‘l bilan yetkazing.',
+    resetPasswordAsk:
+      'Parol almashtirilsinmi? Xodimning barcha sessiyalari tugaydi, keyingi kirishda u o‘z parolini tanlaydi.',
+    resetPinAsk: 'PIN almashtirilsinmi? Xodimning PIN sessiyalari tugaydi.',
+    removePinAsk: 'PIN o‘chirilsinmi?',
     mfa: 'Ikki bosqichli himoya',
     noRows: 'Hech narsa topilmadi',
     orderDetail: 'Buyurtma',

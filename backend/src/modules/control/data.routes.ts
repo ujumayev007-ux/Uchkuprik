@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
-import { errors, parse } from '../../http/errors.js';
+import { AppError, errors, parse } from '../../http/errors.js';
 import {
   fromLegacyLayout,
   templateSettingsOf,
 } from '../../printing/receipt-template.js';
+import { hashSecret } from '../../lib/crypto.js';
+import { audit } from '../audit/audit.js';
+import { passwordSchema, pinSchema } from '../auth/auth.routes.js';
 import { orderSettingsOf } from '../orders/settings.js';
 import {
   loadOwner,
@@ -264,6 +267,123 @@ export function dataRouter(services: Services) {
           entityType: 'user',
           entityId: userId,
           data: { from: user.status, to: status },
+        });
+      });
+      services.events?.publish({ type: 'config.changed', tenantId });
+      res.json({ ok: true });
+    },
+  );
+
+  /**
+   * Forgotten password / PIN: the Owner sets a NEW secret without ever seeing the old
+   * one. Only a hash is stored, the secret never reaches a log or an audit row, every
+   * session of the employee ends, and nothing else about the restaurant changes
+   * (orders, licence, tenant and history stay as they are).
+   */
+  const secretTarget = async (
+    customerId: string,
+    tenantId: string,
+    id: string,
+  ) => {
+    const user = await db.user.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, username: true },
+    });
+    if (!user) throw errors.notFound();
+    return { ...user, customerId };
+  };
+
+  router.post(
+    '/control/customers/:id/data/users/:userId/password',
+    ...sensitive,
+    async (req, res) => {
+      const owner = getOwner(res);
+      const { customerId, tenantId } = await tenantOf(idParam(req.params.id));
+      const userId = idParam(req.params.userId);
+      const { password } = parse(
+        z.object({ password: z.string().max(128), confirm: z.literal(true) }),
+        req.body,
+      );
+      if (!passwordSchema.safeParse(password).success)
+        throw new AppError(400, 'WEAK_PASSWORD', 'weakPassword');
+      await secretTarget(customerId, tenantId, userId);
+      const passwordHash = await hashSecret(password);
+      await db.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            passwordHash,
+            passwordChangedAt: new Date(),
+            // The employee must choose their own password at the next sign-in.
+            mustChangePassword: true,
+            failedLoginCount: 0,
+            lockedUntil: null,
+          },
+        });
+        await tx.session.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date(), revokeReason: 'owner_password_reset' },
+        });
+        await controlAudit(tx, req, {
+          ownerId: owner.ownerId,
+          customerId,
+          action: 'data.user.password.reset',
+          entityType: 'user',
+          entityId: userId,
+        });
+        await audit(tx, req, {
+          tenantId,
+          action: 'user.password.reset.owner',
+          entityType: 'user',
+          entityId: userId,
+        });
+      });
+      services.events?.publish({ type: 'config.changed', tenantId });
+      res.json({ ok: true });
+    },
+  );
+
+  router.post(
+    '/control/customers/:id/data/users/:userId/pin',
+    ...sensitive,
+    async (req, res) => {
+      const owner = getOwner(res);
+      const { customerId, tenantId } = await tenantOf(idParam(req.params.id));
+      const userId = idParam(req.params.userId);
+      const { pin } = parse(
+        z.object({ pin: pinSchema.nullable(), confirm: z.literal(true) }),
+        req.body,
+      );
+      await secretTarget(customerId, tenantId, userId);
+      const pinHash = pin
+        ? await hashSecret(services.secrets.pepperPin(userId, pin))
+        : null;
+      await db.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            pinHash,
+            pinChangedAt: new Date(),
+            failedPinCount: 0,
+            pinLockedUntil: null,
+          },
+        });
+        await tx.session.updateMany({
+          where: { userId, authMethod: 'PIN', revokedAt: null },
+          data: { revokedAt: new Date(), revokeReason: 'owner_pin_reset' },
+        });
+        await controlAudit(tx, req, {
+          ownerId: owner.ownerId,
+          customerId,
+          action: pin ? 'data.user.pin.set' : 'data.user.pin.remove',
+          entityType: 'user',
+          entityId: userId,
+        });
+        await audit(tx, req, {
+          tenantId,
+          action: pin ? 'user.pin.set.owner' : 'user.pin.remove.owner',
+          entityType: 'user',
+          entityId: userId,
         });
       });
       services.events?.publish({ type: 'config.changed', tenantId });

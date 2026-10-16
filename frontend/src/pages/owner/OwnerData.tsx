@@ -189,9 +189,18 @@ function Users({ customerId }: { customerId: string }) {
       );
     }
   };
+  const [resetFor, setResetFor] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   return (
     <div className="stack">
       {element}
+      <ResetSecret
+        customerId={customerId}
+        target={resetFor}
+        onClose={() => setResetFor(null)}
+      />
       <TextField
         label={t.common.search}
         placeholder={d.search}
@@ -220,6 +229,17 @@ function Users({ customerId }: { customerId: string }) {
               <Badge tone={user.status === 'ACTIVE' ? 'success' : 'danger'}>
                 {String(user.status)}
               </Badge>
+              <Button
+                size="sm"
+                onClick={() =>
+                  setResetFor({
+                    id: String(user.id),
+                    name: String(user.displayName),
+                  })
+                }
+              >
+                {d.reset}
+              </Button>
               {user.status === 'ACTIVE' ? (
                 <Button
                   size="sm"
@@ -241,6 +261,125 @@ function Users({ customerId }: { customerId: string }) {
         </List>
       )}
     </div>
+  );
+}
+
+/** A random password that satisfies the server's rules (letters + digits, 14 characters). */
+function randomPassword() {
+  const letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
+  const digits = '23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(14));
+  const chars = Array.from(bytes, (byte, index) =>
+    index % 3 === 2
+      ? digits[byte % digits.length]
+      : letters[byte % letters.length],
+  );
+  return chars.join('');
+}
+
+/** Sets a NEW password or PIN for a restaurant employee; the old one is never shown. */
+function ResetSecret({
+  customerId,
+  target,
+  onClose,
+}: {
+  customerId: string;
+  target: { id: string; name: string } | null;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const { confirm, element } = useConfirm();
+  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const close = () => {
+    setPassword('');
+    setPin('');
+    onClose();
+  };
+  const send = async (
+    kind: 'password' | 'pin',
+    body: Record<string, unknown>,
+    ask: string,
+  ) => {
+    if (!target || !(await confirm(ask))) return;
+    setBusy(true);
+    try {
+      await ownerPost(
+        `/customers/${customerId}/data/users/${target.id}/${kind}`,
+        {
+          ...body,
+          confirm: true,
+        },
+      );
+      toast(d.resetDone, 'success');
+      close();
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : t.common.errorTitle,
+        'error',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      {element}
+      <Dialog
+        open={target !== null}
+        title={`${d.resetTitle}${target ? ` — ${target.name}` : ''}`}
+        description={d.resetHint}
+        onClose={close}
+        footer={<Button onClick={close}>{t.common.cancel}</Button>}
+      >
+        <div className="stack">
+          <TextField
+            label={d.newPassword}
+            type="text"
+            autoComplete="off"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <div className="row">
+            <Button size="sm" onClick={() => setPassword(randomPassword())}>
+              {d.generate}
+            </Button>
+            <Button
+              disabled={busy || password.length < 10}
+              onClick={() =>
+                void send('password', { password }, d.resetPasswordAsk)
+              }
+            >
+              {d.setPassword}
+            </Button>
+          </div>
+          <TextField
+            label={d.newPin}
+            inputMode="numeric"
+            maxLength={4}
+            autoComplete="off"
+            value={pin}
+            onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))}
+          />
+          <div className="row">
+            <Button
+              disabled={busy || pin.length !== 4}
+              onClick={() => void send('pin', { pin }, d.resetPinAsk)}
+            >
+              {d.setPin}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={() => void send('pin', { pin: null }, d.removePinAsk)}
+            >
+              {d.removePin}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </>
   );
 }
 
