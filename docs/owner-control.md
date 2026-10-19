@@ -293,3 +293,12 @@ last verified bundle).
   Owner and Admin applications show a branded splash and wait for `/api/health/live` (JSON
   `status: ok`) before opening the page. Hosting names and addresses appear only under
   «Texnik ma’lumot» / «Murakkab sozlama».
+
+### Owner session that stays until the computer restarts
+
+The Owner application sends `keep: true` at sign-in (only after password, approved device key and a
+valid code). The session then lives 7 days absolute / 12 hours idle (an ordinary sign-in keeps 8 hours /
+30 minutes). The application ends it itself: at start it compares the boot moment (and a shutdown or
+log-off marker written on Windows `session-end`) with the last run and, when they differ, calls
+`/api/control/owner/logout` (best effort) and removes the cookie. Closing and reopening the
+application does not sign out. Step-up (password + code) for sensitive actions is unchanged.

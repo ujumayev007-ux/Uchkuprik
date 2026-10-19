@@ -5,6 +5,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('fastfoodOwner', {
   deviceKey: () => ipcRenderer.invoke('owner:deviceKey'),
   sign: (value) => ipcRenderer.invoke('owner:sign', value),
+  // This application keeps the sign-in until the computer restarts (see main.cjs).
+  untilRestart: true,
   // "Remember on this computer": e-mail and authenticator key in protected storage.
   rememberGet: () => ipcRenderer.invoke('owner:remember:get'),
   rememberSet: (value) => ipcRenderer.invoke('owner:remember:set', value),

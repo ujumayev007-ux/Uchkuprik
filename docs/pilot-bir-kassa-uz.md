@@ -38,6 +38,11 @@ kompyuterda**, Windows himoyasi ostida eslab qolishi mumkin: kirish oynasidagi �
 kaliti» maydoniga kalitni bir marta kiriting — keyingi kirishlarda kod o‘zi kiritiladi va faqat
 parol yoziladi. Eslab qolishni oynadan o‘chirish mumkin.
 
+**Kompyuter yoqilgunicha kirgan holda qolish (Owner 1.6.0).** Owner dasturi bir marta kirgandan
+keyin dasturni yopib qayta ochsangiz ham qayta kod so‘ramaydi. Kompyuter o‘chirib-yoqilganda
+(yoki qayta ishga tushirilganda) sessiya tugaydi va yangi kirish kerak bo‘ladi. Server tomonda
+bunday sessiya 12 soat harakatsizlikka va 7 kunga chidaydi; oddiy kirish esa 30 daqiqa va 8 soat.
+
 **Reklama va dizayn.** Owner → «Reklama boshqaruvi» va «Dizayn boshqaruvi»: hujjat
 `docs/reklama-va-dizayn-uz.md`.
 

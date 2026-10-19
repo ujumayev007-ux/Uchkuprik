@@ -17,6 +17,10 @@ export const ownerPolicy = {
   absoluteMs: 8 * 60 * MINUTE,
   mfaPendingMs: 10 * MINUTE,
   reauthWindowMs: 5 * MINUTE,
+  // An Owner application that asked to stay signed in until the computer restarts:
+  // the application itself ends the session on the next boot / shutdown.
+  keptIdleMs: 12 * 60 * MINUTE,
+  keptAbsoluteMs: 7 * 24 * 60 * MINUTE,
   challengeMs: 2 * MINUTE,
   lockThreshold: 5,
   lockMs: 15 * MINUTE,
@@ -75,9 +79,11 @@ export async function createOwnerSession(
     deviceId: string;
     mfaVerified: boolean;
     req: Request;
+    keep?: boolean;
   },
 ) {
   const at = now(services);
+  const kept = input.keep === true && input.mfaVerified;
   const token = randomToken();
   const session = await tx.controlOwnerSession.create({
     data: {
@@ -88,9 +94,16 @@ export async function createOwnerSession(
       reauthAt: input.mfaVerified ? at : null,
       idleExpiresAt: new Date(
         at.getTime() +
-          (input.mfaVerified ? ownerPolicy.idleMs : ownerPolicy.mfaPendingMs),
+          (input.mfaVerified
+            ? kept
+              ? ownerPolicy.keptIdleMs
+              : ownerPolicy.idleMs
+            : ownerPolicy.mfaPendingMs),
       ),
-      expiresAt: new Date(at.getTime() + ownerPolicy.absoluteMs),
+      expiresAt: new Date(
+        at.getTime() +
+          (kept ? ownerPolicy.keptAbsoluteMs : ownerPolicy.absoluteMs),
+      ),
       ipAddress: input.req.ip ?? null,
       userAgent: input.req.get('user-agent')?.slice(0, 200) ?? null,
     },
@@ -143,7 +156,14 @@ export function loadOwner(services: Services) {
         where: { id: session.id },
         data: {
           lastSeenAt: at,
-          idleExpiresAt: new Date(at.getTime() + ownerPolicy.idleMs),
+          // A "stay signed in until restart" session keeps its longer idle window.
+          idleExpiresAt: new Date(
+            at.getTime() +
+              (session.expiresAt.getTime() - session.createdAt.getTime() >
+              ownerPolicy.absoluteMs + MINUTE
+                ? ownerPolicy.keptIdleMs
+                : ownerPolicy.idleMs),
+          ),
         },
       });
     next();

@@ -93,6 +93,8 @@ export function ownerRouter(services: Services) {
           .string()
           .regex(/^\d{6}$/)
           .optional(),
+        // The Owner application asks to stay signed in until the computer restarts.
+        keep: z.boolean().optional(),
       }),
       req.body,
     );
@@ -220,6 +222,7 @@ export function ownerRouter(services: Services) {
         deviceId: device.id,
         mfaVerified: true,
         req,
+        keep: input.keep === true,
       });
       await controlAudit(tx, req, {
         ownerId: owner.id,
@@ -234,7 +237,10 @@ export function ownerRouter(services: Services) {
       secure: services.secureCookies,
       sameSite: 'strict',
       path: '/',
-      maxAge: ownerPolicy.absoluteMs,
+      maxAge:
+        input.keep === true
+          ? ownerPolicy.keptAbsoluteMs
+          : ownerPolicy.absoluteMs,
     });
     res.json({ ok: true, displayName: owner.displayName });
   });

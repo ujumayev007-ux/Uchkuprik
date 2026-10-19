@@ -8,6 +8,8 @@ export type OwnerBridge = {
   deviceKey: () => Promise<{ publicKey: string; label: string }>;
   // Signs a JSON value with the installation's private key (canonical JSON).
   sign: (value: object) => Promise<string>;
+  // Newer Owner applications keep the sign-in until the computer restarts.
+  untilRestart?: boolean;
   // Optional (newer Owner applications): e-mail + authenticator key kept on this computer.
   rememberGet?: () => Promise<{ email: string; hasKey: boolean }>;
   rememberSet?: (value: { email: string; secret: string }) => Promise<unknown>;

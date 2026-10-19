@@ -84,6 +84,8 @@ function OwnerLogin({ onDone }: { onDone: () => void }) {
             deviceSignature,
             deviceLabel: key.label,
             code,
+            // Stay signed in until the computer restarts (the application ends it then).
+            ...(bridge.untilRestart ? { keep: true } : {}),
           });
           // Keep the key on this computer only when the owner asked for it.
           if (!saved && keyText.trim() && bridge.rememberSet)

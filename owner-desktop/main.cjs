@@ -480,6 +480,57 @@ ipcMain.handle('conn:settings', (event) => {
   return { ok: true };
 });
 
+// ---- stay signed in until the computer restarts ---------------------------------------
+// The Owner signs in once (a long-lived session is requested at sign-in). When the
+// computer was restarted or shut down since the last run, the session is ended and a
+// new sign-in (and code) is required. Closing and reopening this application does not.
+const BOOT_FILE = path.join(DATA, 'owner-boot.json');
+/** Minute-resolution boot moment (drift of a few minutes is tolerated). */
+const bootMoment = () => Math.round((Date.now() - os.uptime() * 1000) / 60000);
+
+function readBoot() {
+  try {
+    return JSON.parse(fs.readFileSync(BOOT_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+function writeBoot(value) {
+  try {
+    fs.mkdirSync(DATA, { recursive: true });
+    fs.writeFileSync(BOOT_FILE, JSON.stringify(value));
+  } catch {
+    /* A failure here only means the next start asks to sign in again. */
+  }
+}
+
+/** Ends the Owner session on the server (best effort) and forgets the cookie here. */
+async function endOwnerSession(url) {
+  try {
+    await session.defaultSession.fetch(`${url}/api/control/owner/logout`, {
+      method: 'POST',
+      headers: {
+        Origin: new URL(url).origin,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(6000),
+    });
+  } catch {
+    /* Offline: the cookie is still removed below; the server session expires by itself. */
+  }
+  await session.defaultSession.clearStorageData({ storages: ['cookies'] });
+}
+
+/** A different boot, or a shutdown/log-off was seen last time: sign in again. */
+async function applyBootRule(url) {
+  const last = readBoot();
+  const now = bootMoment();
+  const sameBoot = last && !last.ended && Math.abs(now - last.boot) <= 3;
+  if (!sameBoot) await endOwnerSession(url);
+  writeBoot({ boot: sameBoot ? last.boot : now, ended: false });
+}
+
 async function boot() {
   const url = serverUrl();
   if (!url) {
@@ -497,6 +548,11 @@ async function boot() {
     done(false),
   );
   menu();
+  if (url) await applyBootRule(url);
+  // Keep the sign-in on disk even if the application is stopped abruptly.
+  setInterval(() => {
+    void session.defaultSession.cookies.flushStore().catch(() => undefined);
+  }, 10_000).unref();
   win = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -507,6 +563,12 @@ async function boot() {
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.cjs'),
     },
+  });
+  // Windows tells the application when the user shuts down, restarts or logs off: the
+  // next start asks to sign in again (also when fast start-up keeps the boot moment).
+  win.on('session-end', () => {
+    const last = readBoot();
+    writeBoot({ boot: last ? last.boot : bootMoment(), ended: true });
   });
   // Only the central server's pages may be shown; everything else opens externally.
   win.webContents.on('will-navigate', (event, target) => {
