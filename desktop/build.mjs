@@ -77,7 +77,16 @@ if (existsSync(apk)) {
 // Remote licence control: customers' apps poll the vendor's signed status document.
 const vendorState = join(homedir(), '.fastfood', 'vendor.json');
 if (!TEST && existsSync(vendorState)) {
-  const { statusUrl, report } = JSON.parse(readFileSync(vendorState, 'utf8'));
+  let state;
+  try {
+    state = JSON.parse(readFileSync(vendorState, 'utf8').replace(/^﻿/, ''));
+  } catch {
+    // Building without it would silently drop remote licence control and install reports.
+    throw new Error(
+      `${vendorState} is damaged (e.g. after a power cut). Restore it before building: the status address and report key are also inside the last installed build (resources/app-server).`,
+    );
+  }
+  const { statusUrl, report } = state;
   if (statusUrl)
     writeFileSync(join(server, 'license-status-url.txt'), statusUrl);
   // Install reports: topic and the vendor's public encryption key (no secrets).
