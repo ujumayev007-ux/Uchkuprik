@@ -122,6 +122,8 @@ export const messages = {
   mediaTooLarge: 'Fayl hajmi juda katta (rasm 3 MB, video 20 MB gacha).',
   mediaInUse:
     'Bu fayl reklama yoki dizaynda ishlatilmoqda. Avval uni olib tashlang.',
+  staffLimit:
+    'Bu rol uchun xodimlar soni dastur egasi belgilagan chegaraga yetdi. Yangi xodim qo‘shib bo‘lmaydi.',
   adInvalid: 'Reklama ma’lumotlari noto‘g‘ri.',
   discountLimit: 'Chegirma ruxsat etilgan chegaradan oshib ketdi.',
   serverUnreachable:

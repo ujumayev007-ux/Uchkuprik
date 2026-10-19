@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { assertWithinLimit } from '../billing/entitlements.js';
+import { catalogByKey } from '../control/catalog.js';
+import { evaluateFeature, resolveParams } from '../control/policy.js';
 import type { Services } from '../../context.js';
 import type { Tx } from '../../db.js';
 import {
@@ -58,6 +60,43 @@ async function loadRoles(tx: Tx, auth: AuthContext, roleIds: string[]) {
     roles.flatMap((role) => role.permissions),
   );
   return roles;
+}
+
+/**
+ * Owner-set cap on active staff per role (feature `staff.limits`; 0 = unlimited). Counts
+ * everybody holding the role except the person being changed, so editing a user who
+ * already holds it is never blocked by their own seat.
+ */
+async function assertRoleSeats(
+  services: Services,
+  tx: Tx,
+  tenantId: string,
+  roles: { systemKey: string | null }[],
+  exceptUserId: string | null,
+) {
+  const def = catalogByKey.get('staff.limits');
+  if (!def || !services.controlView) return;
+  const view = await services.controlView(tenantId);
+  if (!evaluateFeature(view.policy, def, [], view.adminSettings).online) return;
+  const limits = resolveParams(view.policy, def, [], view.adminParams);
+  for (const role of roles) {
+    const max = role.systemKey ? limits[role.systemKey] : undefined;
+    if (typeof max !== 'number' || max <= 0) continue;
+    const taken = await tx.user.count({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        deletedAt: null,
+        ...(exceptUserId ? { id: { not: exceptUserId } } : {}),
+        roles: { some: { role: { systemKey: role.systemKey } } },
+      },
+    });
+    if (taken >= max)
+      throw new AppError(409, 'STAFF_LIMIT', 'staffLimit', {
+        role: role.systemKey,
+        max,
+      });
+  }
 }
 
 async function assertBranches(tx: Tx, auth: AuthContext, branchIds: string[]) {
@@ -166,7 +205,8 @@ export function usersRouter(services: Services) {
     try {
       const user = await db.$transaction(async (tx) => {
         await assertWithinLimit(tx, auth.tenantId, 'users');
-        await loadRoles(tx, auth, input.roleIds);
+        const chosen = await loadRoles(tx, auth, input.roleIds);
+        await assertRoleSeats(services, tx, auth.tenantId, chosen, null);
         if (!input.allBranches) await assertBranches(tx, auth, input.branchIds);
         else if (!auth.allBranches) throw errors.forbidden();
         const pinHash = input.pin
@@ -224,8 +264,10 @@ export function usersRouter(services: Services) {
     const id = parse(z.uuid(), req.params.id);
     const input = parse(userFields, req.body);
     await db.$transaction(async (tx) => {
-      await loadTarget(tx, auth, id);
-      await loadRoles(tx, auth, input.roleIds);
+      const current = await loadTarget(tx, auth, id);
+      const chosen = await loadRoles(tx, auth, input.roleIds);
+      if (current.status === 'ACTIVE')
+        await assertRoleSeats(services, tx, auth.tenantId, chosen, id);
       if (!input.allBranches) await assertBranches(tx, auth, input.branchIds);
       else if (!auth.allBranches) throw errors.forbidden();
       await tx.user.update({
@@ -276,8 +318,16 @@ export function usersRouter(services: Services) {
     if (id === auth.userId) throw errors.forbidden();
     await db.$transaction(async (tx) => {
       const target = await loadTarget(tx, auth, id);
-      if (status === 'ACTIVE' && target.status !== 'ACTIVE')
+      if (status === 'ACTIVE' && target.status !== 'ACTIVE') {
         await assertWithinLimit(tx, auth.tenantId, 'users');
+        await assertRoleSeats(
+          services,
+          tx,
+          auth.tenantId,
+          target.roles.map(({ role }) => role),
+          id,
+        );
+      }
       await tx.user.update({ where: { id }, data: { status } });
       if (status === 'DISABLED') {
         await tx.session.updateMany({
