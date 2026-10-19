@@ -18,6 +18,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const safeJson = require('./safe-json.cjs');
 const http = require('node:http');
 const { registerUpdates } = require('./updates.cjs');
 const alerts = require('./vendor-alerts.cjs');
@@ -329,9 +330,11 @@ function migrationNames() {
  */
 async function backupIfUpgrading() {
   const stateFile = path.join(DATA, 'applied-migrations.json');
-  const applied = fs.existsSync(stateFile)
-    ? JSON.parse(fs.readFileSync(stateFile, 'utf8'))
-    : [];
+  // A damaged list (power cut) is moved aside; the list is rebuilt after migrating.
+  const read = safeJson.readJson(stateFile, [], (file, moved) =>
+    log(`damaged file moved aside: ${file} -> ${moved}`),
+  );
+  const applied = Array.isArray(read) ? read : [];
   const pending = migrationNames().filter((name) => !applied.includes(name));
   if (pending.length === 0 || applied.length === 0) return;
   await stopPostgres();
@@ -417,7 +420,7 @@ async function migrate(password) {
         'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
       )
     ).rows.map((row) => row.migration_name);
-    fs.writeFileSync(
+    safeJson.writeJson(
       path.join(DATA, 'applied-migrations.json'),
       JSON.stringify(applied),
     );
@@ -768,10 +771,15 @@ async function boot() {
   await ensureVendorLicense(keys);
   startServer(keys);
   if (isVendorComputer()) {
-    paymentWatch.start();
-    const state = vendorState();
-    if (reports.ensureReportKeys(VENDOR_DIR, state)) saveVendorState(state);
-    reportWatch.start();
+    // The vendor tools must never stop the restaurant application from starting.
+    try {
+      paymentWatch.start();
+      const state = vendorState();
+      if (reports.ensureReportKeys(VENDOR_DIR, state)) saveVendorState(state);
+      reportWatch.start();
+    } catch (error) {
+      log(`vendor tools unavailable: ${error.message}`);
+    }
   } else
     reports.startReporting({
       configFile: path.join(SERVER, 'report.json'),

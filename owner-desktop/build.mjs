@@ -35,7 +35,12 @@ if (!url.startsWith('https://') && !localOk)
 const stage = join(here, 'stage');
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
-for (const name of ['vendor-ipc.cjs', 'vendor-alerts.cjs', 'reports.cjs'])
+for (const name of [
+  'vendor-ipc.cjs',
+  'vendor-alerts.cjs',
+  'reports.cjs',
+  'safe-json.cjs',
+])
   copyFileSync(join(here, '..', 'desktop', name), join(stage, name));
 writeFileSync(
   join(stage, 'owner.json'),

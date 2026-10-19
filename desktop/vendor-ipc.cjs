@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
+const safeJson = require('./safe-json.cjs');
 
 function registerVendor({ ipcMain, dialog, getWindow, log, vendorDir }) {
   // --------------------------------------------------- vendor licence panel
@@ -34,17 +35,21 @@ function registerVendor({ ipcMain, dialog, getWindow, log, vendorDir }) {
     'developer_api',
   ];
 
+  const damaged = (file, moved) =>
+    (log || console.log)(`damaged file moved aside: ${file} -> ${moved}`);
+
   function vendorHistory() {
-    return fs.existsSync(VENDOR_HISTORY)
-      ? JSON.parse(fs.readFileSync(VENDOR_HISTORY, 'utf8'))
-      : [];
+    const value = safeJson.readJson(VENDOR_HISTORY, [], damaged);
+    return Array.isArray(value) ? value : [];
   }
 
   /** Vendor state: GitHub gist for remote control and one entry per customer install. */
   function vendorState() {
-    const state = fs.existsSync(VENDOR_STATE)
-      ? JSON.parse(fs.readFileSync(VENDOR_STATE, 'utf8'))
-      : { customers: {} };
+    const read = safeJson.readJson(VENDOR_STATE, { customers: {} }, damaged);
+    const state =
+      read && typeof read === 'object' && !Array.isArray(read)
+        ? read
+        : { customers: {} };
     state.customers ??= {};
     // Customers from licences issued before the customer list existed.
     for (const row of vendorHistory())
@@ -60,9 +65,7 @@ function registerVendor({ ipcMain, dialog, getWindow, log, vendorDir }) {
   }
 
   function saveVendorState(state) {
-    fs.writeFileSync(VENDOR_STATE, JSON.stringify(state, null, 2), {
-      mode: 0o600,
-    });
+    safeJson.writeJson(VENDOR_STATE, state, { mode: 0o600 });
   }
 
   function signLicense(input, statusUrl) {
@@ -115,7 +118,7 @@ function registerVendor({ ipcMain, dialog, getWindow, log, vendorDir }) {
     const key = `${body.toString('base64url')}.${signature.toString('base64url')}`;
     const history = vendorHistory();
     history.push({ ...payload, key });
-    fs.writeFileSync(VENDOR_HISTORY, JSON.stringify(history, null, 2));
+    safeJson.writeJson(VENDOR_HISTORY, history);
     return { payload, key };
   }
 
