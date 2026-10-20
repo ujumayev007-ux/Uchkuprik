@@ -10,6 +10,10 @@ export type OwnerBridge = {
   sign: (value: object) => Promise<string>;
   // Newer Owner applications keep the sign-in until the computer restarts.
   untilRestart?: boolean;
+  // Newer Owner applications remember that this computer is trusted (no code needed).
+  trustGet?: () => Promise<{ trusted: boolean }>;
+  trustSet?: (value: { email: string }) => Promise<unknown>;
+  trustClear?: () => Promise<unknown>;
   // Optional (newer Owner applications): e-mail + authenticator key kept on this computer.
   rememberGet?: () => Promise<{ email: string; hasKey: boolean }>;
   rememberSet?: (value: { email: string; secret: string }) => Promise<unknown>;

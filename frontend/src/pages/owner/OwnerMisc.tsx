@@ -333,6 +333,63 @@ export function ReleasesTab() {
   );
 }
 
+function RecoveryCard() {
+  const r = o.recovery;
+  const toast = useToast();
+  const [key, setKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const me = useQuery({
+    queryKey: ['owner', 'me', 'security'],
+    queryFn: () =>
+      ownerApi<{ deviceTrusted: boolean; hasRecoveryKey: boolean }>(
+        '/owner/me',
+      ),
+  });
+  return (
+    <section className="card stack">
+      <h3 className="section-title">{r.cardTitle}</h3>
+      <p className="muted small">{r.cardHint}</p>
+      <p className="small">
+        {me.data?.deviceTrusted ? r.trusted : r.notTrusted} ·{' '}
+        {me.data?.hasRecoveryKey ? r.exists : r.none}
+      </p>
+      {key && (
+        <div className="stack">
+          <code style={{ fontSize: '1.2rem', wordBreak: 'break-all' }}>
+            {key}
+          </code>
+          <p className="muted small">{r.shownOnce}</p>
+        </div>
+      )}
+      <div>
+        <Button
+          busy={busy}
+          disabled={!me.data?.deviceTrusted}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const result = await ownerPost<{ key: string }>(
+                '/owner/recovery/key',
+              );
+              setKey(result.key);
+              await me.refetch();
+            } catch (error) {
+              toast(
+                error instanceof Error ? error.message : t.common.errorTitle,
+                'error',
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {r.create}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 export function SecurityTab({ onLogout }: { onLogout: () => void }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -370,6 +427,7 @@ export function SecurityTab({ onLogout }: { onLogout: () => void }) {
   const reload = () => client.invalidateQueries({ queryKey: ['owner'] });
   return (
     <div className="stack">
+      <RecoveryCard />
       <section className="card stack">
         <h3 className="section-title">{s.devices}</h3>
         <ul className="ops-list">

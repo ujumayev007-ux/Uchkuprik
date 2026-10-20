@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('fastfoodOwner', {
   rememberGet: () => ipcRenderer.invoke('owner:remember:get'),
   rememberSet: (value) => ipcRenderer.invoke('owner:remember:set', value),
   rememberClear: () => ipcRenderer.invoke('owner:remember:clear'),
+  // "Trusted computer": the sign-in screen skips the code field (the server decides).
+  trustGet: () => ipcRenderer.invoke('owner:trust:get'),
+  trustSet: (value) => ipcRenderer.invoke('owner:trust:set', value),
+  trustClear: () => ipcRenderer.invoke('owner:trust:clear'),
   code: () => ipcRenderer.invoke('owner:code'),
 });
 

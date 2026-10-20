@@ -80,6 +80,9 @@ export async function createOwnerSession(
     mfaVerified: boolean;
     req: Request;
     keep?: boolean;
+    // False for a sign-in from a trusted computer without a code: sensitive actions
+    // then still ask for a fresh password + code.
+    codeVerified?: boolean;
   },
 ) {
   const at = now(services);
@@ -91,7 +94,7 @@ export async function createOwnerSession(
       ownerId: input.ownerId,
       deviceId: input.deviceId,
       mfaVerified: input.mfaVerified,
-      reauthAt: input.mfaVerified ? at : null,
+      reauthAt: input.mfaVerified && input.codeVerified !== false ? at : null,
       idleExpiresAt: new Date(
         at.getTime() +
           (input.mfaVerified

@@ -2568,19 +2568,22 @@ enum ControlDeviceStatus {
 // Separate account space from restaurant users: owners never share credentials,
 // sessions or roles with any tenant.
 model ControlOwner {
-  id               String             @id @default(uuid(7)) @db.Uuid
-  email            String             @unique
-  displayName      String
-  passwordHash     String
-  mfaSecretEnc     String?
-  mfaEnabledAt     DateTime?
-  mfaLastStep      BigInt?
-  status           ControlOwnerStatus @default(ACTIVE)
-  failedLoginCount Int                @default(0)
-  lockedUntil      DateTime?
-  lastLoginAt      DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                String             @id @default(uuid(7)) @db.Uuid
+  email             String             @unique
+  displayName       String
+  passwordHash      String
+  mfaSecretEnc      String?
+  mfaEnabledAt      DateTime?
+  mfaLastStep       BigInt?
+  status            ControlOwnerStatus @default(ACTIVE)
+  failedLoginCount  Int                @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  // Hash of the one-time recovery key (account recovery from a trusted computer only).
+  recoveryHash      String?
+  recoveryCreatedAt DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   devices  ControlOwnerDevice[]
   sessions ControlOwnerSession[]
@@ -2599,6 +2602,9 @@ model ControlOwnerDevice {
   status       ControlDeviceStatus @default(PENDING)
   approvedAt   DateTime?
   approvedById String?             @db.Uuid
+  // Set after a successful sign-in with a 2FA code on this computer: later sign-ins
+  // from it need the password and the device key only.
+  trustedAt    DateTime?
   lastSeenAt   DateTime?
   lastIp       String?
   createdAt    DateTime            @default(now())

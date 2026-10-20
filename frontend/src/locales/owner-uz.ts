@@ -25,6 +25,16 @@ export const owner = {
     pending:
       'Bu qurilma hali tasdiqlanmagan. Allaqachon tasdiqlangan qurilmadan “Xavfsizlik” bo‘limida ruxsat bering.',
     logout: 'Chiqish',
+    trustLabel:
+      'Shu kompyuterni ishonchli qilish (keyingi safar kod so‘ralmaydi, faqat pochta va parol)',
+    trustedNote:
+      'Bu kompyuter ishonchli: kod so‘ralmaydi, faqat pochta va parol kerak.',
+    askCode: 'Kodni yana so‘rash',
+    codeAgain:
+      'Server bu kompyuterni qayta tasdiqlashni so‘radi: autentifikator kodini kiriting.',
+    forgot: 'Parolni unutdim',
+    wrongHint:
+      'Pochta yoki parol hisobniki bilan mos kelmadi. Parol hisob yaratilganda berilgan parol bilan bir xil bo‘lishi kerak. Unutgan bo‘lsangiz «Parolni unutdim» orqali (faqat ishonchli kompyuterda, tiklash kaliti bilan) yangilang.',
     remembered:
       'Autentifikator kaliti shu kompyuterda saqlangan: kod o‘zi kiritiladi, faqat parolni yozing.',
     forget: 'Eslab qolishni o‘chirish',
@@ -267,6 +277,35 @@ export const owner = {
     versions: 'Qurilmalardagi versiyalar',
     note: 'Yangilanish faol savdo tugagach o‘rnatiladi; majburiy minimal versiya faqat yangi buyurtma yaratishni to‘xtatadi, boshlangan savdoni emas.',
     none: 'Nashrlar yo‘q',
+  },
+  recovery: {
+    title: 'Hisobni tiklash',
+    hint: 'Faqat avval kod bilan tasdiqlangan ishonchli kompyuterda va bir martalik tiklash kaliti bilan ishlaydi. Boshqa kompyuterlardan tiklab bo‘lmaydi.',
+    key: 'Tiklash kaliti',
+    newPassword: 'Yangi parol (kamida 10 belgi, harf va raqam)',
+    again: 'Yangi parolni takrorlang',
+    resetMfa:
+      'Autentifikatorni ham yangidan yaratish (eski kodga kirish yo‘qolgan bo‘lsa)',
+    submit: 'Tiklash',
+    back: 'Orqaga',
+    mismatch: 'Ikkala parol bir xil emas.',
+    doneTitle: 'Hisob tiklandi',
+    doneText:
+      'Yangi parol o‘rnatildi, barcha eski sessiyalar tugadi. Tiklash kaliti ishlatildi: yangisini Xavfsizlik bo‘limida yarating.',
+    newSecret:
+      'Yangi autentifikator kaliti (autentifikator ilovasiga qo‘shing; u faqat bir marta ko‘rsatiladi):',
+    toLogin: 'Kirishga o‘tish',
+    cardTitle: 'Tiklash kaliti',
+    cardHint:
+      'Parol yoki autentifikator yo‘qolsa, hisobni tiklash uchun bir martalik kalit. Uni xavfsiz joyda (qog‘ozda) saqlang. Faqat ishonchli kompyuterdan yaratiladi.',
+    create: 'Yangi tiklash kalitini yaratish',
+    exists: 'Tiklash kaliti yaratilgan.',
+    none: 'Tiklash kaliti hali yo‘q.',
+    notTrusted:
+      'Bu kompyuter ishonchli emas: kalit faqat ishonchli kompyuterdan yaratiladi (kirishda «ishonchli qilish» belgisini qo‘ying).',
+    shownOnce:
+      'Kalit faqat hozir ko‘rsatiladi. Yozib oling: keyin uni ko‘rib bo‘lmaydi.',
+    trusted: 'Bu kompyuter ishonchli',
   },
   security: {
     sessions: 'Faol sessiyalar',

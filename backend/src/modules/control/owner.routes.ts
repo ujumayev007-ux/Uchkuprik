@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
@@ -8,7 +9,7 @@ import {
   verifyAgainstDummy,
   verifySecret,
 } from '../../lib/crypto.js';
-import { verifyTotp } from '../../lib/totp.js';
+import { generateTotpSecret, otpauthUri, verifyTotp } from '../../lib/totp.js';
 import { messages } from '../../messages.js';
 import { passwordSchema } from '../auth/auth.routes.js';
 import { featureCatalog } from './catalog.js';
@@ -95,6 +96,9 @@ export function ownerRouter(services: Services) {
           .optional(),
         // The Owner application asks to stay signed in until the computer restarts.
         keep: z.boolean().optional(),
+        // After a successful sign-in with a code: remember this computer (later sign-ins
+        // from it need the password and the device key only).
+        trustDevice: z.boolean().optional(),
       }),
       req.body,
     );
@@ -201,8 +205,13 @@ export function ownerRouter(services: Services) {
       throw new AppError(403, 'DEVICE_PENDING', 'ownerDevicePending', {
         fingerprint,
       });
-    if (!input.code) throw new AppError(401, 'MFA_REQUIRED', 'mfaRequired');
-    if (step === null) return fail('owner.login.bad_code');
+    // A trusted computer (approved, and 2FA verified here before) signs in with the
+    // password and the device key; every other computer also needs the code.
+    const trusted = device.status === 'APPROVED' && device.trustedAt !== null;
+    if (!input.code && !trusted)
+      throw new AppError(401, 'MFA_REQUIRED', 'mfaRequired');
+    if (input.code && step === null) return fail('owner.login.bad_code');
+    const trustNow = step !== null && input.trustDevice === true;
     const session = await db.$transaction(async (tx) => {
       await tx.controlOwner.update({
         where: { id: owner.id },
@@ -210,12 +219,16 @@ export function ownerRouter(services: Services) {
           failedLoginCount: 0,
           lockedUntil: null,
           lastLoginAt: at,
-          mfaLastStep: BigInt(step),
+          ...(step !== null ? { mfaLastStep: BigInt(step) } : {}),
         },
       });
       await tx.controlOwnerDevice.update({
         where: { id: device.id },
-        data: { lastSeenAt: at, lastIp: req.ip ?? null },
+        data: {
+          lastSeenAt: at,
+          lastIp: req.ip ?? null,
+          ...(trustNow ? { trustedAt: at } : {}),
+        },
       });
       const created = await createOwnerSession(tx, services, {
         ownerId: owner.id,
@@ -223,12 +236,14 @@ export function ownerRouter(services: Services) {
         mfaVerified: true,
         req,
         keep: input.keep === true,
+        codeVerified: step !== null,
       });
       await controlAudit(tx, req, {
         ownerId: owner.id,
         action: 'owner.login',
         entityType: 'owner_session',
         entityId: created.session.id,
+        data: { withCode: step !== null, trustedDevice: trusted || trustNow },
       });
       return created;
     });
@@ -242,7 +257,11 @@ export function ownerRouter(services: Services) {
           ? ownerPolicy.keptAbsoluteMs
           : ownerPolicy.absoluteMs,
     });
-    res.json({ ok: true, displayName: owner.displayName });
+    res.json({
+      ok: true,
+      displayName: owner.displayName,
+      trusted: trusted || trustNow,
+    });
   });
 
   router.post(
@@ -266,14 +285,28 @@ export function ownerRouter(services: Services) {
     },
   );
 
-  router.get('/control/owner/me', loadOwner(services), (_req, res) => {
+  router.get('/control/owner/me', loadOwner(services), async (_req, res) => {
     const owner = res.locals.owner as ReturnType<typeof getOwner> | undefined;
     if (!owner) throw errors.unauthenticated();
+    const [device, row] = await Promise.all([
+      db.controlOwnerDevice.findUnique({
+        where: { id: owner.deviceId },
+        select: { trustedAt: true },
+      }),
+      db.controlOwner.findUnique({
+        where: { id: owner.ownerId },
+        select: { recoveryHash: true, recoveryCreatedAt: true },
+      }),
+    ]);
     res.json({
       email: owner.email,
       displayName: owner.displayName,
       mfaVerified: owner.mfaVerified,
       reauthAt: owner.reauthAt,
+      // This computer signs in without a code / a recovery key exists (never its value).
+      deviceTrusted: device?.trustedAt != null,
+      hasRecoveryKey: row?.recoveryHash != null,
+      recoveryCreatedAt: row?.recoveryCreatedAt ?? null,
     });
   });
 
@@ -356,6 +389,188 @@ export function ownerRouter(services: Services) {
     });
     res.json({ ok: true });
   });
+
+  // ---- recovery (forgotten password or lost second factor) -------------------------
+  // Only from a computer that was approved AND verified with a code before (trusted),
+  // and only with the one-time recovery key made earlier from a signed-in session. No
+  // other computer can reset Owner credentials, however it signs in.
+
+  /** Makes (or replaces) the recovery key. It is shown once; only a hash is stored. */
+  router.post('/control/owner/recovery/key', ...sensitive, async (req, res) => {
+    const owner = getOwner(res);
+    const device = await db.controlOwnerDevice.findUnique({
+      where: { id: owner.deviceId },
+      select: { trustedAt: true },
+    });
+    if (!device?.trustedAt) {
+      await controlAudit(db, req, {
+        ownerId: owner.ownerId,
+        action: 'owner.recovery.key.denied',
+        outcome: 'DENIED',
+      });
+      throw new AppError(403, 'DEVICE_NOT_TRUSTED', 'ownerDeviceRequired');
+    }
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const raw = Array.from(
+      randomBytes(25),
+      (byte) => alphabet[byte % alphabet.length],
+    ).join('');
+    const key = raw.match(/.{1,5}/g)!.join('-');
+    await db.$transaction(async (tx) => {
+      await tx.controlOwner.update({
+        where: { id: owner.ownerId },
+        data: { recoveryHash: await hashSecret(raw), recoveryCreatedAt: now() },
+      });
+      await controlAudit(tx, req, {
+        ownerId: owner.ownerId,
+        action: 'owner.recovery.key.create',
+      });
+    });
+    res.json({ key });
+  });
+
+  const recoveryLimiter = rateLimit({
+    windowMs: 15 * 60_000,
+    limit: services.limits?.credentialsPerMinute ?? 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { code: 'RATE_LIMITED', message: messages.rateLimited },
+  });
+
+  router.post(
+    '/control/owner/recovery/reset',
+    recoveryLimiter,
+    async (req, res) => {
+      const input = parse(
+        z.object({
+          email: z.string().trim().toLowerCase().email().max(200),
+          challenge: z.string().min(20).max(300),
+          deviceKey: publicKeySchema,
+          deviceSignature: z.string().min(40).max(200),
+          recoveryKey: z.string().trim().min(10).max(60),
+          newPassword: passwordSchema,
+          // Also make a new second factor (the old authenticator was lost).
+          resetMfa: z.boolean().optional(),
+        }),
+        req.body,
+      );
+      const at = now();
+      const deny = async (action: string, ownerId: string | null) =>
+        controlAudit(db, req, {
+          ownerId,
+          action,
+          outcome: 'DENIED',
+          data: { email: input.email },
+        });
+      if (
+        !checkChallenge(services, input.challenge) ||
+        !verifyValue(
+          input.deviceKey,
+          { challenge: input.challenge, email: input.email },
+          input.deviceSignature,
+        )
+      ) {
+        await deny('owner.recovery.bad_proof', null);
+        throw new AppError(
+          403,
+          'DEVICE_PROOF_INVALID',
+          'controlSignatureInvalid',
+        );
+      }
+      const owner = await db.controlOwner.findUnique({
+        where: { email: input.email },
+      });
+      const device = owner
+        ? await db.controlOwnerDevice.findUnique({
+            where: { fingerprint: fingerprintOf(input.deviceKey) },
+          })
+        : null;
+      // Unknown account, or a computer that is not this owner's approved, trusted one:
+      // the same answer, nothing is revealed and no attempt is counted against the owner.
+      if (
+        !owner ||
+        owner.status !== 'ACTIVE' ||
+        !device ||
+        device.ownerId !== owner.id ||
+        device.status !== 'APPROVED' ||
+        device.trustedAt === null
+      ) {
+        await verifyAgainstDummy(input.recoveryKey);
+        await deny('owner.recovery.untrusted_device', owner?.id ?? null);
+        throw new AppError(403, 'DEVICE_NOT_APPROVED', 'ownerDeviceRequired');
+      }
+      if (owner.lockedUntil && owner.lockedUntil > at) {
+        await deny('owner.recovery.locked', owner.id);
+        throw new AppError(429, 'ACCOUNT_LOCKED', 'accountLocked');
+      }
+      const normalized = input.recoveryKey.replace(/[\s-]/g, '').toUpperCase();
+      let valid = false;
+      if (owner.recoveryHash)
+        valid = await verifySecret(normalized, owner.recoveryHash);
+      else await verifyAgainstDummy(normalized);
+      if (!valid) {
+        const failures = owner.failedLoginCount + 1;
+        await db.controlOwner.update({
+          where: { id: owner.id },
+          data: {
+            failedLoginCount: failures,
+            lockedUntil:
+              failures >= ownerPolicy.lockThreshold
+                ? new Date(at.getTime() + ownerPolicy.lockMs)
+                : null,
+          },
+        });
+        await deny('owner.recovery.bad_key', owner.id);
+        throw new AppError(401, 'INVALID_CREDENTIALS', 'invalidCredentials');
+      }
+      const secret = input.resetMfa === true ? generateTotpSecret() : null;
+      await db.$transaction(async (tx) => {
+        await tx.controlOwner.update({
+          where: { id: owner.id },
+          data: {
+            passwordHash: await hashSecret(input.newPassword),
+            // The key works once; a new one is made from a signed-in session.
+            recoveryHash: null,
+            recoveryCreatedAt: null,
+            failedLoginCount: 0,
+            lockedUntil: null,
+            ...(secret
+              ? {
+                  mfaSecretEnc: services.secrets.encrypt(secret),
+                  mfaEnabledAt: at,
+                  mfaLastStep: null,
+                }
+              : {}),
+          },
+        });
+        // Every session ends; every other computer must verify with a code again.
+        await tx.controlOwnerSession.updateMany({
+          where: { ownerId: owner.id, revokedAt: null },
+          data: { revokedAt: at, revokeReason: 'recovery' },
+        });
+        await tx.controlOwnerDevice.updateMany({
+          where: { ownerId: owner.id, id: { not: device.id } },
+          data: { trustedAt: null },
+        });
+        await controlAudit(tx, req, {
+          ownerId: owner.id,
+          action: 'owner.recovery.reset',
+          entityType: 'owner_device',
+          entityId: device.id,
+          data: { mfaReset: secret !== null },
+        });
+      });
+      res.json({
+        ok: true,
+        ...(secret
+          ? {
+              otpauth: otpauthUri(secret, owner.email, 'FastFood Owner'),
+              secret,
+            }
+          : {}),
+      });
+    },
+  );
 
   router.get('/control/owner/sessions', ...authed, async (_req, res) => {
     const owner = getOwner(res);

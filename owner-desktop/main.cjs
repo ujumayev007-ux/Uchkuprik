@@ -216,6 +216,57 @@ ipcMain.handle('owner:remember:set', (event, value) => {
   return { ok: true };
 });
 
+// ---- trusted computer: remembered with Windows secure storage (DPAPI) ----------------
+// The server decides trust (it saw a valid code from this device key); this file only
+// lets the sign-in screen skip the code field. It is tied to this Windows user: another
+// user or computer can not read it, and without the device key it opens nothing.
+const TRUST_FILE = path.join(DATA, 'owner-trust.enc');
+
+function readTrust() {
+  try {
+    if (!fs.existsSync(TRUST_FILE) || !safeStorage.isEncryptionAvailable())
+      return false;
+    const parsed = JSON.parse(
+      safeStorage.decryptString(fs.readFileSync(TRUST_FILE)),
+    );
+    return parsed.trusted === true;
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('owner:trust:get', (event) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  return { trusted: readTrust() };
+});
+
+ipcMain.handle('owner:trust:set', (event, value) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  if (!safeStorage.isEncryptionAvailable())
+    throw new Error(
+      'Operatsion tizimning xavfsiz saqlash imkoniyati mavjud emas.',
+    );
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(
+    TRUST_FILE,
+    safeStorage.encryptString(
+      JSON.stringify({
+        trusted: true,
+        email: String(value?.email || '').slice(0, 200),
+        at: new Date().toISOString(),
+      }),
+    ),
+    { mode: 0o600 },
+  );
+  return { ok: true };
+});
+
+ipcMain.handle('owner:trust:clear', (event) => {
+  if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
+  fs.rmSync(TRUST_FILE, { force: true });
+  return { ok: true };
+});
+
 ipcMain.handle('owner:remember:clear', (event) => {
   if (!fromConsole(event)) throw new Error('Ruxsat yo‘q');
   fs.rmSync(REMEMBER_FILE, { force: true });
