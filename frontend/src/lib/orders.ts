@@ -64,6 +64,11 @@ export type Order = {
   completedAt: string | null;
   cancelReason: string | null;
   version?: number;
+  kitchen?: {
+    acceptedAt: string | null;
+    rejectedAt: string | null;
+    rejectReason: string | null;
+  };
   items: OrderItem[];
   payments: {
     id: string;

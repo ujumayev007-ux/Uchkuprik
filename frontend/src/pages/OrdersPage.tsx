@@ -196,6 +196,13 @@ export function OrderDetail({
         <div className="stack">
           <div className="badges">
             <StatusBadge status={o.status} /> <PaymentBadge order={o} />
+            {o.kitchen?.rejectedAt ? (
+              <Badge tone="danger">
+                {t.orders.kitchenRejected}: {o.kitchen.rejectReason}
+              </Badge>
+            ) : o.kitchen?.acceptedAt ? (
+              <Badge tone="accent">{t.orders.kitchenAccepted}</Badge>
+            ) : null}
             {o.table && (
               <Badge>
                 {t.pos.table}: {o.table.name}

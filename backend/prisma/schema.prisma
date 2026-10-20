@@ -639,6 +639,12 @@ model Order {
   // 0 = normal, 1 = rush. Kitchen screens sort by priority, then age.
   priority           Int             @default(0)
   readyAt            DateTime?
+  // Kitchen confirmation: a cook must accept a new ticket; it can also be refused.
+  kitchenAcceptedAt   DateTime?
+  kitchenAcceptedById String?         @db.Uuid
+  kitchenRejectedAt   DateTime?
+  kitchenRejectedById String?         @db.Uuid
+  kitchenRejectReason String?
   tableId            String?         @db.Uuid
   customerName       String?
   customerPhone      String?

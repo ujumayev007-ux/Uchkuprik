@@ -14,6 +14,8 @@ export type RealtimeEvent =
       orderId: string;
       number: number;
       status: string;
+      // Set when the kitchen accepted, refused or got the order again.
+      kitchen?: 'ACCEPTED' | 'REJECTED' | 'REOPENED';
     }
   | {
       type: 'kitchen.changed';

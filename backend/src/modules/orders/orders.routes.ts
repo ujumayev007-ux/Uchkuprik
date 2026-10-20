@@ -105,6 +105,11 @@ function serialize(order: OrderWithRelations, auth: AuthContext) {
     completedAt: order.completedAt,
     cancelledAt: order.cancelledAt,
     cancelReason: order.cancelReason,
+    kitchen: {
+      acceptedAt: order.kitchenAcceptedAt,
+      rejectedAt: order.kitchenRejectedAt,
+      rejectReason: order.kitchenRejectReason,
+    },
     items: order.items
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((item) => ({

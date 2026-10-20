@@ -542,6 +542,9 @@ export const uz = {
     payRemaining: 'Qolgan summani to‘lash',
     complete: 'Yakunlash (berildi)',
     cancel: 'Buyurtmani bekor qilish',
+    kitchenAccepted: 'Oshxona qabul qildi',
+    kitchenRejected: 'Oshxona rad etdi',
+    kitchenResend: 'Oshxonaga qayta yuborish',
     cancelReason: 'Bekor qilish sababi',
     cancelItem: 'Taomni bekor qilish',
     refund: 'Pulni qaytarish',
@@ -653,7 +656,23 @@ export const uz = {
     noStation: 'Barcha bo‘limlar',
     newTicket: 'Yangi buyurtma',
     tapHint:
-      'Taomni bir marta bosing — yashil “Tayyor” bo‘ladi. Yana bossangiz, qaytadi.',
+      'Avval «Qabul qilish» ni bosing. Keyin taomni bir marta bosing — yashil “Tayyor” bo‘ladi. Yana bossangiz, qaytadi.',
+    accept: 'Qabul qilish',
+    reject: 'Rad etish',
+    rejectAsk: 'Sababini yozing — kassir va ofitsiant ko‘radi.',
+    rejectReason: 'Rad etish sababi',
+    rejectedBecause: 'Rad etildi',
+    rejectedHint:
+      'Kassir yoki ofitsiant buyurtmani qayta yuboradi yoki bekor qiladi.',
+    orderTime: 'Buyurtma vaqti',
+    stagesTitle: 'Buyurtmalar holati',
+    stages: {
+      NEW: 'Yangi',
+      ACCEPTED: 'Qabul qilingan',
+      PREPARING: 'Tayyorlanmoqda',
+      READY: 'Tayyor',
+      REJECTED: 'Rad etilgan',
+    },
   },
   queue: {
     title: 'Buyurtmalar navbati',
@@ -707,6 +726,8 @@ export const uz = {
     test: 'Sinab ko‘rish',
     staffReady: '{n}-raqamli buyurtma tayyor',
     staffUpdated: '{n}-sonli buyurtma yangilandi!',
+    staffAccepted: '{n}-raqamli buyurtmani oshxona qabul qildi',
+    staffRejected: '{n}-raqamli buyurtmani oshxona rad etdi!',
   },
   courierCodes: {
     getHandoff: 'Topshirish kodini olish',

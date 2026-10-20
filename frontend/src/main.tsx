@@ -126,12 +126,13 @@ function SessionOnly({ children }: { children: React.ReactNode }) {
 }
 
 /** Which desktop application hosts this page: the Admin, Kassa and Ofitsiant shells announce themselves. */
-function shellKind(): 'admin' | 'cashier' | 'waiter' | 'pos' {
+function shellKind(): 'admin' | 'cashier' | 'waiter' | 'kitchen' | 'pos' {
   const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
     .fastfoodShell;
   return shell?.kind === 'admin' ||
     shell?.kind === 'cashier' ||
-    shell?.kind === 'waiter'
+    shell?.kind === 'waiter' ||
+    shell?.kind === 'kitchen'
     ? shell.kind
     : 'pos';
 }
@@ -159,6 +160,9 @@ function Home() {
     (can(me, 'pos.access') || can(me, 'orders.create'))
   )
     return <Navigate to="/ofitsiant" replace />;
+  // The dedicated Oshxona application opens the kitchen board directly.
+  if (shellKind() === 'kitchen' && can(me, 'kitchen.access'))
+    return <Navigate to="/oshxona" replace />;
   // The shared POS application shows the staff member's own panel after sign-in; the
   // menu then offers only the other panels their permissions allow.
   if (me?.roleKeys.includes('waiter') && !can(me, 'reports.view'))

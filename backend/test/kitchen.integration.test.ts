@@ -172,6 +172,12 @@ describe('kitchen display and routing', () => {
     // Kitchen staff cannot read order totals.
     await s.cook.get(`/api/orders/${id}`).expect(403);
 
+    // Cooking cannot start before the cook accepts the ticket.
+    await post(s.cook, `/kitchen/orders/${id}/bump`, {
+      status: 'PREPARING',
+      stationId: s.grill,
+    }).expect(409);
+    await post(s.cook, `/kitchen/orders/${id}/accept`).expect(200);
     await post(s.cook, `/kitchen/orders/${id}/bump`, {
       status: 'PREPARING',
       stationId: s.grill,

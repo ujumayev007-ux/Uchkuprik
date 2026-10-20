@@ -125,7 +125,11 @@ export function attachRealtime(
       io.to(branchRoom(event.tenantId, event.branchId)).emit(event.type, {
         orderId: event.orderId,
         ...(event.type === 'order.changed'
-          ? { number: event.number, status: event.status }
+          ? {
+              number: event.number,
+              status: event.status,
+              ...(event.kitchen ? { kitchen: event.kitchen } : {}),
+            }
           : event.type === 'order.updated'
             ? { number: event.number, version: event.version }
             : {}),

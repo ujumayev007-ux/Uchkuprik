@@ -16,7 +16,13 @@ export function StaffAnnouncer() {
     if (typeof number !== 'number') return;
     const key = `${event}:${String(payload.orderId)}:${String(payload.status)}:${String(payload.version ?? '')}`;
     if (said.current.has(key)) return;
-    if (event === 'order.changed' && payload.status === 'READY') {
+    if (event === 'order.changed' && payload.kitchen === 'REJECTED') {
+      said.current.add(key + ':kitchen');
+      speak(t.voice.staffRejected.replace('{n}', String(number)));
+    } else if (event === 'order.changed' && payload.kitchen === 'ACCEPTED') {
+      said.current.add(key + ':kitchen');
+      speak(t.voice.staffAccepted.replace('{n}', String(number)));
+    } else if (event === 'order.changed' && payload.status === 'READY') {
       said.current.add(key);
       speak(t.voice.staffReady.replace('{n}', String(number)));
     } else if (event === 'order.updated') {

@@ -29,7 +29,7 @@ const { version } = JSON.parse(
   readFileSync(join(here, 'package.json'), 'utf8'),
 );
 const TEST = process.env.BUILD_CHANNEL === 'test';
-// PANEL_KIND chooses the application: admin (default), cashier or waiter.
+// PANEL_KIND chooses the application: admin (default), cashier, waiter or kitchen.
 const KINDS = {
   admin: {
     product: 'FastFood Admin',
@@ -49,10 +49,16 @@ const KINDS = {
     id: 'waiter',
     file: 'FastFood-Ofitsiant',
   },
+  kitchen: {
+    product: 'FastFood Oshxona',
+    exe: 'FastFoodOshxona',
+    id: 'kitchen',
+    file: 'FastFood-Oshxona',
+  },
 };
 const kind = process.env.PANEL_KIND || 'admin';
 if (!KINDS[kind])
-  throw new Error('PANEL_KIND must be admin, cashier or waiter.');
+  throw new Error('PANEL_KIND must be admin, cashier, waiter or kitchen.');
 const APP = KINDS[kind];
 const url = (process.env.ADMIN_URL || '').trim().replace(/[/]+$/, '');
 if (url && !/^https:[/][/]/.test(url) && !TEST)
@@ -67,8 +73,17 @@ const baked = JSON.stringify({
   ...(TEST ? { test: true } : {}),
 });
 writeFileSync(join(stage, 'admin.json'), baked);
-for (const name of ['main.cjs', 'preload.cjs', 'connect.html', 'splash.html'])
+for (const name of [
+  'main.cjs',
+  'preload.cjs',
+  'status-preload.cjs',
+  'connect.html',
+  'status.html',
+  'splash.html',
+])
   copyFileSync(join(here, name), join(stage, name));
+// Automatic connection (LAN discovery) is shared with the server application.
+copyFileSync(join(here, '..', 'desktop', 'lan.cjs'), join(stage, 'lan.cjs'));
 writeFileSync(
   join(stage, 'package.json'),
   JSON.stringify({

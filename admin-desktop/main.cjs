@@ -14,6 +14,7 @@ const {
   app,
   BrowserWindow,
   Menu,
+  WebContentsView,
   dialog,
   ipcMain,
   session,
@@ -21,6 +22,7 @@ const {
 } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const lan = require('./lan.cjs');
 
 const read = (file) => {
   try {
@@ -33,7 +35,7 @@ const baked = read(
   path.join(app.isPackaged ? process.resourcesPath : __dirname, 'admin.json'),
 );
 const TEST = baked.test === true;
-// One shell, three applications: Admin, Cashier (Kassa) and Waiter (Ofitsiant). Each is
+// One shell, four applications: Admin, Cashier (Kassa), Waiter (Ofitsiant) and Kitchen (Oshxona). Each is
 // its own installer with its own name, profile and start page; all of them only show
 // the restaurant server's pages after sign-in (nothing is stored here).
 const KINDS = {
@@ -55,6 +57,12 @@ const KINDS = {
     start: '/ofitsiant',
     profile: 'Ofitsiant',
   },
+  kitchen: {
+    label: 'FastFood Oshxona',
+    menu: 'Oshxona',
+    start: '/oshxona',
+    profile: 'Oshxona',
+  },
 };
 const KIND = KINDS[baked.kind] ? baked.kind : 'admin';
 const APP = KINDS[KIND];
@@ -67,8 +75,15 @@ if (TEST)
 const DATA = app.getPath('userData');
 const SETTINGS = path.join(DATA, 'admin-settings.json');
 const DEFAULT_PORT = TEST ? 8788 : 8787;
+const LAN_PORT =
+  Number(process.env.FASTFOOD_LAN_PORT) ||
+  (TEST ? lan.TEST_DISCOVERY_PORT : lan.DISCOVERY_PORT);
 let win = null;
 let currentUrl = '';
+// "connected" | "connecting" | "offline" — shown as "Ulandi" / "Ulanmoqda" / "Aloqa yo‘q".
+let state = 'connecting';
+let pill = null;
+let lastFound = new Map();
 
 const log = (message) => {
   try {
@@ -132,10 +147,10 @@ function serverUrl() {
   );
 }
 
-async function reachable(url) {
+async function reachable(url, timeoutMs = 6000) {
   try {
     const response = await fetch(`${url}/api/health/live`, {
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return false;
     // Our own server's answer only (never a hosting interstitial page).
@@ -167,8 +182,173 @@ async function showError(reason) {
   await connectPage('error', { reason: String(reason).slice(0, 160) });
 }
 
+// ------------------------------------------------ automatic connection (LAN)
+
+const STATE_TEXT = {
+  connected: 'Ulandi',
+  connecting: 'Ulanmoqda',
+  offline: 'Aloqa yo‘q',
+};
+
+/** The pairing: which server (by its public key) this application belongs to. */
+const pairing = () => {
+  const { serverId, serverKey } = read(SETTINGS);
+  return serverId && serverKey ? { id: serverId, key: serverKey } : null;
+};
+
+function saveSettings(change) {
+  fs.mkdirSync(DATA, { recursive: true });
+  const next = { ...read(SETTINGS), ...change };
+  fs.writeFileSync(`${SETTINGS}.tmp`, JSON.stringify(next), { mode: 0o600 });
+  fs.renameSync(`${SETTINGS}.tmp`, SETTINGS);
+}
+
+const onLocalFile = () => !!win && win.webContents.getURL().startsWith('file:');
+
+function layoutPill() {
+  if (!win || win.isDestroyed() || !pill) return;
+  const { width, height } = win.getContentBounds();
+  const w = Math.min(360, width - 20);
+  pill.setBounds({
+    x: Math.round((width - w) / 2),
+    y: height - 52,
+    width: w,
+    height: 40,
+  });
+}
+
+function paint() {
+  if (!win || win.isDestroyed()) return;
+  win.setTitle(`${APP.label} — ${STATE_TEXT[state]}`);
+  menu();
+  if (pill) {
+    // A local page (setup / error) already explains the situation.
+    pill.setVisible(state !== 'connected' && !onLocalFile());
+    layoutPill();
+    pill.webContents.send('lan:state', { state, text: STATE_TEXT[state] });
+  }
+}
+
+function setState(next) {
+  if (state === next) return;
+  state = next;
+  log(`connection ${next}`);
+  paint();
+}
+
+/** Remembers `server` (a discovery answer) as this application's server. */
+function useServer(server) {
+  if (!isLocalHost(server.host)) return false;
+  const url = `http://${server.host}:${server.port}`;
+  saveSettings({ url, serverId: server.id, serverKey: server.key });
+  currentUrl = url;
+  log(`server ${server.fingerprint} at ${url} (${server.name})`);
+  return true;
+}
+
+/** Makes `server` (a discovery answer) this application's server and opens it. */
+async function adopt(server) {
+  const before = currentUrl;
+  if (!useServer(server)) return false;
+  const changed = currentUrl !== before;
+  if (changed || onLocalFile())
+    await win
+      .loadURL(`${currentUrl}${APP.start}`)
+      .catch((error) => showError(error.message));
+  setState('connected');
+  return true;
+}
+
+/**
+ * "Avtomatik ulanish": one server → connect; several → the person chooses; none → a
+ * clear message. A paired application only accepts its own (signed) server again.
+ */
+async function autoConnect() {
+  setState('connecting');
+  const paired = pairing();
+  let found = await lan.discover({
+    port: LAN_PORT,
+    pinned: paired?.key ?? null,
+  });
+  if (!found.length && paired) found = await lan.discover({ port: LAN_PORT });
+  lastFound = new Map(found.map((server) => [server.id, server]));
+  // A paired application never silently switches to a different server.
+  if (found.length === 1 && (!paired || found[0].key === paired.key)) {
+    await adopt(found[0]);
+    return { ok: true, name: found[0].name, code: found[0].fingerprint };
+  }
+  setState(
+    currentUrl && (await reachable(currentUrl, 3000)) ? 'connected' : 'offline',
+  );
+  return {
+    ok: false,
+    found: found.map((s) => ({
+      id: s.id,
+      name: s.name,
+      host: s.host,
+      code: s.fingerprint,
+      local: s.local,
+    })),
+  };
+}
+
+let watching = false;
+let bootDone = false;
+let failures = 0;
+/** Every few seconds: is the server there? If its address changed, find it again. */
+async function watch() {
+  if (!bootDone || watching || !win || win.isDestroyed() || !currentUrl) return;
+  watching = true;
+  try {
+    if (await reachable(currentUrl, 3000)) {
+      failures = 0;
+      const wasDown = state !== 'connected';
+      setState('connected');
+      // The error page appeared while the server was away: open the application again.
+      if (
+        wasDown &&
+        onLocalFile() &&
+        win.webContents.getURL().includes('mode=error')
+      )
+        await win.loadURL(`${currentUrl}${APP.start}`).catch(() => {});
+      return;
+    }
+    failures += 1;
+    if (failures < 2) return;
+    setState('offline');
+    const paired = pairing();
+    if (!paired) return;
+    const found = await lan.discover({
+      port: LAN_PORT,
+      pinned: paired.key,
+      timeoutMs: 2000,
+    });
+    if (found[0]) await adopt(found[0]);
+  } finally {
+    watching = false;
+  }
+}
+
 ipcMain.on('shell:kind', (event) => {
   event.returnValue = KIND;
+});
+
+ipcMain.handle('admin:auto', async (event) => {
+  if (!fromConnectPage(event)) throw new Error('Ruxsat yo‘q');
+  return autoConnect();
+});
+
+ipcMain.handle('admin:pick', async (event, id) => {
+  if (!fromConnectPage(event)) throw new Error('Ruxsat yo‘q');
+  const server = lastFound.get(String(id));
+  if (!server) return { ok: false };
+  return { ok: await adopt(server) };
+});
+
+ipcMain.handle('lan:open', (event) => {
+  if (!pill || event.sender !== pill.webContents)
+    throw new Error('Ruxsat yo‘q');
+  void connectPage('setup', { auto: '1' });
 });
 
 ipcMain.handle('admin:state', (event) => {
@@ -234,6 +414,12 @@ function menu() {
           { label: 'Yangilash (F5)', role: 'reload' },
           { label: 'To‘liq ekran', role: 'togglefullscreen' },
           {
+            label: 'Avtomatik ulanish',
+            click: () => {
+              if (win) void connectPage('setup', { auto: '1' });
+            },
+          },
+          {
             label: 'Server manzili…',
             click: () => {
               if (win) void connectPage('setup');
@@ -241,6 +427,18 @@ function menu() {
           },
           { type: 'separator' },
           { label: 'Chiqish', role: 'quit' },
+        ],
+      },
+      {
+        label: `${state === 'connected' ? '●' : state === 'connecting' ? '◌' : '○'} ${STATE_TEXT[state]}`,
+        submenu: [
+          { label: `Holat: ${STATE_TEXT[state]}`, enabled: false },
+          {
+            label: 'Avtomatik ulanish',
+            click: () => {
+              if (win) void connectPage('setup', { auto: '1' });
+            },
+          },
         ],
       },
     ]),
@@ -265,6 +463,23 @@ async function boot() {
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
+  // The title shows the connection status ("Ulandi" / "Ulanmoqda" / "Aloqa yo‘q").
+  win.on('page-title-updated', (event) => event.preventDefault());
+  pill = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'status-preload.cjs'),
+    },
+  });
+  win.contentView.addChildView(pill);
+  void pill.webContents.loadFile(path.join(__dirname, 'status.html'));
+  win.on('resize', layoutPill);
+  win.webContents.on('did-navigate', paint);
+  win.webContents.on('did-finish-load', paint);
+  paint();
+  setInterval(() => void watch(), 5000).unref();
   win.webContents.on('will-navigate', (event, target) => {
     if (target.startsWith('file:')) return;
     const origin = currentUrl ? new URL(currentUrl).origin : '';
@@ -287,7 +502,9 @@ async function boot() {
     },
   );
   if (!currentUrl) {
-    await connectPage('setup');
+    // First start: look for the restaurant server by itself.
+    bootDone = true;
+    await connectPage('setup', { auto: '1' });
     return;
   }
   // The server may still be waking up: a branded splash is shown and the application
@@ -295,13 +512,31 @@ async function boot() {
   await win.loadFile(path.join(__dirname, 'splash.html'));
   const end =
     Date.now() + (Number(process.env.ADMIN_SPLASH_WAIT_MS) || 120_000);
-  let ok = await reachable(currentUrl);
+  let ok = await reachable(currentUrl, 4000);
   while (!ok && Date.now() < end && !win.isDestroyed()) {
+    // Paired with a server whose address changed (new router, new Wi-Fi): find it again.
+    const paired = pairing();
+    if (paired) {
+      const [server] = await lan.discover({
+        port: LAN_PORT,
+        pinned: paired.key,
+        timeoutMs: 2000,
+      });
+      if (server && useServer(server)) {
+        ok = await reachable(currentUrl, 4000);
+        if (ok) break;
+      }
+    }
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    ok = await reachable(currentUrl);
+    ok = await reachable(currentUrl, 4000);
   }
   if (win.isDestroyed()) return;
-  if (!ok) return showError('server javob bermadi');
+  bootDone = true;
+  if (!ok) {
+    setState('offline');
+    return showError('server javob bermadi');
+  }
+  setState('connected');
   await win
     .loadURL(`${currentUrl}${APP.start}`)
     .catch((error) => showError(error.message));

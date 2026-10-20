@@ -47,6 +47,12 @@ test('a paid POS order appears live on the kitchen screen and then on the queue 
   await expect(ticket).toBeVisible({ timeout: 10_000 });
   await expect(ticket).toContainText('Klassik burger');
   await expect(ticket).not.toContainText('so‘m');
+  // The cook must accept the ticket first; "Tayyor" is locked until then.
+  await expect(
+    ticket.getByRole('button', { name: 'Tayyor', exact: true }),
+  ).toBeDisabled();
+  await ticket.getByRole('button', { name: 'Qabul qilish' }).click();
+  await expect(ticket).toContainText('Qabul qilingan');
   await ticket.getByRole('button', { name: 'Tayyor', exact: true }).click();
   await expect(ticket.getByRole('button', { name: 'Berildi' })).toBeVisible();
 

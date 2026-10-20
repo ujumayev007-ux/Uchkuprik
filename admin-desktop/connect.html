@@ -91,7 +91,8 @@
           soniyada qayta urinadi.
         </p>
         <div class="row">
-          <button class="primary" id="retry">Qayta urinish</button>
+          <button class="primary" id="autoErr">Avtomatik ulanish</button>
+          <button id="retry">Qayta urinish</button>
           <button id="change">Server manzilini o‘zgartirish</button>
         </div>
         <details style="margin-top: 18px; font-size: 12px; color: #747775">
@@ -101,21 +102,31 @@
         </details>
       </section>
       <section id="setup" hidden>
-        <h1>Restoran serveri manzili</h1>
+        <h1>Avtomatik ulanish</h1>
         <p>
-          Kassa kompyuteridagi FastFood dasturining manzilini kiriting. Masalan:
-          <b>192.168.1.11</b> yoki <b>https://restoran.misol.uz</b>. Oddiy
-          <b>http</b> faqat mahalliy (Wi‑Fi) tarmoq manzillari uchun qabul
-          qilinadi. Manzilni keyinroq ham o‘zgartirish mumkin — dasturni qayta
-          yig‘ish shart emas.
+          Restoran serveri (Kassa kompyuteri) shu Wi‑Fi yoki LAN tarmog‘ida o‘zi
+          qidiriladi. Hech narsa yozish shart emas.
         </p>
-        <p>Hozirgi manzil: <b id="current">—</b></p>
-        <input id="addr" placeholder="192.168.1.11" autocomplete="off" />
         <div class="row">
-          <button class="primary" id="save">Tekshirish va saqlash</button>
-          <button id="reset">Dastur bilan kelgan manzilga qaytish</button>
+          <button class="primary" id="auto">Avtomatik ulanish</button>
           <button id="back" hidden>Orqaga</button>
         </div>
+        <ul id="found"></ul>
+        <details style="margin-top: 22px">
+          <summary>Qo‘lda manzil kiritish (murakkab)</summary>
+          <p>
+            Kerak bo‘lsa, serverning manzilini o‘zingiz yozing. Masalan:
+            <b>192.168.1.11</b> yoki <b>https://restoran.misol.uz</b>. Oddiy
+            <b>http</b> faqat mahalliy (Wi‑Fi) tarmoq manzillari uchun qabul
+            qilinadi.
+          </p>
+          <p>Hozirgi manzil: <b id="current">—</b></p>
+          <input id="addr" placeholder="192.168.1.11" autocomplete="off" />
+          <div class="row">
+            <button id="save">Tekshirish va saqlash</button>
+            <button id="reset">Dastur bilan kelgan manzilga qaytish</button>
+          </div>
+        </details>
       </section>
       <div id="message"></div>
     </main>
@@ -150,6 +161,65 @@
           $('addr').value = state.custom ? state.url : '';
         });
       }
+      // "Avtomatik ulanish": one server connects by itself, several are listed.
+      let searching = false;
+      async function runAuto() {
+        if (searching) return;
+        searching = true;
+        $('found').innerHTML = '';
+        say('Server qidirilmoqda… (Ulanmoqda)', true);
+        let result;
+        try {
+          result = await adminConn.auto();
+        } catch {
+          result = { ok: false, found: [] };
+        }
+        searching = false;
+        if (result.ok) {
+          say(
+            'Ulandi: ' + result.name + ' (xavfsizlik kodi ' + result.code + ')',
+            true,
+          );
+          return;
+        }
+        if (!result.found.length) {
+          say(
+            'Aloqa yo‘q: server topilmadi. Kassa kompyuteri yoqilganini, FastFood ishlayotganini va bir xil Wi‑Fi’da ekaningizni tekshiring. Serverda: FastFood → Avtomatik ulanish.',
+            false,
+          );
+          return;
+        }
+        say('Bir nechta server topildi. O‘zingiznikini tanlang:', true);
+        for (const server of result.found) {
+          const item = document.createElement('li');
+          item.style.cssText =
+            'list-style:none;margin:10px 0;display:flex;gap:12px;align-items:center';
+          const label = document.createElement('span');
+          label.textContent =
+            server.name +
+            (server.local ? ' (shu kompyuter)' : '') +
+            ' — kod ' +
+            server.code;
+          const pick = document.createElement('button');
+          pick.className = 'primary';
+          pick.textContent = 'Ulanish';
+          pick.onclick = async () => {
+            say('Ulanmoqda…', true);
+            const picked = await adminConn.pick(server.id);
+            say(
+              picked.ok ? 'Ulandi.' : 'Ulanib bo‘lmadi. Qayta urinib ko‘ring.',
+              picked.ok,
+            );
+          };
+          item.append(label, pick);
+          $('found').append(item);
+        }
+      }
+      $('auto').onclick = runAuto;
+      $('autoErr').onclick = () => {
+        showSetup();
+        void runAuto();
+      };
       if (query.get('mode') === 'error' && query.get('url')) {
         $('error').hidden = false;
         $('url').textContent = query.get('url');
@@ -159,7 +229,11 @@
         timer = setInterval(retry, 10000);
         $('back').hidden = false;
         $('back').onclick = () => location.reload();
-      } else showSetup();
+      } else {
+        showSetup();
+        // First start (or the menu / status pill): search at once.
+        if (query.get('auto') === '1') void runAuto();
+      }
       $('save').onclick = async () => {
         say('Tekshirilmoqda…', true);
         const result = await adminConn.save($('addr').value);

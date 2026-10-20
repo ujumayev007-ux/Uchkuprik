@@ -34,6 +34,9 @@ export const messages = {
     'Mahsulotda kamida bitta faol o‘lcham yoki variant bo‘lishi kerak.',
   inUse: 'Bu yozuv ishlatilmoqda va o‘chirib bo‘lmaydi.',
   invalidTransition: 'Buyurtma holatini bunday o‘zgartirib bo‘lmaydi.',
+  kitchenAcceptRequired:
+    'Avval buyurtmani «Qabul qilish» tugmasi bilan tasdiqlang.',
+  kitchenRejected: 'Bu buyurtmani oshxona rad etgan.',
   itemUnavailable: 'Tanlangan taom hozir mavjud emas.',
   invalidModifiers: 'Qo‘shimchalar to‘g‘ri tanlanmagan.',
   overpaid:

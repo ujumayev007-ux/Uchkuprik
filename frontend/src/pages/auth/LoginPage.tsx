@@ -21,7 +21,11 @@ function rememberedTenant() {
 function usesPinShell() {
   const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
     .fastfoodShell;
-  return shell?.kind === 'cashier' || shell?.kind === 'waiter';
+  return (
+    shell?.kind === 'cashier' ||
+    shell?.kind === 'waiter' ||
+    shell?.kind === 'kitchen'
+  );
 }
 
 export function LoginPage() {

@@ -23,6 +23,7 @@ const http = require('node:http');
 const { registerUpdates } = require('./updates.cjs');
 const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
+const lan = require('./lan.cjs');
 
 const RES = app.isPackaged
   ? process.resourcesPath
@@ -70,6 +71,7 @@ const LOGS = path.join(DATA, 'logs');
 
 let win = null;
 let api = null;
+let beacon = null;
 let startedPostgres = false;
 
 fs.mkdirSync(LOGS, { recursive: true });
@@ -562,6 +564,7 @@ function buildMenu() {
       {
         label: 'FastFood',
         submenu: [
+          { label: 'Avtomatik ulanish', click: () => void showAutoConnect() },
           { label: 'Telefonlar uchun manzil', click: showPhoneAddress },
           { label: 'Ma’lumotlar papkasi', click: () => shell.openPath(DATA) },
           ...(fs.existsSync(VENDOR_KEY)
@@ -588,6 +591,96 @@ function buildMenu() {
       },
     ]),
   );
+}
+
+// ------------------------------------------- automatic connection (LAN)
+
+const LAN_PORT =
+  Number(process.env.FASTFOOD_LAN_PORT) ||
+  (TEST ? lan.TEST_DISCOVERY_PORT : lan.DISCOVERY_PORT);
+const LAN_ASKED = path.join(DATA, 'lan-firewall.json');
+
+/** Other computers (Kassa, Ofitsiant, Admin) find this server by itself. */
+function startLan() {
+  if (beacon) return;
+  try {
+    const identity = lan.loadIdentity({ dataDir: DATA, safeStorage });
+    beacon = lan.startBeacon({
+      port: LAN_PORT,
+      identity,
+      info: () => ({ name: os.hostname(), port: APP_PORT, ver: VERSION }),
+      log,
+    });
+    log(`lan beacon on ${LAN_PORT}, server ${beacon.fingerprint}`);
+  } catch (error) {
+    // Automatic connection must never stop the restaurant application from starting.
+    log(`lan beacon unavailable: ${error.message}`);
+  }
+}
+
+async function enableNetwork() {
+  const result = await lan.enableFirewall({
+    exe: process.execPath,
+    appPort: APP_PORT,
+    discoveryPort: LAN_PORT,
+  });
+  log(`lan firewall rules ${result.ok ? 'added' : 'not added'}`);
+  return result.ok;
+}
+
+/** Once a day at most, until the network permission is given. */
+async function askNetworkPermission() {
+  if (TEST || process.platform !== 'win32') return;
+  try {
+    if ((await lan.firewallState()).ok) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const last = safeJson.readJson?.(LAN_ASKED, {}) ?? {};
+    if (last.asked === today) return;
+    fs.writeFileSync(LAN_ASKED, JSON.stringify({ asked: today }));
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'Avtomatik ulanish',
+      message:
+        'Boshqa kompyuterlar bu serverga o‘zi ulanishi uchun ruxsat kerak',
+      detail:
+        'Kassa, Ofitsiant va Admin kompyuterlari shu serverni avtomatik topadi. Buning uchun Windows’ga ikkita tor qoida qo‘shiladi: faqat FastFood dasturi uchun va faqat shu Wi‑Fi/LAN tarmog‘i ichida. Xavfsizlik devori o‘chirilmaydi. Windows ruxsat so‘raydi — «Ha» ni bosing.',
+      buttons: ['Ruxsat berish', 'Keyinroq'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) await enableNetwork();
+  } catch (error) {
+    log(`network permission: ${error.message}`);
+  }
+}
+
+async function showAutoConnect() {
+  const firewall = await lan.firewallState();
+  const addresses = lanAddresses();
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'info',
+    title: 'Avtomatik ulanish',
+    message: beacon
+      ? 'Bu kompyuter server sifatida o‘zini tarmoqda e‘lon qilyapti'
+      : 'Avtomatik ulanish ishga tushmagan',
+    detail: [
+      `Server nomi: ${os.hostname()}`,
+      beacon ? `Xavfsizlik kodi: ${beacon.fingerprint}` : '',
+      addresses[0]
+        ? `Hozirgi manzil: ${addresses[0]}`
+        : 'Kompyuter tarmoqqa ulanmagan.',
+      firewall.ok
+        ? 'Tarmoq ruxsati: berilgan.'
+        : 'Tarmoq ruxsati: berilmagan — boshqa kompyuterlar buni topa olmasligi mumkin.',
+      '',
+      'Kassa, Ofitsiant va Admin dasturlarida «Avtomatik ulanish» tugmasini bosing: ular shu kodni ko‘rsatadi.',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    buttons: firewall.ok ? ['Yopish'] : ['Tarmoq ruxsatini berish', 'Yopish'],
+    defaultId: 0,
+  });
+  if (!firewall.ok && response === 0) await enableNetwork();
 }
 
 // ------------------------------------------------------------ AnyDesk
@@ -760,7 +853,9 @@ async function boot() {
   // Another FastFood version already serves this computer: use it, never a second database.
   if (await ping(live)) {
     log('server already running; attaching');
+    startLan();
     win.loadURL(`http://localhost:${APP_PORT}/`);
+    void askNetworkPermission();
     return;
   }
   const keys = secrets();
@@ -797,7 +892,9 @@ async function boot() {
   if (!(await waitFor(`http://127.0.0.1:${APP_PORT}/api/health/ready`, 60)))
     throw new Error('Server ishga tushmadi. Jurnallarni tekshiring.');
   scheduleBackups(keys);
+  startLan();
   win.loadURL(`http://localhost:${APP_PORT}/`);
+  void askNetworkPermission();
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -825,6 +922,7 @@ app.on('before-quit', (event) => {
   if (stopping || !api) return;
   event.preventDefault();
   stopping = true;
+  beacon?.stop();
   api.kill();
   (startedPostgres ? stopPostgres() : Promise.resolve()).finally(() =>
     app.quit(),

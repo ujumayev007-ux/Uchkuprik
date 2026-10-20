@@ -46,7 +46,10 @@ export function kitchenRouter(services: Services) {
   const router = Router();
   const now = () => services.now?.() ?? new Date();
 
-  const notify = async (orderId: string) => {
+  const notify = async (
+    orderId: string,
+    kitchen?: 'ACCEPTED' | 'REJECTED' | 'REOPENED',
+  ) => {
     const order = await db.order.findUnique({ where: { id: orderId } });
     if (!order) return;
     await services.afterOrderChange?.(order.id);
@@ -63,6 +66,7 @@ export function kitchenRouter(services: Services) {
       orderId,
       number: order.number,
       status: order.status,
+      ...(kitchen ? { kitchen } : {}),
     });
   };
 
@@ -263,7 +267,11 @@ export function kitchenRouter(services: Services) {
           tenantId: auth.tenantId,
           id: {
             in: orders
-              .map((order) => order.createdById)
+              .flatMap((order) => [
+                order.createdById,
+                order.kitchenAcceptedById,
+                order.kitchenRejectedById,
+              ])
               .filter((id): id is string => !!id),
           },
         },
@@ -287,6 +295,13 @@ export function kitchenRouter(services: Services) {
             table: order.table?.name ?? null,
             note: order.note,
             placedAt: order.placedAt,
+            kitchen: {
+              acceptedAt: order.kitchenAcceptedAt,
+              acceptedBy: nameOf(order.kitchenAcceptedById),
+              rejectedAt: order.kitchenRejectedAt,
+              rejectedBy: nameOf(order.kitchenRejectedById),
+              rejectReason: order.kitchenRejectReason,
+            },
             items: order.items.map((item) => ({
               id: item.id,
               productName: item.productName,
@@ -328,6 +343,11 @@ export function kitchenRouter(services: Services) {
       await resolveBranch(tx, auth, order.branchId);
       if (!['PLACED', 'PREPARING', 'READY'].includes(order.status))
         throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      // A ticket must be accepted by the kitchen first (and a refused one is not cooked).
+      if (order.kitchenRejectedAt)
+        throw new AppError(409, 'KITCHEN_REJECTED', 'kitchenRejected');
+      if (status !== 'QUEUED' && !order.kitchenAcceptedAt)
+        throw new AppError(409, 'ACCEPT_REQUIRED', 'kitchenAcceptRequired');
       const at = now();
       const where = {
         orderId,
@@ -456,6 +476,124 @@ export function kitchenRouter(services: Services) {
     },
   );
 
+  // The cook confirms a new ticket ("Qabul qilish"). Pressed twice (or from two kitchen
+  // screens at once) it is recorded once: the second press only reports who accepted.
+  router.post(
+    '/kitchen/orders/:id/accept',
+    requireAuth(),
+    requirePermission('kitchen.access'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const result = await db.$transaction(async (tx) => {
+        const order = await lockOrder(tx, auth.tenantId, id);
+        await resolveBranch(tx, auth, order.branchId);
+        if (!['PLACED', 'PREPARING'].includes(order.status))
+          throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+        if (order.kitchenRejectedAt)
+          throw new AppError(409, 'KITCHEN_REJECTED', 'kitchenRejected');
+        if (order.kitchenAcceptedAt) {
+          const by = order.kitchenAcceptedById
+            ? await tx.user.findFirst({
+                where: { id: order.kitchenAcceptedById },
+                select: { displayName: true },
+              })
+            : null;
+          return { already: true, by: by?.displayName ?? null };
+        }
+        await tx.order.update({
+          where: { id },
+          data: {
+            kitchenAcceptedAt: now(),
+            kitchenAcceptedById: auth.userId,
+          },
+        });
+        await addEvent(
+          tx,
+          auth.tenantId,
+          id,
+          auth.userId,
+          'kitchen_accept',
+          {},
+        );
+        return { already: false, by: auth.displayName };
+      });
+      if (!result.already) await notify(id, 'ACCEPTED');
+      res.json({ ok: true, ...result });
+    },
+  );
+
+  // The kitchen refuses a ticket (permission-controlled). The order is not lost: it stays
+  // open, flagged for the cashier and waiter, until they resend or cancel it.
+  router.post(
+    '/kitchen/orders/:id/reject',
+    requireAuth(),
+    requirePermission('kitchen.reject'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const { reason } = parse(
+        z.object({ reason: z.string().trim().min(2).max(200) }),
+        req.body,
+      );
+      const result = await db.$transaction(async (tx) => {
+        const order = await lockOrder(tx, auth.tenantId, id);
+        await resolveBranch(tx, auth, order.branchId);
+        if (!['PLACED', 'PREPARING'].includes(order.status))
+          throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+        if (order.kitchenRejectedAt) return { already: true };
+        await tx.order.update({
+          where: { id },
+          data: {
+            kitchenRejectedAt: now(),
+            kitchenRejectedById: auth.userId,
+            kitchenRejectReason: reason,
+          },
+        });
+        await addEvent(tx, auth.tenantId, id, auth.userId, 'kitchen_reject', {
+          reason,
+        });
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: order.branchId,
+          actorUserId: auth.userId,
+          action: 'kitchen.order.reject',
+          entityType: 'order',
+          entityId: id,
+          data: { reason },
+        });
+        return { already: false };
+      });
+      if (!result.already) await notify(id, 'REJECTED');
+      res.json({ ok: true, ...result });
+    },
+  );
+
+  // Cashier / waiter sends a refused order to the kitchen again.
+  router.post('/kitchen/orders/:id/reopen', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (!can(auth, 'orders.edit', 'kitchen.reject')) throw errors.forbidden();
+    const id = parse(z.uuid(), req.params.id);
+    await db.$transaction(async (tx) => {
+      const order = await lockOrder(tx, auth.tenantId, id);
+      await resolveBranch(tx, auth, order.branchId);
+      if (!order.kitchenRejectedAt) return;
+      await tx.order.update({
+        where: { id },
+        data: {
+          kitchenRejectedAt: null,
+          kitchenRejectedById: null,
+          kitchenRejectReason: null,
+          kitchenAcceptedAt: null,
+          kitchenAcceptedById: null,
+        },
+      });
+      await addEvent(tx, auth.tenantId, id, auth.userId, 'kitchen_reopen', {});
+    });
+    await notify(id, 'REOPENED');
+    res.json({ ok: true });
+  });
+
   // Bump a whole ticket (optionally one station's part of it).
   router.post(
     '/kitchen/orders/:id/bump',
@@ -548,6 +686,7 @@ export function kitchenRouter(services: Services) {
         branchId: branch.id,
         businessDate: businessDate(now(), branch.timezone),
         status: { in: ['PLACED', 'PREPARING', 'READY'] },
+        kitchenRejectedAt: null,
       },
       orderBy: [{ readyAt: 'desc' }, { placedAt: 'asc' }],
       select: { id: true, number: true, status: true, readyAt: true },

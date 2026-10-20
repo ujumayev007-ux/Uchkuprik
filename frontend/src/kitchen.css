@@ -340,3 +340,53 @@
   align-items: center;
   gap: 6px;
 }
+
+/* --- Kitchen confirmation: stages and the four ticket buttons. --- */
+.kds-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 4px 0 8px;
+  font-size: 15px;
+}
+.kds-section {
+  margin: 14px 0 22px;
+}
+.kds-section-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  border-left: 8px solid var(--line);
+  padding-left: 10px;
+}
+.kds-section-title.stage-new {
+  border-color: var(--danger);
+}
+.kds-section-title.stage-accepted {
+  border-color: var(--warning);
+}
+.kds-section-title.stage-preparing {
+  border-color: var(--accent);
+}
+.kds-section-title.stage-ready {
+  border-color: var(--green);
+}
+.kds-section-title.stage-rejected {
+  border-color: var(--muted);
+}
+.ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ticket-actions .btn {
+  flex: 1 1 120px;
+  min-height: 48px;
+  font-size: 16px;
+}
+.ticket-stage-new {
+  box-shadow: 0 0 0 3px var(--danger);
+}
+.ticket-item:disabled {
+  opacity: 0.7;
+  cursor: default;
+}

@@ -158,6 +158,7 @@ describe('order editing and versions', () => {
     await put(s.owner, '/settings/orders', {
       staffCanCancelPlaced: true,
     }).expect(200);
+    await post(s.cook, `/kitchen/orders/${s.order.id}/accept`).expect(200);
     await post(s.cook, `/kitchen/items/${s.item('Somsa')}/status`, {
       status: 'PREPARING',
     }).expect(200);
@@ -203,6 +204,7 @@ describe('order editing and versions', () => {
 
   it('cancels an unpaid order while cooking and tells the kitchen', async () => {
     const s = await setup();
+    await post(s.cook, `/kitchen/orders/${s.order.id}/accept`).expect(200);
     await post(s.cook, `/kitchen/items/${s.item('Somsa')}/status`, {
       status: 'PREPARING',
     }).expect(200);

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+      }
+      button {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        border: 0;
+        border-radius: 999px;
+        background: #24272c;
+        color: #fff;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+      }
+      i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #e0a800;
+      }
+      .offline i {
+        background: #d64545;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="pill" type="button">
+      <i></i><span id="text">Ulanmoqda</span>
+      <span style="opacity: 0.75">· Avtomatik ulanish</span>
+    </button>
+    <script>
+      const pill = document.getElementById('pill');
+      lanStatus.onState((value) => {
+        document.getElementById('text').textContent = value.text;
+        pill.className = value.state === 'offline' ? 'offline' : '';
+      });
+      pill.onclick = () => lanStatus.open();
+    </script>
+  </body>
+</html>

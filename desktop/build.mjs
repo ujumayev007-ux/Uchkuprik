@@ -167,6 +167,7 @@ await build({
       'vendor-ipc.cjs',
       'reports.cjs',
       'safe-json.cjs',
+      'lan.cjs',
       'loading.html',
       'package.json',
     ],
