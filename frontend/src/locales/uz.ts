@@ -633,6 +633,19 @@ export const uz = {
     quantity: 'Soni',
     revenue: 'Tushum',
     count: 'Soni',
+    exportTitle: 'Hisobotni faylga yuklab olish',
+    exportHint:
+      'Tanlangan sana oralig‘i uchun bir xil ma’lumot Excel, Word va PDF fayllarida beriladi. Ko‘rinadigan bo‘limlar va ustunlar restoran sozlamasiga ko‘ra.',
+    excel: 'Excel (.xlsx)',
+    word: 'Word (.docx)',
+    pdf: 'PDF',
+    preview: 'Oldindan ko‘rish',
+    layoutButton: 'Hisobot ko‘rinishi',
+    layoutHint:
+      'Qaysi bo‘lim va ustunlar ko‘rinishini hamda tartibini tanlang. Bu faqat ko‘rinish: ruxsati yo‘q xodim baribir ko‘ra olmaydi.',
+    noPermission: 'sizda bu bo‘limga ruxsat yo‘q',
+    moveUp: 'Yuqoriga',
+    moveDown: 'Pastga',
   },
   kitchen: {
     title: 'Oshxona ekrani',

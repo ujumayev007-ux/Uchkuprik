@@ -3150,3 +3150,14 @@ model BrandingCache {
 
   @@map("branding_cache")
 }
+
+// Which report sections and columns a restaurant shows (screen, preview and exports).
+// Visibility is presentation only: permissions are still checked for every section.
+model ReportLayout {
+  tenantId    String   @id @db.Uuid
+  config      Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  @@map("report_layouts")
+}

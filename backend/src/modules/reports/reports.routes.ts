@@ -1,17 +1,38 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
-import { errors, parse } from '../../http/errors.js';
+import { parse } from '../../http/errors.js';
+import { audit } from '../audit/audit.js';
 import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
-import { resolveBranch } from '../branches/access.js';
-import { businessDate } from '../orders/engine.js';
+import {
+  buildReportDoc,
+  displayCell,
+  layoutSchema,
+  normalizeLayout,
+  sectionCatalog,
+  sectionKeys,
+} from './document.js';
+import { toDocx } from './export/docx.js';
+import { toPdf } from './export/pdf.js';
+import { toXlsx } from './export/xlsx.js';
+import { loadInventory } from './inventory.js';
+import { loadSales, salesQuery } from './sales.js';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const formats = {
+  xlsx: {
+    mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    build: toXlsx,
+  },
+  docx: {
+    mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    build: toDocx,
+  },
+  pdf: { mime: 'application/pdf', build: toPdf },
+} as const;
 
 export function reportsRouter(services: Services) {
   const { db } = services;
   const router = Router();
-  const now = () => services.now?.() ?? new Date();
 
   // Sales summary for a branch over business dates (inclusive). Money in so‘m.
   router.get(
@@ -20,154 +41,165 @@ export function reportsRouter(services: Services) {
     requirePermission('reports.view'),
     async (req, res) => {
       const auth = getAuth(res);
+      const query = parse(salesQuery, req.query);
+      const { report } = await loadSales(services, auth, query);
+      res.json(report);
+    },
+  );
+
+  // Stock balances and movements of the period (same ledger as the Ombor screen).
+  router.get(
+    '/reports/inventory',
+    requireAuth(),
+    requirePermission('inventory.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const query = parse(salesQuery, req.query);
+      const { balances, movements, warehouse } = await loadInventory(
+        services,
+        auth,
+        query,
+      );
+      res.json({ warehouse, balances, movements });
+    },
+  );
+
+  // Which sections and columns this restaurant shows (screen, preview and exports).
+  router.get(
+    '/reports/layout',
+    requireAuth(),
+    requirePermission('reports.view'),
+    async (_req, res) => {
+      const auth = getAuth(res);
+      const row = await db.reportLayout.findUnique({
+        where: { tenantId: auth.tenantId },
+      });
+      res.json({
+        layout: normalizeLayout(row?.config),
+        catalog: sectionKeys.map((key) => ({
+          key,
+          title: sectionCatalog[key].title,
+          // A section the user may not see is listed but can not be exported.
+          allowed: auth.permissions.has(sectionCatalog[key].permission),
+          columns: sectionCatalog[key].columns.map(
+            ({ key: column, label, fixed }) => ({
+              key: column,
+              label,
+              fixed: !!fixed,
+            }),
+          ),
+        })),
+      });
+    },
+  );
+
+  router.put(
+    '/reports/layout',
+    requireAuth(),
+    requirePermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(layoutSchema, req.body);
+      const layout = normalizeLayout(input);
+      await db.reportLayout.upsert({
+        where: { tenantId: auth.tenantId },
+        create: {
+          tenantId: auth.tenantId,
+          config: layout,
+          updatedById: auth.userId,
+        },
+        update: { config: layout, updatedById: auth.userId },
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'reports.layout.update',
+        entityType: 'report_layout',
+        entityId: auth.tenantId,
+      });
+      res.json({ layout });
+    },
+  );
+
+  // The same dataset as the files, as text, for the on-screen preview.
+  router.get(
+    '/reports/preview',
+    requireAuth(),
+    requirePermission('reports.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const query = parse(salesQuery, req.query);
+      const row = await db.reportLayout.findUnique({
+        where: { tenantId: auth.tenantId },
+      });
+      const doc = await buildReportDoc(
+        services,
+        auth,
+        query,
+        normalizeLayout(row?.config),
+      );
+      res.json({
+        ...doc,
+        sections: doc.sections.map((section) => ({
+          key: section.key,
+          title: section.title,
+          note: section.note ?? null,
+          columns: section.columns.map(({ key, label, align }) => ({
+            key,
+            label,
+            align,
+          })),
+          rows: section.rows.map((r) =>
+            section.columns.map((column) => displayCell(column, r[column.key])),
+          ),
+          totals: section.totals
+            ? section.columns.map((column) =>
+                displayCell(column, section.totals![column.key]),
+              )
+            : null,
+        })),
+      });
+    },
+  );
+
+  // The same dataset as .xlsx, .docx or .pdf.
+  router.get(
+    '/reports/export',
+    requireAuth(),
+    requirePermission('reports.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
       const query = parse(
-        z.object({
-          branchId: z.uuid().optional(),
-          from: isoDate.optional(),
-          to: isoDate.optional(),
-        }),
+        salesQuery.extend({ format: z.enum(['xlsx', 'docx', 'pdf']) }),
         req.query,
       );
-      const branch = await resolveBranch(db, auth, query.branchId);
-      const today = businessDate(now(), branch.timezone)
-        .toISOString()
-        .slice(0, 10);
-      const from = new Date(`${query.from ?? today}T00:00:00.000Z`);
-      const to = new Date(`${query.to ?? today}T00:00:00.000Z`);
-      if (from > to || to.getTime() - from.getTime() > 366 * 86_400_000)
-        throw errors.validation([{ path: 'from' }]);
-
-      const orderWhere = {
+      const row = await db.reportLayout.findUnique({
+        where: { tenantId: auth.tenantId },
+      });
+      const doc = await buildReportDoc(
+        services,
+        auth,
+        query,
+        normalizeLayout(row?.config),
+      );
+      const format = formats[query.format];
+      const file = await format.build(doc);
+      await audit(db, req, {
         tenantId: auth.tenantId,
-        branchId: branch.id,
-        businessDate: { gte: from, lte: to },
-      };
-      const [orders, cancelled, payments, refunds, items, byCashier] =
-        await Promise.all([
-          db.order.aggregate({
-            where: { ...orderWhere, status: { not: 'CANCELLED' } },
-            _count: true,
-            _sum: {
-              total: true,
-              discountTotal: true,
-              serviceCharge: true,
-              subtotal: true,
-            },
-          }),
-          db.order.count({ where: { ...orderWhere, status: 'CANCELLED' } }),
-          db.payment.groupBy({
-            by: ['method'],
-            where: { tenantId: auth.tenantId, order: orderWhere },
-            _sum: { amount: true },
-            _count: true,
-          }),
-          db.refund.groupBy({
-            by: ['method'],
-            where: { tenantId: auth.tenantId, order: orderWhere },
-            _sum: { amount: true },
-            _count: true,
-          }),
-          db.orderItem.groupBy({
-            by: ['productName'],
-            where: {
-              tenantId: auth.tenantId,
-              status: 'ACTIVE',
-              order: { ...orderWhere, status: { not: 'CANCELLED' } },
-            },
-            _sum: { quantity: true, lineTotal: true },
-            orderBy: { _sum: { lineTotal: 'desc' } },
-            take: 10,
-          }),
-          db.payment.groupBy({
-            by: ['createdById'],
-            where: { tenantId: auth.tenantId, order: orderWhere },
-            _sum: { amount: true },
-            _count: true,
-          }),
-        ]);
-      const paymentsTotal = payments.reduce(
-        (sum, row) => sum + (row._sum.amount ?? 0),
-        0,
-      );
-      const refundsTotal = refunds.reduce(
-        (sum, row) => sum + (row._sum.amount ?? 0),
-        0,
-      );
-      const users = await db.user.findMany({
-        where: {
-          id: {
-            in: byCashier
-              .map((row) => row.createdById)
-              .filter((id) => id !== null),
-          },
-        },
-        select: { id: true, displayName: true },
+        actorUserId: auth.userId,
+        action: 'reports.export',
+        entityType: 'report',
+        data: { format: query.format, period: doc.period },
       });
-      const names = new Map(users.map((user) => [user.id, user.displayName]));
-      const orderCount = orders._count;
-      const salesTotal = orders._sum.total ?? 0;
-
-      // Cost and margin are restricted financial data.
-      let profit:
-        | { costOfGoods: number; grossProfit: number; marginBp: number }
-        | undefined;
-      if (
-        auth.permissions.has('finance.view') &&
-        auth.financial.margin &&
-        auth.reportFields.margin
-      ) {
-        const rows = await db.$queryRaw<{ cost: bigint | null }[]>`
-        SELECT SUM(COALESCE(i."unitCost", 0) * i.quantity)::bigint AS cost
-        FROM order_items i JOIN orders o ON o.id = i."orderId"
-        WHERE o."tenantId" = ${auth.tenantId}::uuid AND o."branchId" = ${branch.id}::uuid
-          AND o."businessDate" BETWEEN ${from}::date AND ${to}::date
-          AND o.status <> 'CANCELLED' AND i.status = 'ACTIVE'`;
-        const costOfGoods = Number(rows[0]?.cost ?? 0);
-        const netSales = salesTotal - (orders._sum.serviceCharge ?? 0);
-        profit = {
-          costOfGoods,
-          grossProfit: netSales - costOfGoods,
-          marginBp:
-            netSales > 0
-              ? Math.round(((netSales - costOfGoods) * 10_000) / netSales)
-              : 0,
-        };
-      }
-
-      res.json({
-        branchId: branch.id,
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
-        orders: orderCount,
-        cancelledOrders: cancelled,
-        salesTotal,
-        subtotal: orders._sum.subtotal ?? 0,
-        discounts: orders._sum.discountTotal ?? 0,
-        serviceCharges: orders._sum.serviceCharge ?? 0,
-        averageCheck: orderCount > 0 ? Math.round(salesTotal / orderCount) : 0,
-        payments: payments.map((row) => ({
-          method: row.method,
-          amount: row._sum.amount ?? 0,
-          count: row._count,
-        })),
-        refunds: refunds.map((row) => ({
-          method: row.method,
-          amount: row._sum.amount ?? 0,
-          count: row._count,
-        })),
-        collected: paymentsTotal - refundsTotal,
-        topProducts: items.map((row) => ({
-          name: row.productName,
-          quantity: row._sum.quantity ?? 0,
-          revenue: row._sum.lineTotal ?? 0,
-        })),
-        cashiers: byCashier.map((row) => ({
-          name: row.createdById ? (names.get(row.createdById) ?? '—') : '—',
-          amount: row._sum.amount ?? 0,
-          count: row._count,
-        })),
-        ...(profit ? { profit } : {}),
-      });
+      const stamp = doc.period.replace(/[^0-9-]+/g, '_');
+      res
+        .status(200)
+        .set({
+          'Content-Type': format.mime,
+          'Content-Disposition': `attachment; filename="hisobot-${stamp}.${query.format}"`,
+          'Cache-Control': 'no-store',
+        })
+        .send(file);
     },
   );
 

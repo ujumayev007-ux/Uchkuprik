@@ -12,6 +12,7 @@ import { t } from '../i18n';
 import { api } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import type { PaymentMethod } from '../lib/orders';
+import { ReportExportCard } from './ReportExportCard';
 
 type SalesReport = {
   from: string;
@@ -68,6 +69,9 @@ export function ReportsPage() {
           onChange={(e) => setTo(e.target.value)}
         />
       </div>
+      {me?.activeBranchId && from && to && (
+        <ReportExportCard branchId={me.activeBranchId} from={from} to={to} />
+      )}
       {report.isPending ? (
         <LoadingState />
       ) : report.error ? (

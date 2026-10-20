@@ -602,7 +602,14 @@ export const featureCatalog: FeatureDef[] = [
     hint: 'Oflayn rejimda mahalliy kunlik hisobot.',
     permission: 'reports.view',
     menuPath: '/hisobotlar',
-    routes: ['GET /reports/sales', 'GET /reports/kitchen'],
+    routes: [
+      'GET /reports/sales',
+      'GET /reports/kitchen',
+      'GET /reports/inventory',
+      'GET /reports/layout',
+      'GET /reports/preview',
+      'PUT /reports/layout',
+    ],
   }),
   f({
     key: 'reports.export',
@@ -610,6 +617,7 @@ export const featureCatalog: FeatureDef[] = [
     group: 'Hisobotlar',
     label: 'Hisobotlarni faylga yuklab olish (CSV)',
     routes: [
+      'GET /reports/export',
       'GET /reports/sales.csv',
       'GET /reports/pnl.csv',
       'GET /payroll/periods/:id/export.csv',
