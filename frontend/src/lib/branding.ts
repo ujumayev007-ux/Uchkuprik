@@ -85,6 +85,8 @@ export function loginPanel(): PanelKey {
   const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
     .fastfoodShell;
   if (shell?.kind === 'admin') return 'admin';
+  if (shell?.kind === 'cashier') return 'cashier';
+  if (shell?.kind === 'waiter') return 'waiter';
   if ((window as unknown as { FastFoodAndroid?: unknown }).FastFoodAndroid)
     return 'waiter';
   if ('fastfoodDesktop' in window) return 'cashier';

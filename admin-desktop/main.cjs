@@ -1,4 +1,5 @@
-// FAST FOOD Restaurant Admin: the restaurant administrator's own desktop application.
+// FAST FOOD restaurant applications (Admin, Cashier, Waiter): one secure shell, three
+// installers. This is the restaurant administrator's / cashier's / waiter's own desktop application.
 //
 // A thin, secure shell around the restaurant's FastFood server (the cashier computer on
 // the local network, or a hosted address). It stores no restaurant data and no
@@ -32,11 +33,36 @@ const baked = read(
   path.join(app.isPackaged ? process.resourcesPath : __dirname, 'admin.json'),
 );
 const TEST = baked.test === true;
+// One shell, three applications: Admin, Cashier (Kassa) and Waiter (Ofitsiant). Each is
+// its own installer with its own name, profile and start page; all of them only show
+// the restaurant server's pages after sign-in (nothing is stored here).
+const KINDS = {
+  admin: {
+    label: 'FastFood Admin',
+    menu: 'Admin',
+    start: '/',
+    profile: 'Admin',
+  },
+  cashier: {
+    label: 'FastFood Kassa',
+    menu: 'Kassa',
+    start: '/kassa',
+    profile: 'Kassa',
+  },
+  waiter: {
+    label: 'FastFood Ofitsiant',
+    menu: 'Ofitsiant',
+    start: '/ofitsiant',
+    profile: 'Ofitsiant',
+  },
+};
+const KIND = KINDS[baked.kind] ? baked.kind : 'admin';
+const APP = KINDS[KIND];
 // A TEST installer keeps its own profile and default port.
 if (TEST)
   app.setPath(
     'userData',
-    path.join(app.getPath('appData'), 'FastFood-Admin-Test'),
+    path.join(app.getPath('appData'), `FastFood-${APP.profile}-Test`),
   );
 const DATA = app.getPath('userData');
 const SETTINGS = path.join(DATA, 'admin-settings.json');
@@ -122,7 +148,7 @@ async function reachable(url) {
 
 const connectPage = (mode, extra = {}) =>
   win.loadFile(path.join(__dirname, 'connect.html'), {
-    query: { mode, url: currentUrl, ...extra },
+    query: { mode, url: currentUrl, app: APP.label, ...extra },
   });
 
 const fromConnectPage = (event) => {
@@ -141,6 +167,10 @@ async function showError(reason) {
   await connectPage('error', { reason: String(reason).slice(0, 160) });
 }
 
+ipcMain.on('shell:kind', (event) => {
+  event.returnValue = KIND;
+});
+
 ipcMain.handle('admin:state', (event) => {
   if (!fromConnectPage(event)) throw new Error('Ruxsat yo‘q');
   return {
@@ -153,7 +183,9 @@ ipcMain.handle('admin:state', (event) => {
 ipcMain.handle('admin:retry', async (event) => {
   if (!fromConnectPage(event) || !currentUrl) return { ok: false };
   if (!(await reachable(currentUrl))) return { ok: false };
-  void win.loadURL(`${currentUrl}/`).catch((error) => showError(error.message));
+  void win
+    .loadURL(`${currentUrl}${APP.start}`)
+    .catch((error) => showError(error.message));
   return { ok: true };
 });
 
@@ -197,7 +229,7 @@ function menu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
-        label: 'Admin',
+        label: APP.menu,
         submenu: [
           { label: 'Yangilash (F5)', role: 'reload' },
           { label: 'To‘liq ekran', role: 'togglefullscreen' },
@@ -225,7 +257,7 @@ async function boot() {
   win = new BrowserWindow({
     width: 1366,
     height: 860,
-    title: 'FastFood Admin',
+    title: APP.label,
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
@@ -271,7 +303,7 @@ async function boot() {
   if (win.isDestroyed()) return;
   if (!ok) return showError('server javob bermadi');
   await win
-    .loadURL(`${currentUrl}/`)
+    .loadURL(`${currentUrl}${APP.start}`)
     .catch((error) => showError(error.message));
 }
 
@@ -285,7 +317,7 @@ else {
   });
   app.whenReady().then(() =>
     boot().catch((error) => {
-      dialog.showErrorBox('FastFood Admin ishga tushmadi', error.message);
+      dialog.showErrorBox(`${APP.label} ishga tushmadi`, error.message);
       app.quit();
     }),
   );

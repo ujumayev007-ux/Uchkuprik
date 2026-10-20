@@ -1,9 +1,9 @@
 {
   "name": "fastfood-admin",
   "productName": "FastFood Admin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "FAST FOOD restoran administratori dasturi — restoran serveriga ulanadi.",
+  "description": "FAST FOOD restoran administratori dasturi вЂ” restoran serveriga ulanadi.",
   "author": "FAST FOOD",
   "main": "main.cjs",
   "scripts": {

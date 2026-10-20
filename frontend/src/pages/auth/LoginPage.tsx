@@ -1,10 +1,10 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { meKey } from '../../auth/session';
 import { Button, FormError, TextField } from '../../components/ui';
 import { t } from '../../i18n';
-import { post } from '../../lib/api';
+import { api, post } from '../../lib/api';
 import { AuthLayout } from './AuthLayout';
 
 const TENANT_KEY = 'ff-last-tenant';
@@ -17,9 +17,25 @@ function rememberedTenant() {
   }
 }
 
+/** The Kassa and Ofitsiant applications go straight to the PIN keypad once this device is registered. */
+function usesPinShell() {
+  const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
+    .fastfoodShell;
+  return shell?.kind === 'cashier' || shell?.kind === 'waiter';
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const client = useQueryClient();
+  const pinDevice = useQuery({
+    queryKey: ['pin-device'],
+    queryFn: () => api('/pin/device'),
+    enabled: usesPinShell(),
+    retry: false,
+  });
+  useEffect(() => {
+    if (usesPinShell() && pinDevice.data) navigate('/pin', { replace: true });
+  }, [pinDevice.data, navigate]);
   const [tenant, setTenant] = useState(rememberedTenant);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

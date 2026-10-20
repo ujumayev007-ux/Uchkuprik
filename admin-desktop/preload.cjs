@@ -3,7 +3,12 @@
 // work only from the application's own local "connect" page (checked in main.cjs).
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('fastfoodShell', { kind: 'admin' });
+// The page learns which of the three applications hosts it (answered by main.cjs; the
+// sandboxed preload can not read files itself).
+const kind = ipcRenderer.sendSync('shell:kind');
+contextBridge.exposeInMainWorld('fastfoodShell', {
+  kind: ['admin', 'cashier', 'waiter'].includes(kind) ? kind : 'admin',
+});
 contextBridge.exposeInMainWorld('adminConn', {
   state: () => ipcRenderer.invoke('admin:state'),
   retry: () => ipcRenderer.invoke('admin:retry'),

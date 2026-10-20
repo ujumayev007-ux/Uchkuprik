@@ -29,6 +29,31 @@ const { version } = JSON.parse(
   readFileSync(join(here, 'package.json'), 'utf8'),
 );
 const TEST = process.env.BUILD_CHANNEL === 'test';
+// PANEL_KIND chooses the application: admin (default), cashier or waiter.
+const KINDS = {
+  admin: {
+    product: 'FastFood Admin',
+    exe: 'FastFoodAdmin',
+    id: 'admin',
+    file: 'FastFood-Admin',
+  },
+  cashier: {
+    product: 'FastFood Kassa',
+    exe: 'FastFoodKassa',
+    id: 'cashier',
+    file: 'FastFood-Kassa',
+  },
+  waiter: {
+    product: 'FastFood Ofitsiant',
+    exe: 'FastFoodOfitsiant',
+    id: 'waiter',
+    file: 'FastFood-Ofitsiant',
+  },
+};
+const kind = process.env.PANEL_KIND || 'admin';
+if (!KINDS[kind])
+  throw new Error('PANEL_KIND must be admin, cashier or waiter.');
+const APP = KINDS[kind];
 const url = (process.env.ADMIN_URL || '').trim().replace(/[/]+$/, '');
 if (url && !/^https:[/][/]/.test(url) && !TEST)
   throw new Error('ADMIN_URL must be an https address (or leave it empty).');
@@ -37,6 +62,7 @@ const stage = join(here, 'stage');
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 const baked = JSON.stringify({
+  kind,
   ...(url ? { url } : {}),
   ...(TEST ? { test: true } : {}),
 });
@@ -46,8 +72,8 @@ for (const name of ['main.cjs', 'preload.cjs', 'connect.html', 'splash.html'])
 writeFileSync(
   join(stage, 'package.json'),
   JSON.stringify({
-    name: 'fastfood-admin',
-    productName: 'FastFood Admin',
+    name: `fastfood-${kind}`,
+    productName: APP.product,
     version,
     main: 'main.cjs',
     author: 'FAST FOOD',
@@ -67,13 +93,13 @@ for (const name of ['main.cjs', 'preload.cjs', 'connect.html'])
 const { build } = require('electron-builder');
 const out =
   process.env.ADMIN_BUILD_OUT || join(here, TEST ? 'release-test' : 'release');
-const artifact = `FastFood-Admin${TEST ? '-TEST' : ''}-Setup-${version}.exe`;
+const artifact = `${APP.file}${TEST ? '-TEST' : ''}-Setup-${version}.exe`;
 await build({
   projectDir: stage,
   config: {
-    appId: TEST ? 'uz.fastfood.admin.test' : 'uz.fastfood.admin',
-    productName: TEST ? 'FastFood Admin TEST' : 'FastFood Admin',
-    executableName: TEST ? 'FastFoodAdminTest' : 'FastFoodAdmin',
+    appId: `uz.fastfood.${APP.id}${TEST ? '.test' : ''}`,
+    productName: TEST ? `${APP.product} TEST` : APP.product,
+    executableName: `${APP.exe}${TEST ? 'Test' : ''}`,
     electronVersion: require('electron/package.json').version,
     directories: { output: out },
     files: ['**/*', '!admin.json'],

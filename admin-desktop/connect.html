@@ -82,7 +82,9 @@
     <main>
       <section id="error" hidden>
         <h1>Restoran serveriga ulanib bo‘lmadi</h1>
-        <p>FastFood Admin restoran serveriga ulana olmadi.</p>
+        <p>
+          <span id="appname">FastFood</span> restoran serveriga ulana olmadi.
+        </p>
         <p>
           Kassa kompyuteri yoqilganini, FastFood dasturi ishlayotganini va bir
           xil Wi‑Fi tarmog‘ida ekaningizni tekshiring. Dastur o‘zi har 10
@@ -120,6 +122,11 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const query = new URLSearchParams(location.search);
+      if (query.get('app')) {
+        document.title = query.get('app');
+        const name = document.getElementById('appname');
+        if (name) name.textContent = query.get('app');
+      }
       const say = (text, ok) => {
         $('message').textContent = text;
         $('message').className = ok ? 'ok' : 'error';

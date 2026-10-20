@@ -125,11 +125,15 @@ function SessionOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Which desktop application hosts this page: the Restaurant Admin shell announces itself. */
-function shellKind(): 'admin' | 'pos' {
+/** Which desktop application hosts this page: the Admin, Kassa and Ofitsiant shells announce themselves. */
+function shellKind(): 'admin' | 'cashier' | 'waiter' | 'pos' {
   const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
     .fastfoodShell;
-  return shell?.kind === 'admin' ? 'admin' : 'pos';
+  return shell?.kind === 'admin' ||
+    shell?.kind === 'cashier' ||
+    shell?.kind === 'waiter'
+    ? shell.kind
+    : 'pos';
 }
 
 /** Managers (reports, staff or settings) land on the dashboard, terminal staff on their panel. */
@@ -147,6 +151,14 @@ function Home() {
     return <Navigate to="/platforma/bizneslar" replace />;
   // The Restaurant Admin application always starts on the management dashboard.
   if (shellKind() === 'admin') return <DashboardPage />;
+  // The dedicated Kassa and Ofitsiant applications open their own panel directly.
+  if (shellKind() === 'cashier' && can(me, 'pos.access'))
+    return <Navigate to="/kassa" replace />;
+  if (
+    shellKind() === 'waiter' &&
+    (can(me, 'pos.access') || can(me, 'orders.create'))
+  )
+    return <Navigate to="/ofitsiant" replace />;
   // The shared POS application shows the staff member's own panel after sign-in; the
   // menu then offers only the other panels their permissions allow.
   if (me?.roleKeys.includes('waiter') && !can(me, 'reports.view'))
