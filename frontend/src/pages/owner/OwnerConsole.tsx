@@ -22,6 +22,7 @@ import { AdsTab } from './OwnerAds';
 import { CustomersTab } from './OwnerCustomers';
 import { DesignTab } from './OwnerDesign';
 import { DevicesTab } from './OwnerDevices';
+import { EventsTab, RegistrationsTab, useUnreadEvents } from './OwnerRegistry';
 import { AuditTab, OverviewTab, ReleasesTab, SecurityTab } from './OwnerMisc';
 
 const o = t.owner;
@@ -461,12 +462,15 @@ type Tab =
   | 'audit'
   | 'ads'
   | 'design'
+  | 'events'
+  | 'registry'
   | 'local';
 
 /** SUPER_OWNER console: shown on the central server after Owner sign-in. */
 export function OwnerConsole({ local }: { local?: ReactNode }) {
   const client = useQueryClient();
   const [tab, setTab] = useState<Tab>('overview');
+  const unread = useUnreadEvents();
   const me = useQuery({
     queryKey: ['owner', 'me'],
     queryFn: async () => {
@@ -496,6 +500,13 @@ export function OwnerConsole({ local }: { local?: ReactNode }) {
     );
   const tabs: [Tab, string][] = [
     ['overview', o.tabs.overview],
+    [
+      'events',
+      unread.data?.unread
+        ? `${o.tabs.events} (${unread.data.unread})`
+        : o.tabs.events,
+    ],
+    ['registry', o.tabs.registry],
     ['customers', o.tabs.customers],
     ['devices', o.tabs.devices],
     ['releases', o.tabs.releases],
@@ -522,6 +533,10 @@ export function OwnerConsole({ local }: { local?: ReactNode }) {
         ))}
       </nav>
       {tab === 'overview' && <OverviewTab />}
+      {tab === 'events' && (
+        <EventsTab onOpenRegistration={() => setTab('registry')} />
+      )}
+      {tab === 'registry' && <RegistrationsTab />}
       {tab === 'customers' &&
         (catalog.data ? (
           <CustomersTab catalog={catalog.data.features} />

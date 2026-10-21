@@ -24,6 +24,7 @@ import {
   scheduleDailySummaries,
 } from './outbox.js';
 import { evaluateKey } from './policy.js';
+import { verifyLicense } from '../license/license.js';
 import type { BrandingBundle } from '../branding/bundle.js';
 import { sha256Of, sniffMedia } from '../branding/media.js';
 import { loadAdminData, unlinkedView, type ControlView } from './view.js';
@@ -280,6 +281,60 @@ export function createControlRuntime(
     anchor = null;
     clockSuspect = false;
     return { ok: true as const, customerName: String(data.customerName) };
+  }
+
+  /**
+   * First launch: tell the vendor this installation exists (signed with the install's
+   * own key, no privileges). A brand-new installation is handed its trial key in the
+   * answer and activates with it at once; anything else waits for the Owner. Safe to
+   * repeat: the centre recognises the same signed identity.
+   */
+  async function register(): Promise<
+    'SKIPPED' | 'PENDING' | 'ACTIVATED' | 'ERROR'
+  > {
+    const baseUrl = (services.control?.url ?? '').replace(/\/+$/, '');
+    const pem = services.control?.deviceKeyPem;
+    if (!/^https?:\/\//.test(baseUrl) || !pem || (await link()) !== null)
+      return 'SKIPPED';
+    const publicKey = exportPublicKey(publicKeyOf(pem));
+    const tenant = await db.tenant.findFirst({
+      where: { kind: 'BUSINESS' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true },
+    });
+    const row = await db.appLicense.findUnique({ where: { id: 1 } });
+    const local = row?.key ? verifyLicense(row.key) : null;
+    const body = {
+      publicKey,
+      installId: services.installId ?? 'unknown',
+      deviceName: os.hostname().slice(0, 80) || 'PC',
+      platform: 'DESKTOP',
+      appVersion: services.appVersion ?? '0.0.0',
+      ...(tenant
+        ? { restaurantName: tenant.name.slice(0, 80), tenantKey: tenant.id }
+        : {}),
+      ...(services.installedAt
+        ? { installedAt: services.installedAt.toISOString() }
+        : {}),
+      hasLocalLicense: !!local && local.installId === services.installId,
+      ts: sysNow().getTime(),
+    };
+    const proof = signValue(pem, { type: 'register', ...body });
+    const { status, data } = await call(
+      '/control/device/register',
+      { ...body, proof },
+      baseUrl,
+    );
+    if (status !== 200 && status !== 201) return 'ERROR';
+    if (data.status === 'ASSIGNED' && typeof data.licenseKey === 'string') {
+      const result = await activate({
+        licenseKey: data.licenseKey,
+        deviceName: body.deviceName,
+        serverUrl: baseUrl,
+      });
+      return result.ok ? 'ACTIVATED' : 'ERROR';
+    }
+    return 'PENDING';
   }
 
   async function terminateSessions(command: {
@@ -769,9 +824,18 @@ export function createControlRuntime(
   /** Background loop: check in, then flush the outbox and plan daily summaries. */
   function start(intervalMs: number = timing.heartbeatIntervalMs) {
     let lastSummaries = 0;
+    let lastRegister = 0;
     const tick = async () => {
       try {
-        if ((await link()) === null) return;
+        if ((await link()) === null) {
+          // Not linked yet: announce this installation (and collect an approval) now
+          // and then, never more often than every ten minutes.
+          if (Date.now() - lastRegister > 10 * 60_000) {
+            lastRegister = Date.now();
+            await register().catch(() => undefined);
+          }
+          return;
+        }
         if ((await beat()) === 'ok') {
           await sync().catch(() => undefined);
           if (Date.now() - lastSummaries > 60 * 60_000) {
@@ -798,6 +862,7 @@ export function createControlRuntime(
     view,
     state,
     activate,
+    register,
     beat,
     sync,
     status,

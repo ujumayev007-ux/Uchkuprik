@@ -55,6 +55,10 @@ export type LicenseStatus = {
   installId: string;
   features: PlanFeature[] | null;
   hiddenMenus: string[];
+  // A trial from the centre ends exactly at expiresAt (hours, not a calendar day).
+  trial?: boolean;
+  endsAt?: string | null;
+  hoursLeft?: number | null;
 };
 
 /** Parses and verifies `<base64url payload>.<base64url signature>`. */
@@ -151,17 +155,31 @@ export async function licenseStatus(
   if (linked && linked.mode !== 'UNLINKED' && linked.grant) {
     const end = new Date(linked.grant.licenseExpiresAt).getTime();
     const daysLeft = Math.ceil((end - effective.getTime()) / DAY);
+    const trial = linked.grant.trial === true;
     value = {
       ...value,
       customer: linked.grant.customerName,
       expiresAt: linked.grant.licenseExpiresAt.slice(0, 10),
       daysLeft: Math.max(0, daysLeft),
+      // A running trial is shown as such until the exact moment it ends.
       status:
         daysLeft <= 0
           ? 'EXPIRED'
-          : daysLeft <= WARN_DAYS
-            ? 'EXPIRING'
-            : 'VALID',
+          : trial
+            ? 'TRIAL'
+            : daysLeft <= WARN_DAYS
+              ? 'EXPIRING'
+              : 'VALID',
+      ...(trial
+        ? {
+            trial: true,
+            endsAt: linked.grant.licenseExpiresAt,
+            hoursLeft: Math.max(
+              0,
+              Math.ceil((end - effective.getTime()) / 3_600_000),
+            ),
+          }
+        : {}),
       features: linked.grant.features.filter((key): key is PlanFeature =>
         (planFeatures as readonly string[]).includes(key),
       ),

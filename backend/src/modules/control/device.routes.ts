@@ -16,6 +16,7 @@ import {
   verifyValue,
 } from './keys.js';
 import { controlAudit } from './owner.js';
+import { recordEvent } from './registry.js';
 import { buildBundle } from '../branding/bundle.js';
 import { AD_PANELS } from '../branding/bundle.js';
 
@@ -168,6 +169,19 @@ export function deviceRouter(services: Services) {
           where: { id: customer.id },
           data: { boundTenantKey: input.tenantKey },
         });
+      // A trial starts at the first server-authorised activation: from now until
+      // now + trialHours, exactly (not until the end of a calendar day).
+      let trialStarted = false;
+      if (license.trialHours && !license.trialStartedAt) {
+        const started = await tx.controlLicense.updateMany({
+          where: { id: license.id, trialStartedAt: null },
+          data: {
+            trialStartedAt: at,
+            expiresAt: new Date(at.getTime() + license.trialHours * 3_600_000),
+          },
+        });
+        trialStarted = started.count === 1;
+      }
       const data = {
         installId: input.installId,
         deviceName: input.deviceName,
@@ -199,12 +213,46 @@ export function deviceRouter(services: Services) {
         entityId: activation.id,
         data: { deviceName: input.deviceName, installId: input.installId },
       });
+      if (!existing)
+        await recordEvent(tx, {
+          type: 'device.activated',
+          dedupeKey: `activated:${activation.id}`,
+          customerId: customer.id,
+          data: {
+            deviceName: input.deviceName,
+            platform: input.platform,
+            appVersion: input.appVersion ?? null,
+            customerName: customer.name,
+          },
+        });
+      if (trialStarted)
+        await recordEvent(tx, {
+          type: 'trial.started',
+          dedupeKey: `trial-started:${license.id}`,
+          customerId: customer.id,
+          data: {
+            customerName: customer.name,
+            hours: license.trialHours,
+            endsAt: new Date(
+              at.getTime() + license.trialHours! * 3_600_000,
+            ).toISOString(),
+          },
+        });
+      // The device holds its key now: the sealed copy is no longer needed.
+      await tx.controlRegistration.updateMany({
+        where: { licenseId: license.id, claimKeyEnc: { not: null } },
+        data: { claimKeyEnc: null },
+      });
       return { activation, customer };
+    });
+    // The licence as it is now (a trial that just started has its real end date).
+    const current = await db.controlLicense.findUniqueOrThrow({
+      where: { id: license.id },
     });
     const policy = await loadPolicy(db, license.customerId);
     const { document } = issueGrant(services, {
       customer: result.customer,
-      license,
+      license: current,
       activation: result.activation,
       policy,
       at,

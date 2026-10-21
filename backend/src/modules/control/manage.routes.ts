@@ -129,6 +129,12 @@ function licenseView(license: ControlLicense, at: Date) {
     note: license.note,
     renewedAt: license.renewedAt,
     createdAt: license.createdAt,
+    trial: license.trialHours !== null,
+    trialHours: license.trialHours,
+    trialStartedAt: license.trialStartedAt,
+    // A trial key that was never used has not started its clock yet.
+    trialWaiting:
+      license.trialHours !== null && license.trialStartedAt === null,
   };
 }
 
@@ -519,13 +525,15 @@ export function manageRouter(services: Services) {
       const license = await tx.controlLicense.findUnique({ where: { id } });
       if (!license || license.status === 'REVOKED') throw errors.notFound();
       // Whole months from the later of today and the current end.
-      const base = license.expiresAt > at ? license.expiresAt : at;
+      // A trial converts into a paid term that starts now; a licence extends its end.
+      const base =
+        !license.trialHours && license.expiresAt > at ? license.expiresAt : at;
       const next = endOfDay(
         addMonths(base, input.months).toISOString().slice(0, 10),
       );
       await tx.controlLicense.update({
         where: { id },
-        data: { expiresAt: next, renewedAt: at },
+        data: { expiresAt: next, renewedAt: at, trialHours: null },
       });
       await controlAudit(tx, req, {
         ownerId: owner.ownerId,

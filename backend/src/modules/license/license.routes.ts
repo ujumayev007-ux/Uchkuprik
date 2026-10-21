@@ -24,6 +24,9 @@ const open = [
   /^\/license/,
   /^\/public\/(plans|register)$/,
   /^\/devices\/heartbeat$/,
+  // Recovery: the restaurant can still take its own data out after the licence ended.
+  /^\/reports\/(export|preview|layout)$/,
+  /^\/tenant\/export/,
 ];
 
 /** Self-hosted installs stop working (data kept) when the licence has expired. */

@@ -669,3 +669,290 @@ describe('local-network exception (vendor only)', () => {
     expect([401, 403, 404]).toContain(attempt.status);
   });
 });
+
+/** The install's first launch: a signed registration with no privileges of its own. */
+function registration(agent: request.Agent, identity = generateIdentity()) {
+  const send = (
+    extra: Record<string, unknown> = {},
+    options: { badProof?: boolean; ts?: number } = {},
+  ) => {
+    const body = {
+      publicKey: identity.publicKey,
+      installId: `FF-${unique('R').slice(-4).toUpperCase()}-1111-2222`,
+      deviceName: 'KASSA-PC',
+      platform: 'DESKTOP',
+      appVersion: '1.14.4',
+      restaurantName: 'Yangi Oshxona',
+      tenantKey: unique('tenant'),
+      installedAt: new Date(
+        Date.now() + ctx.clock.offsetMs - 60_000,
+      ).toISOString(),
+      hasLocalLicense: false,
+      ts: options.ts ?? Date.now() + ctx.clock.offsetMs,
+      ...extra,
+    };
+    const proof = options.badProof
+      ? signValue(generateIdentity().privateKeyPem, {
+          type: 'register',
+          ...body,
+        })
+      : signValue(identity.privateKeyPem, { type: 'register', ...body });
+    return {
+      body,
+      res: api(agent).post('/control/device/register', { ...body, proof }),
+    };
+  };
+  return { identity, send };
+}
+
+describe('registration, trial and Owner events', () => {
+  const HOUR = 3_600_000;
+
+  it('a new install registers once, gets exactly one trial, and the Owner is notified once', async () => {
+    const { agent } = await signedIn();
+    // Settings live in the database: start from the documented defaults.
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: true, trialHours: 72 })
+      .expect(200);
+    const guest = request.agent(ctx.app);
+    const first = registration(guest);
+    const sent = first.send();
+    const created = await sent.res;
+    expect(created.status).toBe(201);
+    expect(created.body.status).toBe('ASSIGNED');
+    expect(created.body.licenseKey).toMatch(/^FFL(-[0-9A-Z]{5}){4}$/);
+    // Retrying (lost response, restart, upgrade) is the same registration, not a second one.
+    const retried = await api(guest).post('/control/device/register', {
+      ...sent.body,
+      proof: signValue(first.identity.privateKeyPem, {
+        type: 'register',
+        ...sent.body,
+      }),
+    });
+    expect(retried.status).toBe(200);
+    expect(retried.body.registrationId).toBe(created.body.registrationId);
+    expect(
+      await ctx.db.controlRegistration.count({
+        where: { id: created.body.registrationId },
+      }),
+    ).toBe(1);
+    const events = await ctx.db.controlEvent.findMany({
+      where: { registrationId: created.body.registrationId },
+    });
+    expect(events.map((event) => event.type).sort()).toEqual([
+      'registration.new',
+      'trial.assigned',
+    ]);
+
+    // The Owner sees both as unread and can mark them read; nothing is lost while closed.
+    const inbox = await api(agent).get('/control/events?unread=1').expect(200);
+    expect(inbox.body.unread).toBeGreaterThanOrEqual(2);
+    expect(
+      inbox.body.events.some(
+        (e: { type: string }) => e.type === 'registration.new',
+      ),
+    ).toBe(true);
+    const marked = await api(agent)
+      .post('/control/events/read', { all: true })
+      .expect(200);
+    expect(marked.body.marked).toBeGreaterThanOrEqual(2);
+    expect(
+      (await api(agent).get('/control/events?unread=1').expect(200)).body
+        .unread,
+    ).toBe(0);
+
+    // The same installation under another key does not earn a second trial.
+    const dup = await registration(guest).send({
+      installId: sent.body.installId,
+      tenantKey: sent.body.tenantKey,
+    }).res;
+    expect(dup.body.status).toBe('PENDING');
+    expect(dup.body.licenseKey).toBeUndefined();
+  });
+
+  it('forged, stale or malformed registrations are refused and create nothing', async () => {
+    const guest = request.agent(ctx.app);
+    const reg = registration(guest);
+    expect((await reg.send({}, { badProof: true }).res).status).toBe(403);
+    expect(
+      (
+        await reg.send({}, { ts: Date.now() + ctx.clock.offsetMs - 3_600_000 })
+          .res
+      ).status,
+    ).toBe(403);
+    expect((await reg.send({ appVersion: '<script>' }).res).status).toBe(400);
+    expect((await reg.send({ publicKey: 'short' }).res).status).toBe(400);
+    expect(
+      await ctx.db.controlRegistration.count({
+        where: { publicKey: reg.identity.publicKey },
+      }),
+    ).toBe(0);
+  });
+
+  it('old or already-licensed installs wait for the Owner instead of receiving a trial', async () => {
+    const { agent } = await signedIn();
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: true, trialHours: 72 })
+      .expect(200);
+    const guest = request.agent(ctx.app);
+    const old = await registration(guest).send({
+      installedAt: new Date(
+        Date.now() + ctx.clock.offsetMs - 10 * 24 * HOUR,
+      ).toISOString(),
+    }).res;
+    expect(old.status).toBe(201);
+    expect(old.body.status).toBe('PENDING');
+    expect(old.body.licenseKey).toBeUndefined();
+    const licensed = await registration(guest).send({ hasLocalLicense: true })
+      .res;
+    expect(licensed.body.status).toBe('PENDING');
+    // The Owner reviews and assigns one of them to a new customer with a licence.
+    const list = await api(agent)
+      .get('/control/registrations?status=PENDING')
+      .expect(200);
+    expect(
+      list.body.registrations.some(
+        (r: { id: string }) => r.id === old.body.registrationId,
+      ),
+    ).toBe(true);
+    const assigned = await api(agent)
+      .post(`/control/registrations/${old.body.registrationId}/assign`, {
+        newCustomer: { name: unique('Eski mijoz') },
+        mode: 'months',
+        months: 3,
+      })
+      .expect(200);
+    expect(assigned.body.customerId).toBeTruthy();
+    // Assigning twice is refused.
+    await api(agent)
+      .post(`/control/registrations/${old.body.registrationId}/assign`, {
+        customerId: assigned.body.customerId,
+        mode: 'months',
+        months: 1,
+      })
+      .expect(409);
+    // A customer gets one trial: the second request for the same customer is refused.
+    const again = await registration(guest).send({ hasLocalLicense: true }).res;
+    await api(agent)
+      .post(`/control/registrations/${again.body.registrationId}/assign`, {
+        customerId: assigned.body.customerId,
+        mode: 'trial',
+      })
+      .expect(200);
+    const third = await registration(guest).send({ hasLocalLicense: true }).res;
+    await api(agent)
+      .post(`/control/registrations/${third.body.registrationId}/assign`, {
+        customerId: assigned.body.customerId,
+        mode: 'trial',
+      })
+      .expect(409);
+  });
+
+  it('the trial lasts exactly 72 hours from the first activation, never restarts and converts without a new key', async () => {
+    const { agent } = await signedIn();
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: true, trialHours: 72 })
+      .expect(200);
+    const guest = request.agent(ctx.app);
+    const reg = registration(guest);
+    const sent = reg.send();
+    const created = await sent.res;
+    const key = created.body.licenseKey as string;
+    const tenantKey = { tenantKey: sent.body.tenantKey };
+    // Time passes before the key is used: the clock has not started.
+    ctx.clock.offsetMs += 5 * HOUR;
+    const pc = device(request.agent(ctx.app));
+    const startedAt = Date.now() + ctx.clock.offsetMs;
+    const activated = await pc.activate(key, tenantKey).expect(201);
+    const grant = readGrant(activated.body.grant, [server.publicKey])!;
+    expect(grant.trial).toBe(true);
+    const end = Date.parse(grant.licenseExpiresAt);
+    expect(Math.abs(end - (startedAt + 72 * HOUR))).toBeLessThan(5_000);
+    // Offline leases can never outlive the trial.
+    expect(Date.parse(grant.expiresAt)).toBeLessThanOrEqual(end);
+    const license = await ctx.db.controlLicense.findFirstOrThrow({
+      where: { keyHint: key.slice(-5) },
+    });
+    expect(license.trialStartedAt).not.toBeNull();
+    // Activating the same device again (restart, reinstall of the app) does not move the end.
+    ctx.clock.offsetMs += 10 * HOUR;
+    const again = await pc.activate(key, tenantKey).expect(201);
+    expect(
+      Date.parse(
+        readGrant(again.body.grant, [server.publicKey])!.licenseExpiresAt,
+      ),
+    ).toBe(end);
+    // Another computer with the same key does not get a second trial (one installation).
+    const other = device(request.agent(ctx.app));
+    await other.activate(key, tenantKey).expect(409);
+    const started = await ctx.db.controlEvent.count({
+      where: { type: 'trial.started', customerId: license.customerId },
+    });
+    expect(started).toBe(1);
+    const heartbeat = await pc
+      .heartbeat(activated.body.activationId)
+      .expect(200);
+    const doc = verifyDocument<{ grant: string }>(heartbeat.body.response, [
+      server.publicKey,
+    ])!;
+    expect(
+      Date.parse(readGrant(doc.grant, [server.publicKey])!.licenseExpiresAt),
+    ).toBe(end);
+    // Converting to a paid term needs no new key and keeps the activation (the Owner
+    // confirms with a fresh password and code, hours later).
+    const later = await signedIn();
+    await api(later.agent)
+      .post(`/control/licenses/${license.id}/renew`, { months: 1 })
+      .expect(200);
+    const converted = await pc
+      .heartbeat(activated.body.activationId)
+      .expect(200);
+    const doc2 = verifyDocument<{ grant: string }>(converted.body.response, [
+      server.publicKey,
+    ])!;
+    const grant2 = readGrant(doc2.grant, [server.publicKey])!;
+    expect(grant2.trial).toBeUndefined();
+    expect(Date.parse(grant2.licenseExpiresAt)).toBeGreaterThan(
+      end + 20 * 24 * HOUR,
+    );
+  });
+
+  it('the Owner controls automatic trials and their length', async () => {
+    const { agent } = await signedIn();
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: false, trialHours: 72 })
+      .expect(200);
+    const guest = request.agent(ctx.app);
+    const off = await registration(guest).send().res;
+    expect(off.body.status).toBe('PENDING');
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: true, trialHours: 24 })
+      .expect(200);
+    const shorterSent = registration(guest).send();
+    const shorter = await shorterSent.res;
+    const pc = device(request.agent(ctx.app));
+    const grant = readGrant(
+      (
+        await pc
+          .activate(shorter.body.licenseKey, {
+            tenantKey: shorterSent.body.tenantKey,
+          })
+          .expect(201)
+      ).body.grant,
+      [server.publicKey],
+    )!;
+    const license = await ctx.db.controlLicense.findFirstOrThrow({
+      where: { keyHint: (shorter.body.licenseKey as string).slice(-5) },
+    });
+    expect(license.trialHours).toBe(24);
+    expect(
+      Date.parse(grant.licenseExpiresAt) - license.trialStartedAt!.getTime(),
+    ).toBe(24 * HOUR);
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: true, trialHours: 0 })
+      .expect(400);
+    await api(agent)
+      .put('/control/registry-settings', { autoTrial: true, trialHours: 72 })
+      .expect(200);
+  });
+});

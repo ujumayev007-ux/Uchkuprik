@@ -40,6 +40,8 @@ export type Grant = {
   licenseExpiresAt: string;
   status: GrantStatus;
   features: string[];
+  // A trial licence: it ends exactly at licenseExpiresAt (hours, not a calendar day).
+  trial?: boolean;
   limits: {
     branches: number | null;
     users: number | null;

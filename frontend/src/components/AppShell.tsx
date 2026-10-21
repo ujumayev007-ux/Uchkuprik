@@ -486,8 +486,14 @@ function LicenseBanner({ license }: { license: License | undefined }) {
   if (!license?.selfHosted) return null;
   if (license.status !== 'EXPIRING' && license.status !== 'TRIAL') return null;
   const text = (
-    license.status === 'TRIAL' ? t.license.trialBanner : t.license.banner
-  ).replace('{days}', String(license.daysLeft ?? 0));
+    license.trial
+      ? t.license.trialHoursBanner
+      : license.status === 'TRIAL'
+        ? t.license.trialBanner
+        : t.license.banner
+  )
+    .replace('{days}', String(license.daysLeft ?? 0))
+    .replace('{hours}', String(license.hoursLeft ?? 0));
   return (
     <div className="billing-banner warning" role="status">
       <span>{text}</span>

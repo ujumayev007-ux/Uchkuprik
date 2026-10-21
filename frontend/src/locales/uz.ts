@@ -2204,6 +2204,10 @@ export const uz = {
     lockedStaff: 'Dastur egasi yangi litsenziya kalitini kiritishi kerak.',
     banner: 'Litsenziya {days} kundan keyin tugaydi.',
     trialBanner: 'Sinov muddati: {days} kun qoldi.',
+    trialHoursBanner:
+      'Sinov muddati: {hours} soat qoldi. Muddat tugagach ma’lumotlar saqlanadi, lekin yangi buyurtmalar uchun litsenziya kerak.',
+    trialEnds: 'Sinov tugaydi',
+    hoursLeft: '{n} soat qoldi',
     copy: 'Nusxalash',
     copied: 'Nusxalandi',
     sync: 'Hozir tekshirish',

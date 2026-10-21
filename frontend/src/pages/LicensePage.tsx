@@ -22,6 +22,9 @@ export type License = {
   customer?: string | null;
   expiresAt?: string | null;
   daysLeft?: number | null;
+  trial?: boolean;
+  endsAt?: string | null;
+  hoursLeft?: number | null;
   installId?: string;
   hiddenMenus?: string[];
 };
@@ -142,8 +145,20 @@ export function LicenseDetails({ license }: { license: License }) {
               <dd>{license.expiresAt}</dd>
             </>
           )}
-          <dt>{l.daysLeft}</dt>
-          <dd>{license.daysLeft ?? 0}</dd>
+          {license.trial && license.endsAt ? (
+            <>
+              <dt>{l.trialEnds}</dt>
+              <dd>
+                {new Date(license.endsAt).toLocaleString('uz-UZ')} (
+                {l.hoursLeft.replace('{n}', String(license.hoursLeft ?? 0))})
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt>{l.daysLeft}</dt>
+              <dd>{license.daysLeft ?? 0}</dd>
+            </>
+          )}
         </dl>
         <div className="stack">
           <strong>{l.installId}</strong>

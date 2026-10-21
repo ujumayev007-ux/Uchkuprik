@@ -10,7 +10,11 @@ import {
   clearAdminSettingsCache,
   clearPolicyCache,
 } from '../src/modules/control/view.js';
-import { clearLicenseCache } from '../src/modules/license/license.js';
+import {
+  clearLicenseCache,
+  licenseAllowsUse,
+  licenseStatus,
+} from '../src/modules/license/license.js';
 import {
   addUser,
   createTenant,
@@ -730,5 +734,60 @@ describe('cloud edition tenant isolation', () => {
     ).toEqual({ mode: 'OFF' });
     expect((await provider(b.tenant.id)).policy.features).toEqual({});
     expect((await provider(null)).mode).toBe('UNLINKED');
+  });
+});
+
+describe('first-launch registration and the 72-hour trial on the install', () => {
+  const HOUR = 3_600_000;
+
+  async function freshInstall(installedAgoMs: number) {
+    await resetLink();
+    await central.db.controlSetting.deleteMany({ where: { key: 'registry' } });
+    // The test database is shared by every run: earlier registrations of the same
+    // restaurant would make this install look like a returning one.
+    await central.db.controlRegistration.deleteMany({});
+    install.services.control!.deviceKeyPem = generateIdentity().privateKeyPem;
+    install.services.installId = `FF-${randomUUID().slice(0, 4).toUpperCase()}-0001-0002`;
+    install.services.installedAt = new Date(
+      Date.now() + install.clock.offsetMs - installedAgoMs,
+    );
+  }
+
+  it('a brand-new install registers, collects its trial by itself and runs exactly 72 hours', async () => {
+    await freshInstall(60_000);
+    expect(await runtime.register()).toBe('ACTIVATED');
+    // Linked now: further attempts do nothing.
+    expect(await runtime.register()).toBe('SKIPPED');
+    clearLicenseCache();
+    const first = await licenseStatus(install.services);
+    expect(first).toMatchObject({ status: 'TRIAL', trial: true });
+    expect(first.hoursLeft).toBe(72);
+
+    advance(71 * HOUR + 59 * 60_000);
+    clearLicenseCache();
+    const almost = await licenseStatus(install.services);
+    expect(almost.status).toBe('TRIAL');
+    expect(almost.hoursLeft).toBe(1);
+
+    advance(60_000 + 1_000);
+    clearLicenseCache();
+    const over = await licenseStatus(install.services);
+    expect(over.status).toBe('EXPIRED');
+    // The data stays; only new restricted operations are gated by the status.
+    expect(licenseAllowsUse(over)).toBe(false);
+  });
+
+  it('an older install is announced but waits for the Owner; nothing is switched on or off', async () => {
+    await freshInstall(30 * 24 * HOUR);
+    expect(await runtime.register()).toBe('PENDING');
+    expect(await install.db.controlLink.count()).toBe(0);
+    clearLicenseCache();
+    // Its own (local) rules keep applying: a month-old install is past the local trial.
+    expect((await licenseStatus(install.services)).status).toBe('MISSING');
+    const registration = await central.db.controlRegistration.findFirstOrThrow({
+      where: { installId: install.services.installId! },
+    });
+    expect(registration.status).toBe('PENDING');
+    expect(registration.hasLocalLicense).toBe(false);
   });
 });

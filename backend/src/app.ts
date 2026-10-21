@@ -39,6 +39,7 @@ import { deviceRouter } from './modules/control/device.routes.js';
 import { enforceControl } from './modules/control/enforce.js';
 import { controlInstallRouter } from './modules/control/install.routes.js';
 import { manageRouter } from './modules/control/manage.routes.js';
+import { registryRouter } from './modules/control/registry.js';
 import { ownerRouter } from './modules/control/owner.routes.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
@@ -274,6 +275,7 @@ export function createApp({
       for (const router of [
         ownerRouter,
         manageRouter,
+        registryRouter,
         dataRouter,
         brandingOwnerRouter,
         deviceRouter,

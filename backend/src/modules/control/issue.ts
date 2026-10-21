@@ -78,6 +78,7 @@ export function issueGrant(
     expiresAt: expiresAt.toISOString(),
     licenseExpiresAt: end.toISOString(),
     status: grantStatusOf(customer, license, activation),
+    ...(license.trialHours ? { trial: true } : {}),
     features: license.features.filter((feature) =>
       (planFeatures as readonly string[]).includes(feature),
     ),

@@ -2702,6 +2702,10 @@ model ControlLicense {
   renewedAt   DateTime?
   suspendedAt DateTime?
   revokedAt   DateTime?
+  // Trial: lasts exactly this many hours from the first server-authorised activation.
+  // expiresAt is a claim deadline until then and the exact end afterwards.
+  trialHours     Int?
+  trialStartedAt DateTime?
   createdById String?              @db.Uuid
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
@@ -3211,4 +3215,65 @@ model StockAlertSettings {
   updatedAt       DateTime @updatedAt
 
   @@map("stock_alert_settings")
+}
+
+enum ControlRegistrationStatus {
+  PENDING
+  ASSIGNED
+  REJECTED
+}
+
+// A first launch announcing itself to the vendor. It carries no privileges: the vendor (or
+// the automatic trial rule for a brand-new install) decides what it receives.
+model ControlRegistration {
+  id              String                    @id @default(uuid(7)) @db.Uuid
+  installId       String
+  // Fingerprint of the install's own public key: the identity that signs every request.
+  fingerprint     String                    @unique
+  publicKey       String
+  platform        String                    @default("DESKTOP")
+  appVersion      String?
+  label           String
+  restaurantName  String?
+  tenantKey       String?
+  // First installation date on that computer (survives deleting the data folder).
+  installedAt     DateTime?
+  hasLocalLicense Boolean                   @default(false)
+  status          ControlRegistrationStatus @default(PENDING)
+  customerId      String?                   @db.Uuid
+  licenseId       String?                   @db.Uuid
+  // The licence key waiting to be collected by the device that registered (sealed).
+  claimKeyEnc     String?
+  lastIp          String?
+  firstSeenAt     DateTime                  @default(now())
+  lastSeenAt      DateTime                  @default(now())
+
+  @@index([status, firstSeenAt])
+  @@index([installId])
+  @@index([tenantKey])
+  @@map("control_registrations")
+}
+
+// Durable vendor notifications: stored centrally, read when the Owner next connects.
+model ControlEvent {
+  id             BigInt    @id @default(autoincrement())
+  type           String
+  // Retried requests carry the same key and never create a second event.
+  dedupeKey      String    @unique
+  customerId     String?   @db.Uuid
+  registrationId String?   @db.Uuid
+  data           Json      @default("{}")
+  createdAt      DateTime  @default(now())
+  readAt         DateTime?
+
+  @@index([readAt, id])
+  @@map("control_events")
+}
+
+model ControlSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("control_settings")
 }
