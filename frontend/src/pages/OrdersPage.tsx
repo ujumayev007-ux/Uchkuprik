@@ -693,14 +693,30 @@ export function OrdersPage() {
   const ordering = useOrdering();
   const navigate = useNavigate();
   const view = useOrderDisplayMode();
-  const [scope, setScope] = useState<'active' | 'today'>('active');
+  const [scope, setScope] = useState<'active' | 'today' | 'history'>('active');
+  // Order history: business-date range (default: the last 7 days) and a search.
+  // Local calendar day (the restaurant's day), not the UTC one.
+  const day = (offset: number) => {
+    const d = new Date(Date.now() + offset * 86_400_000);
+    const two = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+  };
+  const [range, setRange] = useState({ from: day(-6), to: day(0), q: '' });
   const [selected, setSelected] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<Order | null>(null);
   const orders = useQuery({
-    queryKey: ['orders', 'list', me?.activeBranchId, scope],
+    queryKey: [
+      'orders',
+      'list',
+      me?.activeBranchId,
+      scope,
+      scope === 'history' ? range : null,
+    ],
     queryFn: () =>
       api<{ orders: Order[] }>(
-        `/orders?branchId=${me?.activeBranchId}&scope=${scope}`,
+        scope === 'history'
+          ? `/orders?branchId=${me?.activeBranchId}&scope=all&limit=200&from=${range.from}&to=${range.to}${range.q.trim() ? `&q=${encodeURIComponent(range.q.trim())}` : ''}`
+          : `/orders?branchId=${me?.activeBranchId}&scope=${scope}`,
       ).then((data) => data.orders),
     enabled: !!me?.activeBranchId,
     refetchInterval: 15_000,
@@ -721,7 +737,7 @@ export function OrdersPage() {
       <PageHeader title={t.orders.title} subtitle={t.orders.subtitle} />
       <div className="orders-toolbar">
         <div className="tabs" role="tablist">
-          {(['active', 'today'] as const).map((value) => (
+          {(['active', 'today', 'history'] as const).map((value) => (
             <button
               key={value}
               role="tab"
@@ -733,6 +749,30 @@ export function OrdersPage() {
             </button>
           ))}
         </div>
+        {scope === 'history' && (
+          <>
+            <TextField
+              label={t.orders.from}
+              type="date"
+              value={range.from}
+              max={range.to}
+              onChange={(e) => setRange({ ...range, from: e.target.value })}
+            />
+            <TextField
+              label={t.orders.to}
+              type="date"
+              value={range.to}
+              min={range.from}
+              onChange={(e) => setRange({ ...range, to: e.target.value })}
+            />
+            <TextField
+              label={t.orders.search}
+              type="search"
+              value={range.q}
+              onChange={(e) => setRange({ ...range, q: e.target.value })}
+            />
+          </>
+        )}
         <span className="spacer" />
         {view.canChange && (
           <DisplayModeSwitch mode={view.mode} onChange={view.change} />

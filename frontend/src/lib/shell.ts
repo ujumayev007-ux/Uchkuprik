@@ -16,7 +16,7 @@ export function shellKind(): ShellKind {
 
 /** Pages each dedicated app may open; everything else stays in the Admin application. */
 const allowedPaths: Partial<Record<ShellKind, string[]>> = {
-  cashier: ['/kassa'],
+  cashier: ['/kassa', '/buyurtmalar'],
   kitchen: ['/oshxona'],
   waiter: ['/ofitsiant', '/buyurtmalar'],
 };

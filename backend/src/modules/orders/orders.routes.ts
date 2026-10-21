@@ -276,6 +276,10 @@ export function ordersRouter(services: Services) {
           tableId: z.uuid().optional(),
           scope: z.enum(['active', 'today', 'all']).default('active'),
           limit: z.coerce.number().int().min(1).max(200).default(100),
+          // Order history: business-date range and a search (number, guest name or phone).
+          from: z.iso.date().optional(),
+          to: z.iso.date().optional(),
+          q: z.string().trim().min(1).max(60).optional(),
         }),
         req.query,
       );
@@ -302,6 +306,30 @@ export function ordersRouter(services: Services) {
             : query.scope === 'today'
               ? { businessDate: today }
               : {}),
+          ...(query.from || query.to
+            ? {
+                businessDate: {
+                  ...(query.from ? { gte: new Date(query.from) } : {}),
+                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                },
+              }
+            : {}),
+          ...(query.q
+            ? {
+                OR: [
+                  ...(/^\d{1,9}$/.test(query.q)
+                    ? [{ number: Number(query.q) }]
+                    : []),
+                  {
+                    customerName: {
+                      contains: query.q,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                  { customerPhone: { contains: query.q } },
+                ],
+              }
+            : {}),
         },
         orderBy: { createdAt: 'desc' },
         take: query.limit,
