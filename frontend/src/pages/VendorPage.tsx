@@ -523,11 +523,46 @@ function LegacyVendorPage() {
 export function VendorPage() {
   const plane = useControlPlane();
   if (plane.isPending) return <LoadingState />;
-  if (plane.data?.plane)
-    return (
-      <OwnerConsole
-        local={vendor?.isVendor ? <LegacyVendorPage /> : undefined}
-      />
-    );
+  if (plane.data?.plane && vendor?.isVendor) return <SellerShell />;
+  if (plane.data?.plane) return <OwnerConsole />;
   return <LegacyVendorPage />;
+}
+
+/**
+ * The vendor's own computer (Owner application with the vendor key): one window with the
+ * Sotuvchi paneli as the main page and the central Owner console as a second menu. Each
+ * keeps its own sign-in and permissions; both stay mounted so switching loses nothing.
+ */
+function SellerShell() {
+  const [menu, setMenu] = useState<'seller' | 'central'>('seller');
+  const item = (key: 'seller' | 'central', label: string) => (
+    <button
+      type="button"
+      className={menu === key ? 'nav-link active' : 'nav-link'}
+      aria-current={menu === key ? 'page' : undefined}
+      onClick={() => setMenu(key)}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+      <nav
+        aria-label="Sotuvchi menyusi"
+        className="stack"
+        style={{ minWidth: '13rem', position: 'sticky', top: '1rem' }}
+      >
+        {item('seller', 'Sotuvchi paneli')}
+        {item('central', 'Markaziy boshqaruv')}
+      </nav>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div hidden={menu !== 'seller'}>
+          <LegacyVendorPage />
+        </div>
+        <div hidden={menu !== 'central'}>
+          <OwnerConsole />
+        </div>
+      </div>
+    </div>
+  );
 }
