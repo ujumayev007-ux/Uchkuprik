@@ -12,6 +12,8 @@ const {
   clipboard,
   ipcMain,
   safeStorage,
+  Tray,
+  nativeImage,
 } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const crypto = require('node:crypto');
@@ -70,6 +72,12 @@ const BACKUPS = path.join(DATA, 'backups');
 const LOGS = path.join(DATA, 'logs');
 
 let win = null;
+let tray = null;
+// Started by Windows at sign-in (see enableAutoStart): run without showing the window.
+const HIDDEN = process.argv.includes('--hidden');
+// True once the user really quits (tray «Chiqish», Windows shutdown): only then the
+// window may close; before that closing it just hides it and the server keeps serving.
+let quitting = false;
 let api = null;
 let beacon = null;
 let startedPostgres = false;
@@ -631,6 +639,8 @@ async function enableNetwork() {
 /** Once a day at most, until the network permission is given. */
 async function askNetworkPermission() {
   if (TEST || process.platform !== 'win32') return;
+  // Started silently: ask when the window is opened from the tray instead.
+  if (!win || !win.isVisible()) return;
   try {
     if ((await lan.firewallState()).ok) return;
     const today = new Date().toISOString().slice(0, 10);
@@ -827,10 +837,60 @@ function openVendorPanel() {
   if (win) win.loadURL(`http://localhost:${APP_PORT}/sotuvchi`);
 }
 
+/** Brings the (possibly hidden) window back. */
+function showWindow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  void askNetworkPermission();
+}
+
+/** Tray icon: the server keeps running in the background while the window is closed. */
+async function createTray() {
+  if (tray) return;
+  const icon = await app
+    .getFileIcon(process.execPath, { size: 'small' })
+    .catch(() => nativeImage.createEmpty());
+  tray = new Tray(icon);
+  tray.setToolTip(
+    TEST ? `FastFood TEST ${VERSION} — server` : `FastFood ${VERSION} — server`,
+  );
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Ochish', click: showWindow },
+      {
+        label: 'Server manzili',
+        click: () => {
+          showWindow();
+          showPhoneAddress();
+        },
+      },
+      { type: 'separator' },
+      { label: 'Chiqish', click: () => app.quit() },
+    ]),
+  );
+  tray.on('double-click', showWindow);
+}
+
+/**
+ * Starts silently with Windows after this user signs in (production installs only; a
+ * support or test run with its own data folder never registers itself).
+ */
+function enableAutoStart() {
+  if (!app.isPackaged || TEST || process.env.FASTFOOD_DATA_DIR) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });
+  } catch (error) {
+    log(`autostart: ${error.message}`);
+  }
+}
+
 async function boot() {
   win = new BrowserWindow({
     width: 1366,
     height: 860,
+    show: !HIDDEN,
     title: TEST ? `FastFood TEST ${VERSION}` : `FastFood ${VERSION}`,
     autoHideMenuBar: false,
     webPreferences: {
@@ -840,6 +900,18 @@ async function boot() {
     },
   });
   buildMenu();
+  // Closing the window hides it; the server stops only through «Chiqish».
+  win.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    win.hide();
+  });
+  // Windows shutdown, restart or sign-out must not be held up by the hidden window.
+  win.on('session-end', () => {
+    quitting = true;
+  });
+  await createTray();
+  enableAutoStart();
   win.loadFile(path.join(__dirname, 'loading.html'));
   // Links that leave the app (e.g. printed receipts) open in the normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -899,12 +971,8 @@ async function boot() {
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
+  // Opening FastFood again (desktop icon) shows the running server's window.
+  app.on('second-instance', () => showWindow());
   app.whenReady().then(() =>
     boot().catch((error) => {
       log(`boot failed: ${error.stack || error.message}`);
@@ -919,6 +987,7 @@ else {
 
 let stopping = false;
 app.on('before-quit', (event) => {
+  quitting = true;
   if (stopping || !api) return;
   event.preventDefault();
   stopping = true;

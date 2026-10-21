@@ -182,13 +182,17 @@ await build({
       perMachine: false,
       allowToChangeInstallationDirectory: true,
       createDesktopShortcut: true,
-      shortcutName: `FastFood ${TEST ? 'TEST ' : ''}${version}`,
-      artifactName: `FastFood-${TEST ? 'TEST-' : ''}Setup-${version}.exe`,
+      // Customers see the server as their Admin application (it shows the full Admin
+      // panel and runs the server silently); app id, folders and profile are unchanged.
+      shortcutName: TEST ? `FastFood TEST ${version}` : 'FastFood Admin',
+      artifactName: TEST
+        ? `FastFood-TEST-Setup-${version}.exe`
+        : `FastFood-Admin-Setup-${version}.exe`,
       // Uninstalling a version never touches the shared data folder.
       deleteAppDataOnUninstall: false,
     },
   },
 });
 console.log(
-  `Ready: desktop/${TEST ? 'release-test' : 'release'}/FastFood-${TEST ? 'TEST-' : ''}Setup-${version}.exe`,
+  `Ready: desktop/${TEST ? 'release-test/FastFood-TEST' : 'release/FastFood-Admin'}-Setup-${version}.exe`,
 );
