@@ -17,6 +17,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { syncStockAlert } from './alert-sync.js';
 import {
   baseUnitLabels,
   defaultWarehouse,
@@ -210,6 +211,20 @@ export function inventoryRouter(services: Services) {
           factor: unit.factor,
         })),
       });
+    // A new minimum (or switching the item off) changes whether it counts as short.
+    const balances = await tx.stockBalance.findMany({
+      where: { stockItemId: itemId! },
+    });
+    for (const balance of balances)
+      await syncStockAlert(
+        tx,
+        {
+          tenantId: auth.tenantId,
+          warehouseId: balance.warehouseId,
+          stockItemId: itemId!,
+        },
+        new Decimal(balance.quantity),
+      );
     return itemId!;
   };
 

@@ -370,6 +370,7 @@ export const featureCatalog: FeatureDef[] = [
     menuPath: '/ombor',
     routes: [
       'GET /inventory/*',
+      'POST /inventory/stock-alerts/:id/ack',
       'GET /recipes/:variantId',
       'GET /suppliers',
       'GET /purchases',
@@ -384,6 +385,7 @@ export const featureCatalog: FeatureDef[] = [
     permission: 'inventory.manage',
     routes: [
       'POST /inventory/adjustments',
+      'PUT /inventory/stock-alert-settings',
       'POST /inventory/stocktakes',
       'POST /inventory/transfers',
       'POST /inventory/items',

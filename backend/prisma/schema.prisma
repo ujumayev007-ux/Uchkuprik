@@ -3161,3 +3161,51 @@ model ReportLayout {
 
   @@map("report_layouts")
 }
+
+enum StockAlertSeverity {
+  LOW
+  CRITICAL
+  OUT
+}
+
+enum StockAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+// One active alert per item and warehouse (a partial unique index keeps it that way);
+// raised and resolved from the ledger, never from a second stock balance.
+model StockAlert {
+  id               String             @id @default(uuid(7)) @db.Uuid
+  tenantId         String             @db.Uuid
+  warehouseId      String             @db.Uuid
+  stockItemId      String             @db.Uuid
+  severity         StockAlertSeverity
+  status           StockAlertStatus   @default(OPEN)
+  quantity         Decimal            @db.Decimal(14, 3)
+  threshold        Decimal            @db.Decimal(14, 3)
+  openedAt         DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  acknowledgedAt   DateTime?
+  acknowledgedById String?            @db.Uuid
+  resolvedAt       DateTime?
+
+  @@index([tenantId, status])
+  @@index([stockItemId, openedAt])
+  @@map("stock_alerts")
+}
+
+model StockAlertSettings {
+  tenantId        String   @id @db.Uuid
+  enabled         Boolean  @default(true)
+  soundEnabled    Boolean  @default(true)
+  // "Critical" below this share of the minimum stock (percent).
+  criticalPercent Int      @default(50)
+  // Minutes between reminders while an alert stays unacknowledged (0 = no reminders).
+  reminderMinutes Int      @default(10)
+  updatedById     String?  @db.Uuid
+  updatedAt       DateTime @updatedAt
+
+  @@map("stock_alert_settings")
+}

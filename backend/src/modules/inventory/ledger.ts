@@ -5,6 +5,7 @@ import {
 } from '../../generated/prisma/client.js';
 import { AppError } from '../../http/errors.js';
 import { notify } from '../notifications/notify.js';
+import { syncStockAlert } from './alert-sync.js';
 
 const { Decimal } = Prisma;
 type Decimal = Prisma.Decimal;
@@ -90,6 +91,16 @@ export async function postMovement(tx: Tx, input: MovementInput) {
     },
     data: { quantity: next, avgCost: nextAvg.toDecimalPlaces(4) },
   });
+  // Raise, escalate or resolve the item's alert from this authoritative balance.
+  await syncStockAlert(
+    tx,
+    {
+      tenantId: input.tenantId,
+      warehouseId: input.warehouseId,
+      stockItemId: input.stockItemId,
+    },
+    next,
+  );
   if (input.quantity.isNegative()) {
     const item = await tx.stockItem.findUnique({
       where: { id: input.stockItemId },

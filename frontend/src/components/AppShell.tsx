@@ -25,6 +25,7 @@ import {
 import { isVendorComputer } from '../pages/VendorPage';
 import { PendingOrders } from './PendingOrders';
 import { StaffAnnouncer, VoiceButton } from './StaffAnnouncer';
+import { StockAlerts } from './StockAlerts';
 import { useBranding } from '../lib/branding';
 import { BrandingHost } from './BrandingHost';
 import { ReauthDialog } from './ReauthDialog';
@@ -617,6 +618,9 @@ export function AppShell() {
           <BranchSwitcher me={me} />
           <div className="topbar-spacer" />
           <LiveClock />
+          {me.tenantKind === 'BUSINESS' && hasFeature(me, 'inventory') && (
+            <StockAlerts />
+          )}
           {me.tenantKind === 'BUSINESS' && can(me, 'orders.view') && (
             <>
               <VoiceButton />

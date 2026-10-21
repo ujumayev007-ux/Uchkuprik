@@ -48,6 +48,7 @@ import { financeRouter } from './modules/finance/finance.routes.js';
 import { floorRouter } from './modules/floor/floor.routes.js';
 import { hrRouter } from './modules/hr/hr.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
+import { stockAlertsRouter } from './modules/inventory/stock-alerts.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
 import { receiptTemplatesRouter } from './modules/printing/receipt-templates.routes.js';
@@ -240,6 +241,7 @@ export function createApp({
       receiptTemplatesRouter,
       brandingRouter,
       inventoryRouter,
+      stockAlertsRouter,
       onlineRouter,
       crmRouter,
       deliveryRouter,
