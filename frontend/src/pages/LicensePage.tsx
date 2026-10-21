@@ -1,3 +1,4 @@
+import { copyText } from '../lib/clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useMe } from '../auth/session';
@@ -169,8 +170,7 @@ export function LicenseDetails({ license }: { license: License }) {
             <Button
               size="sm"
               onClick={() =>
-                void navigator.clipboard
-                  .writeText(license.installId ?? '')
+                void copyText(license.installId ?? '')
                   .then(() => toast(l.copied))
                   .catch(() => undefined)
               }

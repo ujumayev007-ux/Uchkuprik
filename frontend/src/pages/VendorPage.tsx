@@ -1,3 +1,4 @@
+import { copyText } from '../lib/clipboard';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Badge,
@@ -151,8 +152,7 @@ function LegacyVendorPage() {
   };
   const num = (value: string) => (value.trim() === '' ? null : Number(value));
   const copy = (text: string) =>
-    void navigator.clipboard
-      .writeText(text)
+    void copyText(text)
       .then(() => toast(v.copied))
       .catch(() => undefined);
 

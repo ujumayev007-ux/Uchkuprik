@@ -1,3 +1,4 @@
+import { copyText } from '../../lib/clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
@@ -80,8 +81,7 @@ function LicenseSection({
   });
   const [issued, setIssued] = useState<string | null>(null);
   const copy = (text: string) =>
-    void navigator.clipboard
-      .writeText(text)
+    void copyText(text)
       .then(() => toast(l.copied))
       .catch(() => undefined);
   const act = (license: LicenseRow, action: string, body: object = {}) =>
