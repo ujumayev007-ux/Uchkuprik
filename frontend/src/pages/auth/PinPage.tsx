@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { meKey } from '../../auth/session';
 import { ErrorState, LoadingState } from '../../components/ui';
 import { t } from '../../i18n';
+import { isPanelShell } from '../../lib/shell';
 import { api, ApiError, errorMessage, post } from '../../lib/api';
 import { AuthLayout } from './AuthLayout';
 import { LiveClock } from '../../components/LiveClock';
@@ -49,7 +50,8 @@ export function PinPage() {
     setError(null);
     try {
       await post('/auth/pin', { userId, pin: value });
-      await client.invalidateQueries({ queryKey: meKey });
+      // Drop the cached 'signed out' answer so the next screen asks the server again.
+      client.removeQueries({ queryKey: meKey });
       navigate('/', { replace: true });
     } catch (caught) {
       setError(errorMessage(caught));
@@ -103,7 +105,7 @@ export function PinPage() {
           />
         )}
         <Link className="btn btn-primary btn-lg" to="/kirish">
-          {t.pin.passwordLogin}
+          {isPanelShell() ? t.pin.adminSetup : t.pin.passwordLogin}
         </Link>
       </AuthLayout>
     );
@@ -185,7 +187,7 @@ export function PinPage() {
         </div>
       )}
       <Link className="text-link center" to="/kirish">
-        {t.pin.passwordLogin}
+        {isPanelShell() ? t.pin.adminSetup : t.pin.passwordLogin}
       </Link>
     </AuthLayout>
   );

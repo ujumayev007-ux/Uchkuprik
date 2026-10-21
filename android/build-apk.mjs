@@ -19,6 +19,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(
   readFileSync(join(here, '..', 'desktop', 'package.json'), 'utf8'),
 );
+// waiter (default) or tv: both are built from the same code (see app/build.gradle).
+const kind = process.argv[2] === 'tv' ? 'tv' : 'waiter';
 const javaHome = process.env.JAVA_HOME;
 const gradle = process.env.GRADLE_BIN;
 const sdk =
@@ -68,7 +70,13 @@ const password = readFileSync(passwordFile, 'utf8').trim();
 
 execFileSync(
   gradle,
-  ['--no-daemon', '-q', `-PappVersion=${version}`, ':app:assembleRelease'],
+  [
+    '--no-daemon',
+    '-q',
+    `-PappVersion=${version}`,
+    `-PappKind=${kind}`,
+    ':app:assembleRelease',
+  ],
   {
     cwd: here,
     stdio: 'inherit',
@@ -92,6 +100,10 @@ const output = join(
   'app-release.apk',
 );
 mkdirSync(join(here, 'release'), { recursive: true });
-const target = join(here, 'release', `FastFood-${version}.apk`);
+const target = join(
+  here,
+  'release',
+  kind === 'tv' ? `FastFood-TV-${version}.apk` : `FastFood-${version}.apk`,
+);
 copyFileSync(output, target);
 console.log(`Ready: ${target}`);

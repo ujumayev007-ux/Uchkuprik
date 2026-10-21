@@ -13,7 +13,7 @@ import {
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../../lib/totp.js';
 import { messages } from '../../messages.js';
 import { audit } from '../audit/audit.js';
-import { permissionCatalog } from './permissions.js';
+import { permissionCatalog, type Permission } from './permissions.js';
 import {
   canAccessBranch,
   clearCookie,
@@ -577,6 +577,28 @@ export function authRouter(services: Services) {
 
   // --- Device-bound PIN authentication (POS terminals, kitchen screens) ---
 
+  // A terminal registered for a panel only lets in staff whose role allows that panel
+  // (checked here, on the server, never by the app). Other terminals accept every PIN user.
+  const panelPermission: Record<string, Permission> = {
+    CASHIER: 'pos.access',
+    KITCHEN: 'kitchen.access',
+    WAITER: 'orders.create',
+  };
+  const panelRoles = (panel: string) => {
+    const key = panelPermission[panel];
+    return key
+      ? {
+          roles: {
+            some: {
+              role: {
+                OR: [{ systemKey: 'owner' }, { permissions: { has: key } }],
+              },
+            },
+          },
+        }
+      : {};
+  };
+
   router.get('/pin/device', async (req, res) => {
     const device = await findDevice(services, req);
     if (!device) throw new AppError(403, 'DEVICE_REQUIRED', 'deviceRequired');
@@ -586,6 +608,7 @@ export function authRouter(services: Services) {
         status: 'ACTIVE',
         deletedAt: null,
         pinHash: { not: null },
+        ...panelRoles(device.panel),
         OR: [
           { allBranches: true },
           { branches: { some: { branchId: device.branchId } } },
@@ -595,7 +618,7 @@ export function authRouter(services: Services) {
       select: { id: true, displayName: true },
     });
     res.json({
-      device: { id: device.id, name: device.name },
+      device: { id: device.id, name: device.name, panel: device.panel },
       tenant: { name: device.tenant.name },
       branch: { id: device.branch.id, name: device.branch.name },
       staff,
@@ -615,6 +638,7 @@ export function authRouter(services: Services) {
         tenantId: device.tenantId,
         status: 'ACTIVE',
         deletedAt: null,
+        ...panelRoles(device.panel),
         OR: [
           { allBranches: true },
           { branches: { some: { branchId: device.branchId } } },

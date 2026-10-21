@@ -50,6 +50,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        // A TV screen never sleeps.
+        if (BuildConfig.IS_TV) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pendingPath = pathFrom(getIntent());
         String server = prefs().getString(KEY_SERVER, null);
         if (server == null) showSetup(null);
@@ -307,8 +309,8 @@ public class MainActivity extends Activity {
             }
         });
         web.addJavascriptInterface(new AlertBridge(), "FastFoodAndroid");
-        // The Android app is the waiter panel: it opens the waiter screen after sign-in.
-        web.loadUrl(server + (pendingPath != null ? pendingPath : "/ofitsiant"));
+        // The waiter app opens the waiter screen, the TV app the customer queue screen.
+        web.loadUrl(server + (pendingPath != null ? pendingPath : BuildConfig.START_PATH));
         pendingPath = null;
         setContentView(web);
     }

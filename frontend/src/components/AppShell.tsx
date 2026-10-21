@@ -1,6 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import {
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from 'react-router';
 import { LiveClock } from './LiveClock';
 import { AppUpdateBanner } from './AppUpdateBanner';
 import { can, hasFeature, meKey, useMe, type Me } from '../auth/session';
@@ -15,6 +21,7 @@ import {
   usePwa,
 } from '../lib/pwa';
 import { useRealtime } from '../lib/realtime';
+import { shellAllows } from '../lib/shell';
 import { WalkinAlerts } from './WalkinAlerts';
 import {
   LicenseLock,
@@ -533,6 +540,9 @@ export function AppShell() {
     me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
   );
   if (!me) return null;
+  // Kassa, Oshxona and Ofitsiant open their own page only, even by a typed address.
+  if (location.pathname !== '/' && !shellAllows(location.pathname))
+    return <Navigate to="/" replace />;
   // Menus the vendor switched off for this install (via the licence).
   const hidden = license.data?.hiddenMenus ?? [];
   // The design page appears only while the Owner delegated design to the Admin.
@@ -540,6 +550,7 @@ export function AppShell() {
   const items = navItems.filter(
     (item) =>
       item.visible(me) &&
+      shellAllows(item.to) &&
       !hidden.includes(item.to) &&
       (item.to !== '/dizayn' || delegated),
   );
@@ -604,12 +615,14 @@ export function AppShell() {
             ),
           )}
         </nav>
-        <div className="sidebar-footer">
-          <NavLink to="/holat" className="nav-link subtle">
-            <span aria-hidden="true">◎</span>
-            {t.nav.systemStatus}
-          </NavLink>
-        </div>
+        {shellAllows('/holat') && (
+          <div className="sidebar-footer">
+            <NavLink to="/holat" className="nav-link subtle">
+              <span aria-hidden="true">◎</span>
+              {t.nav.systemStatus}
+            </NavLink>
+          </div>
+        )}
       </aside>
       <div className="shell-main">
         <header className="shell-topbar">

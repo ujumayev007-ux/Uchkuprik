@@ -17,6 +17,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
+import { shellPanel } from '../lib/shell';
 import { appVersion } from '../lib/pwa';
 import { api, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
@@ -51,6 +52,7 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
           await post('/devices/register', {
             branchId: branchId || active[0]?.id,
             name,
+            panel: shellPanel(),
           });
           onDone();
         } catch (caught) {

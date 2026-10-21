@@ -128,6 +128,7 @@ export const uz = {
       'PIN-kod bilan kirish faqat administrator ro‘yxatdan o‘tkazgan kassa yoki planshetda ishlaydi.',
     noStaff: 'Bu filialda PIN-kodi o‘rnatilgan xodim yo‘q.',
     passwordLogin: 'Parol bilan kirish',
+    adminSetup: 'Administrator: bu ilovani sozlash',
     changeUser: 'Boshqa xodim',
   },
   dashboard: {
@@ -208,6 +209,13 @@ export const uz = {
       'Ushbu brauzer tanlangan filialning ishchi qurilmasi sifatida saqlanadi. Shundan so‘ng xodimlar unda PIN-kod bilan kira oladi.',
     deviceName: 'Qurilma nomi',
     deviceNameHint: 'Masalan: 1-kassa',
+    setupTitle: 'Bu ilovani sozlash',
+    setupHint:
+      'Administrator sifatida kirdingiz. Bu ilova shu filialning ishchi qurilmasi bo‘lib saqlanadi; shundan so‘ng xodimlar faqat o‘z PIN-kodi bilan kiradi.',
+    setupAction: 'Ro‘yxatdan o‘tkazib, PIN-kirishga o‘tish',
+    noAccessTitle: 'Bu ilovaga ruxsatingiz yo‘q',
+    noAccessHint:
+      'Administrator sizning rolingizga shu bo‘limni yoqishi kerak.',
     registered: 'Qurilma ro‘yxatdan o‘tkazildi.',
     revoke: 'Bekor qilish',
     revokeConfirm:

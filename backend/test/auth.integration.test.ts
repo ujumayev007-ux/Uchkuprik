@@ -386,6 +386,46 @@ describe('device-bound PIN login', () => {
     await terminal.get('/api/pin/device').expect(403);
   });
 
+  it('lets only staff whose role allows the terminal panel in with a PIN', async () => {
+    const tenant = await createTenant(ctx);
+    const cashier = await addUser(ctx, tenant.tenant.id, {
+      username: 'kassir',
+      roleIds: [tenant.roleId('cashier')],
+      pin: '2468',
+    });
+    const cook = await addUser(ctx, tenant.tenant.id, {
+      username: 'oshpaz',
+      roleIds: [tenant.roleId('kitchen')],
+      pin: '1357',
+    });
+    const terminal = ctx.agent();
+    await login(terminal, tenant.slug, 'owner').expect(200);
+    await terminal
+      .post('/api/devices/register')
+      .set('Origin', ORIGIN)
+      .send({ branchId: tenant.branch.id, name: 'Oshxona 1', panel: 'KITCHEN' })
+      .expect(201);
+    await terminal.post('/api/auth/logout').set('Origin', ORIGIN).expect(204);
+
+    const device = await terminal.get('/api/pin/device').expect(200);
+    expect(device.body.device.panel).toBe('KITCHEN');
+    expect(device.body.staff.map((s: { id: string }) => s.id)).toEqual([
+      cook.id,
+    ]);
+    // A correct cashier PIN is still refused on the kitchen terminal.
+    await terminal
+      .post('/api/auth/pin')
+      .set('Origin', ORIGIN)
+      .send({ userId: cashier.id, pin: '2468' })
+      .expect(401);
+    await terminal.get('/api/auth/me').expect(401);
+    await terminal
+      .post('/api/auth/pin')
+      .set('Origin', ORIGIN)
+      .send({ userId: cook.id, pin: '1357' })
+      .expect(200);
+  });
+
   it('locks PIN entry after five failures', async () => {
     const tenant = await createTenant(ctx);
     const cashier = await addUser(ctx, tenant.tenant.id, {

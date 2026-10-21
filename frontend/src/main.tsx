@@ -10,6 +10,8 @@ import {
 import { can, hasFeature, useMe, type Me } from './auth/session';
 import { AppShell } from './components/AppShell';
 import { BrandingHost, PublicBrandingHost } from './components/BrandingHost';
+import { isPanelShell, shellKind } from './lib/shell';
+import { DeviceSetup } from './components/DeviceSetup';
 import { ServerWake } from './components/ServerWake';
 import { ErrorState, LoadingState, ToastProvider } from './components/ui';
 import { t } from './i18n';
@@ -93,7 +95,9 @@ function RequireSession() {
   if (me.isPending) return <LoadingState />;
   if (me.error)
     return <ErrorState error={me.error} onRetry={() => void me.refetch()} />;
-  if (!me.data) return <Navigate to="/kirish" replace />;
+  // Kassa, Oshxona and Ofitsiant start with the staff PIN pad, never the password form.
+  if (!me.data)
+    return <Navigate to={isPanelShell() ? '/pin' : '/kirish'} replace />;
   const step = pendingStep(me.data);
   if (step) return <Navigate to={step} replace />;
   return <AppShell />;
@@ -125,20 +129,6 @@ function SessionOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Which desktop application hosts this page: the Admin, Kassa and Ofitsiant shells announce themselves. */
-function shellKind():
-  'admin' | 'cashier' | 'waiter' | 'kitchen' | 'tv' | 'pos' {
-  const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
-    .fastfoodShell;
-  return shell?.kind === 'admin' ||
-    shell?.kind === 'cashier' ||
-    shell?.kind === 'waiter' ||
-    shell?.kind === 'kitchen' ||
-    shell?.kind === 'tv'
-    ? shell.kind
-    : 'pos';
-}
-
 /** Managers (reports, staff or settings) land on the dashboard, terminal staff on their panel. */
 function manages(me: Me | null | undefined) {
   return (
@@ -152,6 +142,13 @@ function Home() {
   const { data: me } = useMe();
   if (me?.tenantKind === 'PLATFORM')
     return <Navigate to="/platforma/bizneslar" replace />;
+  // A fresh Kassa/Oshxona/Ofitsiant application is registered once by the administrator.
+  if (
+    isPanelShell() &&
+    me?.authMethod === 'PASSWORD' &&
+    can(me, 'devices.manage')
+  )
+    return <DeviceSetup />;
   // The Restaurant Admin application always starts on the management dashboard.
   if (shellKind() === 'admin') return <DashboardPage />;
   // The dedicated Kassa and Ofitsiant applications open their own panel directly.
@@ -167,6 +164,14 @@ function Home() {
   // The dedicated Oshxona application opens the kitchen board directly.
   if (shellKind() === 'kitchen' && can(me, 'kitchen.access'))
     return <Navigate to="/oshxona" replace />;
+  // A dedicated application never falls back to the dashboard.
+  if (isPanelShell())
+    return (
+      <div className="state">
+        <h1>{t.devices.noAccessTitle}</h1>
+        <p>{t.devices.noAccessHint}</p>
+      </div>
+    );
   // The shared POS application shows the staff member's own panel after sign-in; the
   // menu then offers only the other panels their permissions allow.
   if (me?.roleKeys.includes('waiter') && !can(me, 'reports.view'))
