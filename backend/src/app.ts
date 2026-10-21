@@ -103,8 +103,18 @@ export function createApp({
         directives: {
           // Menu images may be hosted on HTTPS object storage/CDNs; scripts stay same-origin.
           'img-src': ["'self'", 'data:', 'https:'],
+          // A restaurant server on its own network is reached over plain http (for example
+          // http://192.168.1.8:8787). "Upgrade every request to https" would make the
+          // browser ask that address for https assets it can not serve: the page never loads.
+          ...(config.APP_ORIGIN.startsWith('http://')
+            ? { 'upgrade-insecure-requests': null }
+            : {}),
         },
       },
+      // HSTS is meaningless (and ignored) over plain http.
+      ...(config.APP_ORIGIN.startsWith('http://')
+        ? { strictTransportSecurity: false }
+        : {}),
     }),
   );
   app.use((req, res, next) => {
