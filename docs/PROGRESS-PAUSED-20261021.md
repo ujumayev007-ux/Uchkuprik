@@ -65,12 +65,14 @@ Bu fayl yangi yaratilgan; boshqa hujjatlar tegilmagan (`upgrade-progress.md` ham
 ## 6. Davom ettirilgandan keyingi yangilanish (2026-10-21, kechqurun)
 
 Bajarildi:
+
 - 1.14.6 sinov serveri bilan **LAN rejimida to'liq sinov: 45/45** (ilovalar serverga LAN manzili orqali ulangan).
 - Ishchi server **1.14.6** qurildi va shu kompyuterga o'rnatildi. Zaxira: `Desktop\FastFood-Server-ZAXIRA-1.14.5-20261021`. Parol/kalit fayllari nazorat yig'indisi o'zgarmadi, server ishlayapti (`192.168.1.13:8787`, tarmoq: ruxsat etilgan).
 - Haqiqiy Kassa 1.4.0 va Oshxona 1.4.0 -> haqiqiy server LAN manzili: kirish oynasi chiqdi.
 - Yig'ish papkasi: `Desktop\FastFood_Upgrade_1.14.6_20261021` (server 1.14.6 + 5 ilova 1.4.0, manifest yangilangan). Eski `…1.14.5…` papka nomi o'zgartirilgan, 1.14.4/1.14.5 o'rnatuvchilari olib tashlangan.
 
 Hali qolgan:
+
 - `docs/PROGRESS-PAUSED-20261021.md` va 1.14.6 commit'lari **push qilinmagan** (ruxsat bilan).
 - Ikkinchi server `WIN-TRHG52A5C5K` (192.168.1.6, 1.14.4) — bu kompyuterdan hozir ko'rinmayapti (o'chiq bo'lishi mumkin); Kassa/Oshxona kompyuterlarida tekshirish kerak.
 - Haqiqiy Kassa/Oshxona kompyuterlarida buyurtma sinovi (foydalanuvchi bilan), haqiqiy HDMI, Android, Owner menyusini FastFood ichiga qo'shish (A/B qarori), alohida APK'lar.
