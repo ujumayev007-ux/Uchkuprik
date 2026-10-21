@@ -496,6 +496,23 @@ async function boot() {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) =>
     done(permission === 'notifications'),
   );
+  // Report files (Excel, Word, PDF) go straight to the Downloads folder and are shown
+  // there; no hidden save dialog, and a file never overwrites an earlier one.
+  session.defaultSession.on('will-download', (_event, item) => {
+    const dir = app.getPath('downloads');
+    const name = path
+      .basename(item.getFilename())
+      .replace(/[<>:"/\\|?*]/g, '_');
+    const ext = path.extname(name);
+    let target = path.join(dir, name);
+    for (let i = 2; fs.existsSync(target); i++)
+      target = path.join(dir, `${path.basename(name, ext)} (${i})${ext}`);
+    item.setSavePath(target);
+    item.once('done', (_done, state) => {
+      if (state === 'completed' && process.env.ADMIN_NO_REVEAL !== '1')
+        shell.showItemInFolder(target);
+    });
+  });
   menu();
   win = new BrowserWindow({
     width: 1366,

@@ -1,9 +1,10 @@
 # FastFood upgrade (October 2026): technical notes
 
 Source checkpoint: git tag `baseline-before-upgrade-20261021` (before this upgrade).
-Release numbers: server `1.14.4`, Admin/Kassa/Ofitsiant/Oshxona/TV applications `1.4.0`,
-Owner `1.8.0`. (The request called the Owner "1.14.3"; that is the server/client number —
-the Owner application had its own number, 1.7.0.)
+Release numbers: server `1.14.4`, Admin/Kassa/Ofitsiant/Oshxona/TV applications `1.4.0`.
+The Owner application stays **1.7.0**: its shell did not change — the Owner console is the web UI
+served by the central server, so the new Owner screens arrive when the central server is deployed.
+(The request called the Owner "1.14.3"; that is the server/client number.)
 
 ## What exists, what was added
 
