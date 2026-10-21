@@ -453,6 +453,7 @@ function ReauthHost() {
   );
 }
 
+export type OwnerTab = Tab;
 type Tab =
   | 'overview'
   | 'customers'
@@ -467,9 +468,22 @@ type Tab =
   | 'local';
 
 /** SUPER_OWNER console: shown on the central server after Owner sign-in. */
-export function OwnerConsole({ local }: { local?: ReactNode }) {
+export function OwnerConsole({
+  local,
+  tab: chosen,
+  onTab,
+  hideTabs = false,
+}: {
+  local?: ReactNode;
+  // Optional outside navigation (the Owner sidebar); without it the tab bar is used.
+  tab?: Tab;
+  onTab?: (tab: Tab) => void;
+  hideTabs?: boolean;
+}) {
   const client = useQueryClient();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [ownTab, setOwnTab] = useState<Tab>('overview');
+  const tab = chosen ?? ownTab;
+  const setTab = onTab ?? setOwnTab;
   const unread = useUnreadEvents();
   const me = useQuery({
     queryKey: ['owner', 'me'],
@@ -519,19 +533,21 @@ export function OwnerConsole({ local }: { local?: ReactNode }) {
   return (
     <div className="stack">
       <PageHeader title={o.title} subtitle={o.subtitle} />
-      <nav className="tabs" aria-label={o.title}>
-        {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`tab ${tab === key ? 'active' : ''}`}
-            aria-current={tab === key ? 'page' : undefined}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      {!hideTabs && (
+        <nav className="tabs" aria-label={o.title}>
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`tab ${tab === key ? 'active' : ''}`}
+              aria-current={tab === key ? 'page' : undefined}
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
       {tab === 'overview' && <OverviewTab />}
       {tab === 'events' && (
         <EventsTab onOpenRegistration={() => setTab('registry')} />

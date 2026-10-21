@@ -12,7 +12,12 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
-import { OwnerConsole, useControlPlane } from './owner/OwnerConsole';
+import {
+  OwnerConsole,
+  useControlPlane,
+  type OwnerTab,
+} from './owner/OwnerConsole';
+import { useUnreadEvents } from './owner/OwnerRegistry';
 import { VendorAlerts, type AlertsBridge } from './VendorAlerts';
 import { VendorInstalls, type InstallsBridge } from './VendorInstalls';
 import {
@@ -529,40 +534,109 @@ export function VendorPage() {
 }
 
 /**
- * The vendor's own computer (Owner application with the vendor key): one window with the
- * Sotuvchi paneli as the main page and the central Owner console as a second menu. Each
- * keeps its own sign-in and permissions; both stay mounted so switching loses nothing.
+ * The vendor's own computer (Owner application with the vendor key): one window in the
+ * Admin's sidebar layout. «Sotuvchi paneli» is the main page; the central Owner console's
+ * sections are the «Markaziy boshqaruv» menus. Each keeps its own sign-in and permissions;
+ * both stay mounted so switching loses nothing.
  */
+const CENTRAL_MENUS: [OwnerTab, string, string][] = [
+  ['overview', t.owner.tabs.overview, '◧'],
+  ['events', t.owner.tabs.events, '◔'],
+  ['registry', t.owner.tabs.registry, '✚'],
+  ['customers', t.owner.tabs.customers, '☺'],
+  ['devices', t.owner.tabs.devices, '▣'],
+  ['releases', t.owner.tabs.releases, '⬆'],
+  ['security', t.owner.tabs.security, '⚿'],
+  ['audit', t.owner.tabs.audit, '☰'],
+  ['ads', t.owner.tabs.ads, '✦'],
+  ['design', t.owner.tabs.design, '◐'],
+];
+
 function SellerShell() {
-  const [menu, setMenu] = useState<'seller' | 'central'>('seller');
-  const item = (key: 'seller' | 'central', label: string) => (
-    <button
-      type="button"
+  const [menu, setMenu] = useState<'seller' | OwnerTab>('seller');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const unread = useUnreadEvents();
+  const open = (key: 'seller' | OwnerTab) => {
+    setMenu(key);
+    setMenuOpen(false);
+  };
+  const link = (key: 'seller' | OwnerTab, label: string, icon: string) => (
+    <a
+      key={key}
+      href={'#' + key}
       className={menu === key ? 'nav-link active' : 'nav-link'}
       aria-current={menu === key ? 'page' : undefined}
-      onClick={() => setMenu(key)}
+      onClick={(event) => {
+        event.preventDefault();
+        open(key);
+      }}
     >
+      <span aria-hidden="true">{icon}</span>
       {label}
-    </button>
+    </a>
   );
+  const unreadCount = unread.data?.unread ?? 0;
   return (
-    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-      <nav
-        aria-label="Sotuvchi menyusi"
-        className="stack"
-        style={{ minWidth: '13rem', position: 'sticky', top: '1rem' }}
-      >
-        {item('seller', 'Sotuvchi paneli')}
-        {item('central', 'Markaziy boshqaruv')}
-      </nav>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div hidden={menu !== 'seller'}>
-          <LegacyVendorPage />
+    <div className={`shell ${menuOpen ? 'menu-open' : ''}`}>
+      <aside className="sidebar" aria-label="Owner menyusi">
+        <div className="sidebar-brand">
+          <span className="brand-mark" aria-hidden="true">
+            F<span>•</span>
+          </span>
+          <span>
+            <strong>FAST FOOD</strong>
+            <small>Owner</small>
+          </span>
         </div>
-        <div hidden={menu !== 'central'}>
-          <OwnerConsole />
-        </div>
+        <nav>
+          {link('seller', 'Sotuvchi paneli', '⌂')}
+          <small className="muted" style={{ padding: '14px 12px 4px' }}>
+            Markaziy boshqaruv
+          </small>
+          {CENTRAL_MENUS.map(([key, label, icon]) =>
+            link(
+              key,
+              key === 'events' && unreadCount
+                ? `${label} (${unreadCount})`
+                : label,
+              icon,
+            ),
+          )}
+        </nav>
+      </aside>
+      <div className="shell-main">
+        <header className="shell-topbar">
+          <button
+            type="button"
+            className="icon-button menu-toggle"
+            aria-label={t.nav.openMenu}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            ☰
+          </button>
+        </header>
+        <main className="shell-content">
+          <div hidden={menu !== 'seller'}>
+            <LegacyVendorPage />
+          </div>
+          <div hidden={menu === 'seller'}>
+            <OwnerConsole
+              tab={menu === 'seller' ? 'overview' : menu}
+              onTab={open}
+              hideTabs
+            />
+          </div>
+        </main>
       </div>
+      {menuOpen && (
+        <button
+          type="button"
+          className="scrim"
+          aria-label={t.common.close}
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
     </div>
   );
 }
