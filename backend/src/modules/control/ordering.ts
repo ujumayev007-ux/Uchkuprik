@@ -147,6 +147,7 @@ export function defaultOrdering(): OrderingConfig {
       maxOfflineMinutes: 0,
       minAppVersion: null,
       minVersionFrom: null,
+      network: { override: null },
     },
     adminSettings: new Map(),
     adminParams: new Map(),

@@ -2832,6 +2832,9 @@ model ControlPolicy {
   minAppVersion     String?
   // Installs below minAppVersion stop taking new orders only after this moment.
   minVersionFrom    DateTime?
+  // { override: { expiresAt, grantedAt, roles, reason } | null }: the vendor's time-limited
+  // exception to local-network-only operation (null/absent = no exception).
+  network           Json?
   updatedAt         DateTime  @updatedAt
   updatedById       String?   @db.Uuid
 

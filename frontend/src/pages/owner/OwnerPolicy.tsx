@@ -66,6 +66,127 @@ function sparse(defs: FeatureDef[], draft: Draft): Draft {
   return result;
 }
 
+/** The vendor's expiring exception to local-network-only operation. */
+function NetworkException({
+  customerId,
+  policy,
+  onSaved,
+}: {
+  customerId: string;
+  policy: PolicyDoc;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const n = t.owner.policy.network;
+  const current = policy.network?.override ?? null;
+  const live =
+    current && Date.parse(current.expiresAt) > Date.now() ? current : null;
+  const [days, setDays] = useState('1');
+  const [roles, setRoles] = useState<string[]>([]);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const send = async (
+    networkOverride: null | { days: number; roles: string[]; reason: string },
+  ) => {
+    setBusy(true);
+    try {
+      await ownerPut(`/customers/${customerId}/policy`, {
+        features: policy.features,
+        offlineEnabled: policy.offlineEnabled,
+        maxOfflineMinutes: policy.maxOfflineMinutes,
+        minAppVersion: policy.minAppVersion,
+        minVersionFrom: policy.minVersionFrom,
+        networkOverride,
+      });
+      toast(networkOverride ? n.granted : n.revoked);
+      setReason('');
+      onSaved();
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : t.common.errorTitle,
+        'error',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <fieldset className="stack">
+      <legend>{n.title}</legend>
+      <p className="muted small">{n.intro}</p>
+      {live ? (
+        <div className="stack">
+          <Badge tone="warning">
+            {n.active.replace(
+              '{date}',
+              new Date(live.expiresAt).toLocaleString('uz-UZ'),
+            )}
+          </Badge>
+          <span className="muted small">
+            {n.rolesLabel.replace(
+              '{roles}',
+              live.roles.length ? live.roles.join(', ') : n.allRoles,
+            )}{' '}
+            · {n.reasonLabel.replace('{reason}', live.reason)}
+          </span>
+          <Button variant="danger" busy={busy} onClick={() => void send(null)}>
+            {n.revoke}
+          </Button>
+        </div>
+      ) : (
+        <p className="muted">{n.none}</p>
+      )}
+      <div className="form-grid">
+        <SelectField
+          label={n.days}
+          value={days}
+          onChange={(event) => setDays(event.target.value)}
+        >
+          {['1', '3', '7', '14', '30', '90'].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </SelectField>
+        <TextField
+          label={n.reason}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          maxLength={200}
+        />
+      </div>
+      <div className="chip-row" aria-label={n.roles}>
+        {ROLES.map((role) => (
+          <Checkbox
+            key={role.key}
+            label={role.name}
+            checked={roles.includes(role.key)}
+            onChange={(on) =>
+              setRoles((list) =>
+                on
+                  ? [...list, role.key]
+                  : list.filter((key) => key !== role.key),
+              )
+            }
+          />
+        ))}
+      </div>
+      <p className="muted small">{n.timing}</p>
+      <p className="muted small">{n.loginNote}</p>
+      <Button
+        variant="primary"
+        busy={busy}
+        disabled={reason.trim().length < 3}
+        onClick={() =>
+          void send({ days: Number(days), roles, reason: reason.trim() })
+        }
+      >
+        {n.grant}
+      </Button>
+    </fieldset>
+  );
+}
+
 /** Searchable feature matrix + offline rules of one customer. */
 export function PolicyEditor({
   customerId,
@@ -193,6 +314,12 @@ export function PolicyEditor({
       </p>
       <p className="muted small">{p.timing}</p>
       <p className="muted small">{p.cashierFinancial}</p>
+
+      <NetworkException
+        customerId={customerId}
+        policy={policy}
+        onSaved={onSaved}
+      />
 
       <fieldset className="stack">
         <legend>{p.offlineTitle}</legend>

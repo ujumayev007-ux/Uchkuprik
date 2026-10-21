@@ -4,6 +4,7 @@ import {
   type ParamDef,
   type ParamValue,
 } from './catalog.js';
+import { defaultNetwork, type NetworkPolicy } from './network.js';
 
 // Policy: what SUPER_OWNER decided for one customer. It is stored centrally, carried
 // inside the signed grant and evaluated by the backend of the install (or of the
@@ -40,6 +41,8 @@ export type PolicyDoc = {
   // Installs older than minAppVersion stop taking NEW orders only after this moment,
   // so an update never interrupts a sale in progress.
   minVersionFrom: string | null;
+  // Local-network-only operation and the vendor's expiring exception.
+  network: NetworkPolicy;
 };
 
 export const defaultPolicy = (): PolicyDoc => ({
@@ -49,6 +52,7 @@ export const defaultPolicy = (): PolicyDoc => ({
   maxOfflineMinutes: 0,
   minAppVersion: null,
   minVersionFrom: null,
+  network: defaultNetwork(),
 });
 
 /** Restaurant Admin settings for delegated features: `${key}|${roleKey}` -> enabled. */

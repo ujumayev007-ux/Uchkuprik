@@ -1,3 +1,4 @@
+import { normalizeNetwork } from './network.js';
 import { defaultPolicy, sanitizeFeatures, type PolicyDoc } from './policy.js';
 import { verifyDocument } from './keys.js';
 import type { KeyObject } from 'node:crypto';
@@ -59,6 +60,7 @@ export function readGrant(
       ...defaultPolicy(),
       ...grant.policy,
       features: sanitizeFeatures(grant.policy?.features),
+      network: normalizeNetwork(grant.policy?.network),
     },
   };
 }

@@ -124,6 +124,14 @@ export type PolicyDoc = {
   maxOfflineMinutes: number;
   minAppVersion: string | null;
   minVersionFrom: string | null;
+  network?: {
+    override: {
+      expiresAt: string;
+      grantedAt: string;
+      roles: string[];
+      reason: string;
+    } | null;
+  };
 };
 
 export type LicenseRow = {

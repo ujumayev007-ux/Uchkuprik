@@ -31,7 +31,7 @@ import {
   enforceLicense,
   licenseRouter,
 } from './modules/license/license.routes.js';
-import { loadSession } from './modules/auth/session.js';
+import { loadSession, type AuthContext } from './modules/auth/session.js';
 import { brandingRouter } from './modules/branding/branding.routes.js';
 import { brandingOwnerRouter } from './modules/branding/owner.routes.js';
 import { dataRouter } from './modules/control/data.routes.js';
@@ -49,6 +49,7 @@ import { floorRouter } from './modules/floor/floor.routes.js';
 import { hrRouter } from './modules/hr/hr.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { stockAlertsRouter } from './modules/inventory/stock-alerts.js';
+import { enforceNetwork, networkStatus } from './modules/control/network.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
 import { receiptTemplatesRouter } from './modules/printing/receipt-templates.routes.js';
@@ -218,6 +219,17 @@ export function createApp({
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
+    // Restaurant operations stay on the restaurant's own network (self-hosted installs).
+    app.get('/api/network/status', async (req, res) => {
+      res.json(
+        await networkStatus(
+          services,
+          req.socket.remoteAddress,
+          res.locals.auth as AuthContext | undefined,
+        ),
+      );
+    });
+    app.use('/api', enforceNetwork(services));
     app.use('/api', enforceLicense(services));
     app.use('/api', enforceControl(services));
     app.use('/api', enforcePlanFeatures());

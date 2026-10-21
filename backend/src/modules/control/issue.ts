@@ -8,6 +8,7 @@ import type {
 import { planFeatures } from '../billing/entitlements.js';
 import { timing, type Grant, type GrantStatus } from './grant.js';
 import { fingerprintOf, signDocument } from './keys.js';
+import { normalizeNetwork } from './network.js';
 import { defaultPolicy, sanitizeFeatures, type PolicyDoc } from './policy.js';
 
 export async function loadPolicy(
@@ -23,6 +24,7 @@ export async function loadPolicy(
     maxOfflineMinutes: row.maxOfflineMinutes,
     minAppVersion: row.minAppVersion,
     minVersionFrom: row.minVersionFrom?.toISOString() ?? null,
+    network: normalizeNetwork(row.network),
   };
 }
 

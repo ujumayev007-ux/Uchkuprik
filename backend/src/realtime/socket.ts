@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { Services } from '../context.js';
+import { decideNetwork } from '../modules/control/network.js';
 import { authenticate, type AuthContext } from '../modules/auth/session.js';
 import { branchRoom, tenantRoom, type EventBus } from './bus.js';
 
@@ -48,7 +49,15 @@ export function attachRealtime(
         result.auth.tenantKind !== 'BUSINESS'
       )
         return next(new Error('UNAUTHENTICATED'));
+      // Same rule as the REST API: only the restaurant's own network (or the vendor's exception).
+      const network = await decideNetwork(services, {
+        remote: socket.request.socket.remoteAddress,
+        path: '/api/realtime',
+        auth: result.auth,
+      });
+      if (!network.allowed) return next(new Error('NETWORK_NOT_APPROVED'));
       socket.data.auth = result.auth;
+      socket.data.remote = socket.request.socket.remoteAddress;
       socket.data.cookie = socket.request.headers.cookie;
       next();
     } catch {
@@ -69,7 +78,14 @@ export function attachRealtime(
         socket.data.cookie as string | undefined,
         { touch: false },
       ).catch(() => ({ status: 'invalid' as const }));
-      if (result.status !== 'ok') socket.disconnect(true);
+      if (result.status !== 'ok') return socket.disconnect(true);
+      // A revoked or expired exception ends the live connection too.
+      const network = await decideNetwork(services, {
+        remote: socket.data.remote as string | undefined,
+        path: '/api/realtime',
+        auth: result.auth,
+      }).catch(() => ({ allowed: false as const }));
+      if (!network.allowed) socket.disconnect(true);
     }, REVALIDATE_MS);
     socket.on('disconnect', () => clearInterval(timer));
     // Clients never send business commands over the socket; REST stays the single write path.
@@ -90,6 +106,15 @@ export function attachRealtime(
         { touch: false },
       ).catch(() => ({ status: 'invalid' as const }));
       if (result.status !== 'ok' || !result.auth.mfaVerified) {
+        socket.disconnect(true);
+        continue;
+      }
+      const network = await decideNetwork(services, {
+        remote: socket.data.remote as string | undefined,
+        path: '/api/realtime',
+        auth: result.auth,
+      });
+      if (!network.allowed) {
         socket.disconnect(true);
         continue;
       }

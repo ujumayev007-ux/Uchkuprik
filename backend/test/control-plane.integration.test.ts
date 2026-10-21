@@ -566,3 +566,106 @@ describe('migration fingerprints', () => {
     expect(again).toEqual(info);
   });
 });
+
+describe('local-network exception (vendor only)', () => {
+  const baseBody = {
+    features: {},
+    offlineEnabled: false,
+    maxOfflineMinutes: 0,
+    minAppVersion: null,
+  };
+
+  it('is granted with an expiry by the Owner, travels in the signed grant, survives other edits and can be revoked', async () => {
+    const { agent } = await signedIn();
+    const lic = await createLicensedCustomer(agent);
+    const pc = device(request.agent(ctx.app));
+    const id = (await pc.activate(lic.key).expect(201)).body
+      .activationId as string;
+    const grantOf = async () => {
+      const beat = await pc.heartbeat(id).expect(200);
+      const doc = verifyDocument<{ grant: string }>(beat.body.response, [
+        server.publicKey,
+      ])!;
+      return readGrant(doc.grant, [server.publicKey])!;
+    };
+    expect((await grantOf()).policy.network.override).toBeNull();
+
+    await api(agent)
+      .put(`/control/customers/${lic.customerId}/policy`, {
+        ...baseBody,
+        networkOverride: {
+          days: 2,
+          roles: ['cashier'],
+          reason: 'Masofaviy yordam',
+        },
+      })
+      .expect(200);
+    const granted = (await grantOf()).policy.network.override!;
+    expect(granted.roles).toEqual(['cashier']);
+    expect(granted.reason).toBe('Masofaviy yordam');
+    const hours =
+      (Date.parse(granted.expiresAt) - Date.parse(granted.grantedAt)) /
+      3_600_000;
+    expect(hours).toBe(48);
+
+    // Editing something else keeps the exception (the field was not sent).
+    await api(agent)
+      .put(`/control/customers/${lic.customerId}/policy`, {
+        ...baseBody,
+        offlineEnabled: true,
+        maxOfflineMinutes: 60,
+      })
+      .expect(200);
+    expect((await grantOf()).policy.network.override?.reason).toBe(
+      'Masofaviy yordam',
+    );
+
+    // Limits and a stated reason are mandatory.
+    for (const bad of [
+      { days: 0, roles: [], reason: 'Sabab bor' },
+      { days: 91, roles: [], reason: 'Sabab bor' },
+      { days: 3, roles: [], reason: 'x' },
+      { days: 3, roles: ['Bad Role'], reason: 'Sabab bor' },
+    ])
+      await api(agent)
+        .put(`/control/customers/${lic.customerId}/policy`, {
+          ...baseBody,
+          networkOverride: bad,
+        })
+        .expect(400);
+
+    await api(agent)
+      .put(`/control/customers/${lic.customerId}/policy`, {
+        ...baseBody,
+        networkOverride: null,
+      })
+      .expect(200);
+    expect((await grantOf()).policy.network.override).toBeNull();
+    const audits = await ctx.db.controlAuditLog.findMany({
+      where: { customerId: lic.customerId, action: 'policy.update' },
+      orderBy: { id: 'asc' },
+    });
+    const texts = audits.map((row) => JSON.stringify(row.data));
+    expect(texts.some((text) => text.includes('Masofaviy yordam'))).toBe(true);
+    expect(texts.some((text) => text.includes('revoked'))).toBe(true);
+  });
+
+  it('a restaurant user can not grant it', async () => {
+    const tenant = await createTenant(ctx);
+    const admin = request.agent(ctx.app);
+    await login(admin, tenant.slug, 'owner').expect(200);
+    const customerId = randomUUID();
+    const attempt = await api(admin).put(
+      `/control/customers/${customerId}/policy`,
+      {
+        ...baseBody,
+        networkOverride: {
+          days: 30,
+          roles: [],
+          reason: 'O‘zim ruxsat beraman',
+        },
+      },
+    );
+    expect([401, 403, 404]).toContain(attempt.status);
+  });
+});

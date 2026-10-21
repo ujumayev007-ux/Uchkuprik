@@ -154,6 +154,8 @@ export const messages = {
   activationLimit:
     'Bu litsenziya uchun kompyuterlar soni limitiga yetildi. Qurilmani almashtirish kerak.',
   controlSignatureInvalid: 'Qurilma imzosi noto‘g‘ri.',
+  networkNotApproved:
+    'Bu qurilma restoranning ruxsat etilgan tarmog‘ida emas. Restoran Wi‑Fi yoki LAN tarmog‘iga ulaning. Istisno faqat dastur sotuvchisi tomonidan beriladi.',
   itemInPreparation:
     'Bu taom oshxonada tayyorlanmoqda. Avval uni bekor qilishni so‘rang — oshpaz tasdiqlaydi.',
 } as const;

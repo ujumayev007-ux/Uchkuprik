@@ -22,6 +22,7 @@ import {
   requireOwner,
   requireOwnerReauth,
 } from './owner.js';
+import { defaultNetwork, normalizeNetwork } from './network.js';
 import { sanitizeFeatures } from './policy.js';
 import { clearPolicyCache } from './view.js';
 import { signDocument } from './keys.js';
@@ -860,6 +861,18 @@ export function manageRouter(services: Services) {
             .nullable()
             .default(null),
           minVersionFrom: z.iso.datetime().nullable().default(null),
+          // Omitted = keep what is stored. null = revoke the exception.
+          networkOverride: z
+            .object({
+              days: z.number().int().min(1).max(90),
+              roles: z
+                .array(z.string().regex(/^[a-z0-9_-]{1,40}$/))
+                .max(20)
+                .default([]),
+              reason: z.string().trim().min(3).max(200),
+            })
+            .nullable()
+            .optional(),
         }),
         req.body,
       );
@@ -872,7 +885,24 @@ export function manageRouter(services: Services) {
         const before = await tx.controlPolicy.findUnique({
           where: { customerId },
         });
+        const at = services.now?.() ?? new Date();
+        const network =
+          input.networkOverride === undefined
+            ? normalizeNetwork(before?.network)
+            : input.networkOverride === null
+              ? defaultNetwork()
+              : {
+                  override: {
+                    grantedAt: at.toISOString(),
+                    expiresAt: new Date(
+                      at.getTime() + input.networkOverride.days * 86_400_000,
+                    ).toISOString(),
+                    roles: input.networkOverride.roles,
+                    reason: input.networkOverride.reason,
+                  },
+                };
         const data = {
+          network: network as unknown as Prisma.InputJsonValue,
           features: features as unknown as Prisma.InputJsonValue,
           offlineEnabled: input.offlineEnabled,
           maxOfflineMinutes: input.offlineEnabled ? input.maxOfflineMinutes : 0,
@@ -907,6 +937,17 @@ export function manageRouter(services: Services) {
             offlineEnabled: input.offlineEnabled,
             maxOfflineMinutes: data.maxOfflineMinutes,
             minAppVersion: input.minAppVersion,
+            ...(input.networkOverride !== undefined
+              ? {
+                  networkOverride: network.override
+                    ? {
+                        expiresAt: network.override.expiresAt,
+                        roles: network.override.roles,
+                        reason: network.override.reason,
+                      }
+                    : 'revoked',
+                }
+              : {}),
           },
         });
         return saved.version;
