@@ -4,7 +4,7 @@ Durable log so the work can resume. Details: `upgrade-2026-10.md` (technical), `
 
 ## Decisions
 
-- "Owner 1.14.3" does not exist: 1.14.3/1.14.4 are the server/client numbers; the Owner application was 1.7.0 → 1.8.0.
+- "Owner 1.14.3" does not exist: 1.14.3/1.14.4 are the server/client numbers; the Owner application stays 1.7.0 (shell unchanged; its console is served by the central server).
 - `tv.exe` did not exist (the TV was a web page): added as a fifth shell kind (`PANEL_KIND=tv`) of the existing thin shell.
 - Reused: control plane (customers, licences, devices, policy, signed grants, offline lease), receipt designer,
   stock ledger, queue page, shells. New code only where a requirement had no home.

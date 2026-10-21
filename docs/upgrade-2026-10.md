@@ -124,12 +124,12 @@ the data may be stale. **Not verified on a real HDMI monitor** in this environme
 
 ## Compatibility matrix (what was run)
 
-| Server         | Older shells / APK                | Result                                                                                   |
-| -------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
-| 1.14.4         | Admin/Kassa/Ofitsiant 1.2.0–1.3.0 | work (manual address); gain auto-connect after updating to 1.4.0                         |
-| 1.14.4         | Kitchen screen of older web build | "Tayyor/Tayyorlanmoqda" now require "Qabul qilish" first (409 `ACCEPT_REQUIRED`)         |
-| 1.14.4         | `ofitsiant.apk` 1.13.0            | unchanged workflow; no auto-discovery; local-network rule applies to its connection      |
-| 1.14.4 + Owner | Owner 1.7.0 console               | works; the new tabs (Hodisalar, Ro'yxatdan o'tganlar, tarmoq istisnosi) need Owner 1.8.0 |
+| Server         | Older shells / APK                | Result                                                                                                             |
+| -------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1.14.4         | Admin/Kassa/Ofitsiant 1.2.0–1.3.0 | work (manual address); gain auto-connect after updating to 1.4.0                                                   |
+| 1.14.4         | Kitchen screen of older web build | "Tayyor/Tayyorlanmoqda" now require "Qabul qilish" first (409 `ACCEPT_REQUIRED`)                                   |
+| 1.14.4         | `ofitsiant.apk` 1.13.0            | unchanged workflow; no auto-discovery; local-network rule applies to its connection                                |
+| 1.14.4 + Owner | Owner 1.7.0 application           | works; the new tabs (Hodisalar, Ro'yxatdan o'tganlar, network exception) appear once the central server is updated |
 
 ## Backup, upgrade and recovery
 

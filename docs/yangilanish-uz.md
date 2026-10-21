@@ -4,15 +4,15 @@ Bu yo‘riqnoma sotuvchi (Owner) va restoran xodimlari uchun. Texnik tafsilotlar
 
 ## Qaysi faylni kimga yuborasiz
 
-| Fayl                                 | Kimga                                               |
-| ------------------------------------ | --------------------------------------------------- |
-| `FastFood-Setup-1.14.4.exe`          | Restoranning server kompyuteriga (kassa)            |
-| `FastFood-Admin-Setup-1.4.0.exe`     | Egasi/boshqaruvchi                                  |
-| `FastFood-Kassa-Setup-1.4.0.exe`     | Qo‘shimcha kassalar                                 |
-| `FastFood-Oshxona-Setup-1.4.0.exe`   | Oshxona                                             |
-| `FastFood-Ofitsiant-Setup-1.4.0.exe` | Ofitsiant kompyuteri                                |
-| `FastFood-TV-Setup-1.4.0.exe`        | Mijoz ekrani (TV/HDMI)                              |
-| `FastFood-Owner-Setup-1.8.0.exe`     | **Faqat o‘zingizga** (sotuvchi) — mijozga yubormang |
+| Fayl                                 | Kimga                                                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `FastFood-Setup-1.14.4.exe`          | Restoranning server kompyuteriga (kassa)                                                                          |
+| `FastFood-Admin-Setup-1.4.0.exe`     | Egasi/boshqaruvchi                                                                                                |
+| `FastFood-Kassa-Setup-1.4.0.exe`     | Qo‘shimcha kassalar                                                                                               |
+| `FastFood-Oshxona-Setup-1.4.0.exe`   | Oshxona                                                                                                           |
+| `FastFood-Ofitsiant-Setup-1.4.0.exe` | Ofitsiant kompyuteri                                                                                              |
+| `FastFood-TV-Setup-1.4.0.exe`        | Mijoz ekrani (TV/HDMI)                                                                                            |
+| Owner (sizda 1.7.0 o‘rnatilgan)      | **Faqat o‘zingizga**. Yangi Owner ekranlari markaziy server yangilangach o‘zi chiqadi, qayta o‘rnatish shart emas |
 
 Eslatma: avval **server** o‘rnatiladi, keyin boshqa ilovalar. Hamma ilova serverni o‘zi topadi.
 
