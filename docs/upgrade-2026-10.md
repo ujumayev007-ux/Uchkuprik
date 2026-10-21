@@ -1,7 +1,7 @@
 # FastFood upgrade (October 2026): technical notes
 
 Source checkpoint: git tag `baseline-before-upgrade-20261021` (before this upgrade).
-Release numbers: server `1.14.4`, Admin/Kassa/Ofitsiant/Oshxona/TV applications `1.4.0`.
+Release numbers: server `1.14.5`, Admin/Kassa/Ofitsiant/Oshxona/TV applications `1.4.0`.
 The Owner application stays **1.7.0**: its shell did not change — the Owner console is the web UI
 served by the central server, so the new Owner screens arrive when the central server is deployed.
 (The request called the Owner "1.14.3"; that is the server/client number.)
@@ -126,10 +126,10 @@ the data may be stale. **Not verified on a real HDMI monitor** in this environme
 
 | Server         | Older shells / APK                | Result                                                                                                             |
 | -------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| 1.14.4         | Admin/Kassa/Ofitsiant 1.2.0–1.3.0 | work (manual address); gain auto-connect after updating to 1.4.0                                                   |
-| 1.14.4         | Kitchen screen of older web build | "Tayyor/Tayyorlanmoqda" now require "Qabul qilish" first (409 `ACCEPT_REQUIRED`)                                   |
-| 1.14.4         | `ofitsiant.apk` 1.13.0            | unchanged workflow; no auto-discovery; local-network rule applies to its connection                                |
-| 1.14.4 + Owner | Owner 1.7.0 application           | works; the new tabs (Hodisalar, Ro'yxatdan o'tganlar, network exception) appear once the central server is updated |
+| 1.14.5         | Admin/Kassa/Ofitsiant 1.2.0–1.3.0 | work (manual address); gain auto-connect after updating to 1.4.0                                                   |
+| 1.14.5         | Kitchen screen of older web build | "Tayyor/Tayyorlanmoqda" now require "Qabul qilish" first (409 `ACCEPT_REQUIRED`)                                   |
+| 1.14.5         | `ofitsiant.apk` 1.13.0            | unchanged workflow; no auto-discovery; local-network rule applies to its connection                                |
+| 1.14.5 + Owner | Owner 1.7.0 application           | works; the new tabs (Hodisalar, Ro'yxatdan o'tganlar, network exception) appear once the central server is updated |
 
 ## Backup, upgrade and recovery
 

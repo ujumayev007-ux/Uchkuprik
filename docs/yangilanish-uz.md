@@ -6,7 +6,7 @@ Bu yo‘riqnoma sotuvchi (Owner) va restoran xodimlari uchun. Texnik tafsilotlar
 
 | Fayl                                 | Kimga                                                                                                             |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `FastFood-Setup-1.14.4.exe`          | Restoranning server kompyuteriga (kassa)                                                                          |
+| `FastFood-Setup-1.14.5.exe`          | Restoranning server kompyuteriga (kassa)                                                                          |
 | `FastFood-Admin-Setup-1.4.0.exe`     | Egasi/boshqaruvchi                                                                                                |
 | `FastFood-Kassa-Setup-1.4.0.exe`     | Qo‘shimcha kassalar                                                                                               |
 | `FastFood-Oshxona-Setup-1.4.0.exe`   | Oshxona                                                                                                           |
