@@ -671,7 +671,8 @@ export function kitchenRouter(services: Services) {
   // Customer-facing queue screen: order numbers only.
   router.get('/queue', requireAuth(), async (req, res) => {
     const auth = getAuth(res);
-    if (!can(auth, 'orders.view', 'kitchen.access')) throw errors.forbidden();
+    if (!can(auth, 'orders.view', 'kitchen.access', 'queue.view'))
+      throw errors.forbidden();
     // SUPER_OWNER (or the restaurant Admin where delegated) can switch the TV off.
     if (!auth.ordering.tv.enabled)
       throw new AppError(403, 'FEATURE_DISABLED', 'featureDisabled');

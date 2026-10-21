@@ -126,13 +126,15 @@ function SessionOnly({ children }: { children: React.ReactNode }) {
 }
 
 /** Which desktop application hosts this page: the Admin, Kassa and Ofitsiant shells announce themselves. */
-function shellKind(): 'admin' | 'cashier' | 'waiter' | 'kitchen' | 'pos' {
+function shellKind():
+  'admin' | 'cashier' | 'waiter' | 'kitchen' | 'tv' | 'pos' {
   const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
     .fastfoodShell;
   return shell?.kind === 'admin' ||
     shell?.kind === 'cashier' ||
     shell?.kind === 'waiter' ||
-    shell?.kind === 'kitchen'
+    shell?.kind === 'kitchen' ||
+    shell?.kind === 'tv'
     ? shell.kind
     : 'pos';
 }
@@ -160,6 +162,8 @@ function Home() {
     (can(me, 'pos.access') || can(me, 'orders.create'))
   )
     return <Navigate to="/ofitsiant" replace />;
+  // The TV application only ever shows the customer queue.
+  if (shellKind() === 'tv') return <Navigate to="/navbat" replace />;
   // The dedicated Oshxona application opens the kitchen board directly.
   if (shellKind() === 'kitchen' && can(me, 'kitchen.access'))
     return <Navigate to="/oshxona" replace />;

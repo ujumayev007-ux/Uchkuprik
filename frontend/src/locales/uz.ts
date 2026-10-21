@@ -712,6 +712,8 @@ export const uz = {
     ready: 'Tayyor — olib keting',
     announce: '{n}-raqamli buyurtmangiz tayyor!',
     enableSound: 'Ovozli xabarni yoqish',
+    offline:
+      'Aloqa uzildi — ekrandagi ma’lumot eskirgan bo‘lishi mumkin. Aloqa tiklanganda o‘zi yangilanadi.',
     soundOn: 'Ovoz yoqilgan',
   },
   printers: {

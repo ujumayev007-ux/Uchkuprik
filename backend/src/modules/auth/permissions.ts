@@ -26,6 +26,7 @@ export const permissionCatalog = {
   'reports.view': 'Hisobotlarni ko‘rish',
   'finance.view': 'Moliyaviy ma’lumotlarni ko‘rish',
   'kitchen.access': 'Oshxona ekranidan foydalanish',
+  'queue.view': 'Mijoz navbat ekranini ko‘rish (faqat o‘qish)',
   'kitchen.reject': 'Oshxonada buyurtmani rad etish',
   'inventory.view': 'Omborni ko‘rish',
   'inventory.manage': 'Ombor harakatlarini boshqarish',
@@ -138,6 +139,12 @@ export const systemRoles: Record<string, SystemRole> = {
     description: 'Taomlarni tayyorlash',
     // No orders.view: kitchen screens never receive prices or totals.
     permissions: ['kitchen.access', 'kitchen.reject', 'operations.perform'],
+  },
+  display: {
+    name: 'Mijoz ekrani (TV)',
+    description: 'Faqat navbat raqamlarini ko‘rsatadi',
+    // Read-only: order numbers only, no prices, names or controls.
+    permissions: ['queue.view'],
   },
   courier: {
     name: 'Kuryer',

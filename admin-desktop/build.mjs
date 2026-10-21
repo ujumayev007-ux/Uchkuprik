@@ -55,10 +55,16 @@ const KINDS = {
     id: 'kitchen',
     file: 'FastFood-Oshxona',
   },
+  tv: {
+    product: 'FastFood TV',
+    exe: 'FastFoodTV',
+    id: 'tv',
+    file: 'FastFood-TV',
+  },
 };
 const kind = process.env.PANEL_KIND || 'admin';
 if (!KINDS[kind])
-  throw new Error('PANEL_KIND must be admin, cashier, waiter or kitchen.');
+  throw new Error('PANEL_KIND must be admin, cashier, waiter, kitchen or tv.');
 const APP = KINDS[kind];
 const url = (process.env.ADMIN_URL || '').trim().replace(/[/]+$/, '');
 if (url && !/^https:[/][/]/.test(url) && !TEST)

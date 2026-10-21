@@ -88,6 +88,7 @@ export function loginPanel(): PanelKey {
   if (shell?.kind === 'cashier') return 'cashier';
   if (shell?.kind === 'waiter') return 'waiter';
   if (shell?.kind === 'kitchen') return 'kitchen';
+  if (shell?.kind === 'tv') return 'customer';
   if ((window as unknown as { FastFoodAndroid?: unknown }).FastFoodAndroid)
     return 'waiter';
   if ('fastfoodDesktop' in window) return 'cashier';

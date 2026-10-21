@@ -15,6 +15,7 @@ const {
   BrowserWindow,
   Menu,
   WebContentsView,
+  screen,
   dialog,
   ipcMain,
   session,
@@ -62,6 +63,12 @@ const KINDS = {
     menu: 'Oshxona',
     start: '/oshxona',
     profile: 'Oshxona',
+  },
+  tv: {
+    label: 'FastFood TV',
+    menu: 'TV',
+    start: '/navbat',
+    profile: 'TV',
   },
 };
 const KIND = KINDS[baked.kind] ? baked.kind : 'admin';
@@ -405,6 +412,27 @@ ipcMain.handle('admin:reset', (event) => {
   return { ok: true };
 });
 
+// ---- TV application: the customer queue fullscreen on a chosen (HDMI) display ----------
+// The operator keeps the main monitor; the window never takes the keyboard focus.
+function tvDisplay() {
+  const all = screen.getAllDisplays();
+  const saved = read(SETTINGS).tvDisplay;
+  return (
+    all.find((display) => String(display.id) === String(saved)) ??
+    all.find((display) => display.id !== screen.getPrimaryDisplay().id) ??
+    screen.getPrimaryDisplay()
+  );
+}
+
+function placeTv() {
+  if (KIND !== 'tv' || !win || win.isDestroyed()) return;
+  const display = tvDisplay();
+  if (win.isFullScreen()) win.setFullScreen(false);
+  win.setBounds(display.bounds);
+  win.setFullScreen(true);
+  if (!win.isVisible()) win.showInactive();
+}
+
 function menu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -429,6 +457,23 @@ function menu() {
           { label: 'Chiqish', role: 'quit' },
         ],
       },
+      ...(KIND === 'tv'
+        ? [
+            {
+              label: 'Ekran',
+              submenu: screen.getAllDisplays().map((display, index) => ({
+                label: `${index + 1}-ekran: ${display.size.width}×${display.size.height}${display.id === screen.getPrimaryDisplay().id ? ' (asosiy)' : ''}`,
+                type: 'radio',
+                checked: display.id === tvDisplay().id,
+                click: () => {
+                  saveSettings({ tvDisplay: display.id });
+                  placeTv();
+                  menu();
+                },
+              })),
+            },
+          ]
+        : []),
       {
         label: `${state === 'connected' ? '●' : state === 'connecting' ? '◌' : '○'} ${STATE_TEXT[state]}`,
         submenu: [
@@ -456,13 +501,31 @@ async function boot() {
     width: 1366,
     height: 860,
     title: APP.label,
+    ...(KIND === 'tv'
+      ? { show: false, autoHideMenuBar: true, backgroundColor: '#000000' }
+      : {}),
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.cjs'),
+      // The TV announces ready orders without anyone tapping the screen.
+      ...(KIND === 'tv' ? { autoplayPolicy: 'no-user-gesture-required' } : {}),
     },
   });
+  if (KIND === 'tv') {
+    placeTv();
+    // A cable plugged in or out, or a changed resolution: place the window again.
+    for (const event of [
+      'display-added',
+      'display-removed',
+      'display-metrics-changed',
+    ])
+      screen.on(event, () => {
+        placeTv();
+        menu();
+      });
+  }
   // The title shows the connection status ("Ulandi" / "Ulanmoqda" / "Aloqa yo‘q").
   win.on('page-title-updated', (event) => event.preventDefault());
   pill = new WebContentsView({

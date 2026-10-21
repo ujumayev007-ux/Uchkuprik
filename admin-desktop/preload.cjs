@@ -7,7 +7,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // sandboxed preload can not read files itself).
 const kind = ipcRenderer.sendSync('shell:kind');
 contextBridge.exposeInMainWorld('fastfoodShell', {
-  kind: ['admin', 'cashier', 'waiter', 'kitchen'].includes(kind)
+  kind: ['admin', 'cashier', 'waiter', 'kitchen', 'tv'].includes(kind)
     ? kind
     : 'admin',
 });

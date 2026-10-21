@@ -65,7 +65,12 @@ export function QueuePage() {
       !(error instanceof ApiError && error.status === 403) && count < 2,
   });
   // Browsers only allow audio after a user gesture: one tap on the overlay.
-  const [sound, setSound] = useState(false);
+  // The TV application plays the ready announcements without a tap.
+  const [sound, setSound] = useState(
+    () =>
+      (window as unknown as { fastfoodShell?: { kind?: string } }).fastfoodShell
+        ?.kind === 'tv',
+  );
   const [overlayDismissed, setOverlayDismissed] = useState(false);
   const announced = useRef<Map<string, number> | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -176,6 +181,11 @@ export function QueuePage() {
           title={online ? t.live.online : t.live.offline}
         />
       </header>
+      {(!online || queue.isError) && (
+        <p className="queue-offline" role="alert">
+          {t.queue.offline}
+        </p>
+      )}
       <div ref={board} className="queue-board">
         {display.layout === 'single' ? (
           <div

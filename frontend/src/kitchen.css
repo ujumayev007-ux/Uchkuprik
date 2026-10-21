@@ -405,3 +405,14 @@
   line-height: 18px;
   vertical-align: top;
 }
+
+/* The queue display must never present stale numbers as live. */
+.queue-offline {
+  margin: 0;
+  padding: 10px 16px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+}
