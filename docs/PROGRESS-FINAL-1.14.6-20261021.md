@@ -5,13 +5,13 @@ Hech qanday mijoz ma'lumoti, baza, parol, PIN, litsenziya, sozlama yoki zaxira o
 
 ## 1. Versiyalar
 
-| Qism                                               | Versiya                               | Qayerda                                                                 |
-| -------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------- |
-| FastFood **Server**                                | **1.14.6** (o'rnatilgan, ishlayapti)  | `%LOCALAPPDATA%\Programs\FastFood`, ma'lumot: `%APPDATA%\FastFood-Data` |
-| Admin / Kassa / Oshxona / Ofitsiant / TV ilovalari | 1.4.0 (qurilgan, mijozlarga tayyor)   | yig'ish papkasi (pastda)                                                |
-| Owner dasturi                                      | 1.7.0 (o'zgarmagan)                   | `%LOCALAPPDATA%\Programs\FastFoodOwner`, ish stolida «FastFood Owner»   |
-| Android (ofitsiant APK)                            | 1.13.0 (o'zgarmagan)                  | `Desktop\FastFood-RESTORANGA-YANGI\FastFood-1.13.0.apk`                 |
-| Markaziy server (Render)                           | `cc2e829` (jonli), 1.14.5/1.14.6 YO'Q | `https://fastfood-control.onrender.com`                                 |
+| Qism                                               | Versiya                                                            | Qayerda                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| FastFood **Server**                                | **1.14.6** (o'rnatilgan, ishlayapti)                               | `%LOCALAPPDATA%\Programs\FastFood`, ma'lumot: `%APPDATA%\FastFood-Data` |
+| Admin / Kassa / Oshxona / Ofitsiant / TV ilovalari | 1.4.0 (qurilgan, mijozlarga tayyor)                                | yig'ish papkasi (pastda)                                                |
+| Owner dasturi                                      | 1.7.0 (o'zgarmagan)                                                | `%LOCALAPPDATA%\Programs\FastFoodOwner`, ish stolida «FastFood Owner»   |
+| Android (ofitsiant APK)                            | 1.13.0 (o'zgarmagan)                                               | `Desktop\FastFood-RESTORANGA-YANGI\FastFood-1.13.0.apk`                 |
+| Markaziy server (Render)                           | `3b33912` (jonli: 1.14.5 tuzatishi bor, **1.14.6 tuzatishi YO'Q**) | `https://fastfood-control.onrender.com`                                 |
 
 ## 2. Bajarilgan va tekshirilgan
 
@@ -38,14 +38,14 @@ Boshqa sinalmaganlar: ikkinchi server (`WIN-TRHG52A5C5K`, `192.168.1.6`, 1.14.4)
 
 1. Kassa/Oshxona haqiqiy sinovi natijasiga qarab tuzatishlar.
 2. Ikkinchi serverni (192.168.1.6) o'chirish yoki ilovalarni to'g'ri serverga ulash (menyu **Server manzili…** → joriy server manzili).
-3. 1.14.5/1.14.6 tuzatishlarini `main` ga qo'shish va Render'ga joylash (pastga qarang). Joylanish taxminan 1 soat.
+3. 1.14.6 tuzatishini (3 ta commit, pastga qarang) `main` ga qo'shish va Render'ga joylash. Joylanish taxminan 1 soat. (Markaziy serverga 1.14.6 tuzatishi shart emas: u mijoz serveri uchun.)
 4. Owner markaziy panelini FastFood ichiga menyu qilib qo'shish (A: o'z kaliti + bir marta tasdiq — tavsiya; B: mavjud Owner kalitini ishlatish), ~1–1,5 soat.
 5. Alohida APK'lar: Admin, Kassa, Oshxona, TV, Ofitsiant (~2–3 soat, telefonda sinab bo'lmaydi).
 6. Imzo sertifikati (hozir o'rnatuvchilar imzosiz).
 
 ## 5. Git holati va nima uchun `main` ga yuborilmagan
 
-- Mahalliy `main`, `origin/main` dan **oldinda**: 1.14.5 tuzatishi, 1.14.6 tuzatishi, hujjatlar (commit'lar: `0f7697e`, `3b33912`, `859fd9d` va keyingilar).
+- `origin/main` = `3b33912` (1.14.5 tuzatishi **kechagi ishda allaqachon yuborilgan** va Render'da jonli). Mahalliy `main` undan **3 commit oldinda**: `859fd9d` (1.14.6 tuzatishi), `7c315df` va `470c9f0` (hujjatlar).
 - Render xizmatlari **faqat `main`** ni kuzatadi (`docs/render-setup.md`, `render.yaml`) va `main` ga har push qilinganda avtomatik qayta joylanadi. Buni dashboard'dan o'chirib bo'lmaydi, shuning uchun `main` ga **yuborilmadi**.
 - Saqlash uchun commit'lar alohida tarmoqqa yuborilgan: **`hold/1.14.6-no-deploy`** (`origin`). Render uni kuzatmaydi; GitHub Actions (CI) faqat test o'tkazadi, joylamaydi.
 - Keyinroq joylamoqchi bo'lsangiz (ruxsat bilan): `git push origin main` — Render qayta joylanadi (taxminan 1 soat), avval Render dashboard'ida holatni kuzating.

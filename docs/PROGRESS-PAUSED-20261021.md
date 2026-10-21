@@ -62,6 +62,8 @@ Bu fayl yangi yaratilgan; boshqa hujjatlar tegilmagan (`upgrade-progress.md` ham
 - 360 Total Security `win-unpacked.tmp` almashtirishda xato berishi mumkin: qurishni yangi papkaga qaytaring.
 - Batafsil texnik hujjatlar: `docs/upgrade-2026-10.md`, `docs/yangilanish-uz.md`, `docs/upgrade-progress.md`; xotira yozuvi: `lan-autoconnect-and-kitchen.md`.
 
+> Tuzatish: `origin/main` allaqachon `3b33912` (1.14.5 tuzatishi shu yerda, Render'da jonli). Yuborilmaganlari faqat 1.14.6 commit'lari. Aniq holat: `PROGRESS-FINAL-1.14.6-20261021.md`.
+
 ## 6. Davom ettirilgandan keyingi yangilanish (2026-10-21, kechqurun)
 
 Bajarildi:
