@@ -77,6 +77,25 @@ function loadIdentity({ dataDir, safeStorage }) {
   } catch {
     value = null; // unreadable: a new identity is made (clients simply pair again)
   }
+  // A plain identity (server moved from another computer) is sealed here at once.
+  if (
+    secure &&
+    value?.privateKey &&
+    value?.publicKey &&
+    !fs.existsSync(sealed) &&
+    fs.existsSync(plain)
+  ) {
+    const text = JSON.stringify({
+      privateKey: value.privateKey,
+      publicKey: value.publicKey,
+    });
+    fs.writeFileSync(`${sealed}.tmp`, safeStorage.encryptString(text), {
+      mode: 0o600,
+    });
+    fs.renameSync(`${sealed}.tmp`, sealed);
+    if (safeStorage.decryptString(fs.readFileSync(sealed)) === text)
+      fs.rmSync(plain, { force: true });
+  }
   if (!value?.privateKey || !value?.publicKey) {
     const pair = crypto.generateKeyPairSync('ed25519');
     value = {

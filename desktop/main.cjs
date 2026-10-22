@@ -26,6 +26,7 @@ const { registerUpdates } = require('./updates.cjs');
 const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
 const lan = require('./lan.cjs');
+const move = require('./move.cjs');
 
 const RES = app.isPackaged
   ? process.resourcesPath
@@ -229,6 +230,15 @@ function deviceKey() {
     } catch {
       return null;
     }
+  // Moved from another computer: keep the same identity (and so the same licence).
+  const moved = path.join(DATA, 'device-key.pem');
+  if (fs.existsSync(moved)) {
+    const pem = fs.readFileSync(moved, 'utf8');
+    fs.writeFileSync(file, safeStorage.encryptString(pem), { mode: 0o600 });
+    if (safeStorage.decryptString(fs.readFileSync(file)) === pem)
+      fs.rmSync(moved, { force: true });
+    return pem;
+  }
   const pair = crypto.generateKeyPairSync('ed25519');
   const pem = pair.privateKey
     .export({ format: 'pem', type: 'pkcs8' })
@@ -575,6 +585,10 @@ function buildMenu() {
           { label: 'Avtomatik ulanish', click: () => void showAutoConnect() },
           { label: 'Telefonlar uchun manzil', click: showPhoneAddress },
           { label: 'Ma’lumotlar papkasi', click: () => shell.openPath(DATA) },
+          {
+            label: 'Serverni boshqa kompyuterga ko‘chirish…',
+            click: () => void moveServer(),
+          },
           ...(fs.existsSync(VENDOR_KEY)
             ? [
                 {
@@ -886,7 +900,84 @@ function enableAutoStart() {
   }
 }
 
+/**
+ * "Serverni boshqa kompyuterga ko‘chirish": stops the server safely, writes a move package
+ * (data + keys) and switches the server off on this computer, so that only one server runs.
+ */
+async function moveServer() {
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Bekor qilish', 'Davom etish'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Serverni ko‘chirish',
+    message: 'Server boshqa kompyuterga ko‘chiriladi',
+    detail:
+      'Server to‘xtatiladi, barcha ma’lumotlar va kalitlar paketga yoziladi. Shundan so‘ng bu kompyuterdagi server ishlamaydi (ikki server bir vaqtda ishlamasligi uchun). Paketni yangi kompyuterga o‘tkazing va yo‘riqnomaga amal qiling.',
+  });
+  if (response !== 1) return;
+  const chosen = await dialog.showOpenDialog(win, {
+    title: 'Paket qayerga yozilsin?',
+    defaultPath: app.getPath('desktop'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (chosen.canceled || !chosen.filePaths[0]) return;
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  const dest = path.join(chosen.filePaths[0], `FastFood-Kochirish-${stamp}`);
+  try {
+    const keys = secrets();
+    const identity = lan.loadIdentity({ dataDir: DATA, safeStorage });
+    const pem = deviceKey();
+    stopping = true;
+    beacon?.stop();
+    api?.kill();
+    if (startedPostgres) await stopPostgres();
+    fs.mkdirSync(dest, { recursive: true });
+    move.exportPackage({
+      dataDir: DATA,
+      dest,
+      secrets: keys,
+      lanIdentity: identity,
+      deviceKeyPem: pem,
+      version: VERSION,
+    });
+    move.markMoved(DATA, { to: dest });
+    try {
+      app.setLoginItemSettings({ openAtLogin: false });
+    } catch {
+      /* not registered */
+    }
+    log(`server moved: package written to ${dest}`);
+    await dialog.showMessageBox(win, {
+      type: 'info',
+      message: 'Ko‘chirish paketi tayyor',
+      detail: `${dest}\n\nYo‘riqnoma: KOCHIRISH-YORIQNOMA.txt. Paketda maxfiy kalitlar bor — ishdan keyin o‘chiring.`,
+    });
+    shell.showItemInFolder(path.join(dest, 'KOCHIRISH-YORIQNOMA.txt'));
+  } catch (error) {
+    log(`move failed: ${error.message}`);
+    dialog.showErrorBox('Ko‘chirib bo‘lmadi', error.message);
+  }
+  quitting = true;
+  app.exit(0);
+}
+
 async function boot() {
+  // Moved to another computer: this copy must not run next to the new one.
+  const moved = move.movedInfo(DATA);
+  if (moved) {
+    dialog.showErrorBox(
+      'Server boshqa kompyuterga ko‘chirilgan',
+      `Bu server ${String(moved.at || '')
+        .slice(0, 16)
+        .replace(
+          'T',
+          ' ',
+        )} da boshqa kompyuterga ko‘chirilgan. Ikki server bir vaqtda ishlasa, ma’lumotlar ikkiga bo‘linib ketadi.\n\nQayta yoqish kerak bo‘lsa: ${path.join(DATA, 'moved.json')} faylini o‘chiring.`,
+    );
+    app.exit(0);
+    return;
+  }
   win = new BrowserWindow({
     width: 1366,
     height: 860,
@@ -931,6 +1022,8 @@ async function boot() {
     return;
   }
   const keys = secrets();
+  // A device key brought by a move package is sealed at once (never left in plain form).
+  if (fs.existsSync(path.join(DATA, 'device-key.pem'))) deviceKey();
   await initDatabase(keys.dbPassword);
   await backupIfUpgrading();
   await startPostgres();

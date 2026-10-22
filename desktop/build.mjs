@@ -168,6 +168,7 @@ await build({
       'reports.cjs',
       'safe-json.cjs',
       'lan.cjs',
+      'move.cjs',
       'loading.html',
       'package.json',
     ],
