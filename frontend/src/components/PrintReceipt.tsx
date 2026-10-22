@@ -5,6 +5,7 @@ import { Button, useToast } from './ui';
 import { t } from '../i18n';
 import { api, errorMessage, post } from '../lib/api';
 import { useBusy } from '../lib/busy';
+import { printOnTerminal, terminalPrinter } from './TerminalPrinter';
 
 /**
  * Receipt buttons: open the receipt in the browser (laid out by the template of the
@@ -45,13 +46,23 @@ export function PrintReceipt({ orderId }: { orderId: string }) {
         </select>
       )}
       <Button
-        onClick={() =>
+        onClick={async () => {
+          // Kassa application: straight to this terminal's own Windows printer.
+          if (terminalPrinter() && !printerId) {
+            try {
+              await printOnTerminal(orderId);
+              toast(t.terminalPrinter.printed);
+            } catch (caught) {
+              toast(errorMessage(caught), 'error');
+            }
+            return;
+          }
           window.open(
             `/chek/${orderId}${printerId ? `?printer=${printerId}` : ''}`,
             '_blank',
             'noopener,width=420,height=700',
-          )
-        }
+          );
+        }}
       >
         {t.payment.printReceipt}
       </Button>

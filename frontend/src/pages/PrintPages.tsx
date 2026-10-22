@@ -23,10 +23,19 @@ type Business = {
   footer?: string | null;
 };
 
+// Opened by the Kassa application for silent printing on this terminal's own printer
+// (?silent=1&width=58|80): the application prints, the page must not open a dialog.
+const terminal = () => new URLSearchParams(window.location.search);
+/** The terminal's paper width (58/80 mm) wins over the template's when given. */
+const forTerminal = <T extends { widthMm: number }>(layout: T): T => {
+  const width = Number(terminal().get('width'));
+  return width === 58 || width === 80 ? { ...layout, widthMm: width } : layout;
+};
+
 /** Prints once data is rendered; the page is sized for 80 mm receipt printers. */
 function useAutoPrint(ready: boolean) {
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || terminal().get('silent') === '1') return;
     const timer = window.setTimeout(() => window.print(), 300);
     return () => window.clearTimeout(timer);
   }, [ready]);
@@ -75,7 +84,7 @@ export function ReceiptPage() {
   useAutoPrint(receipt.isSuccess);
   if (receipt.isPending) return <LoadingState />;
   if (receipt.error) return <ErrorState error={receipt.error} />;
-  const layout = normalizeLayout(receipt.data.layout);
+  const layout = forTerminal(normalizeLayout(receipt.data.layout));
   return (
     <>
       <style>{pageCss(layout)}</style>
@@ -93,7 +102,7 @@ export function ReceiptPage() {
 /** Test print of the unsaved designer settings (opened by the designer). */
 export function ReceiptTestPage() {
   const raw = sessionStorage.getItem('ff-receipt-test');
-  const layout = normalizeLayout(raw ? JSON.parse(raw) : {});
+  const layout = forTerminal(normalizeLayout(raw ? JSON.parse(raw) : {}));
   useAutoPrint(true);
   return (
     <>

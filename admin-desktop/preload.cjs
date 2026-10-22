@@ -11,6 +11,14 @@ contextBridge.exposeInMainWorld('fastfoodShell', {
     ? kind
     : 'admin',
 });
+// The Kassa application's own receipt printer (this computer only).
+if (kind === 'cashier')
+  contextBridge.exposeInMainWorld('fastfoodPrinter', {
+    list: () => ipcRenderer.invoke('printer:list'),
+    get: () => ipcRenderer.invoke('printer:get'),
+    set: (value) => ipcRenderer.invoke('printer:set', value),
+    print: (pagePath) => ipcRenderer.invoke('printer:print', pagePath),
+  });
 contextBridge.exposeInMainWorld('adminConn', {
   state: () => ipcRenderer.invoke('admin:state'),
   retry: () => ipcRenderer.invoke('admin:retry'),

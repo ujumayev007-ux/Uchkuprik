@@ -5,6 +5,10 @@ import { can, useMe } from '../auth/session';
 import { PaymentDialog } from '../components/PaymentDialog';
 import { PrintReceipt } from '../components/PrintReceipt';
 import {
+  autoPrintReceipt,
+  TerminalPrinterButton,
+} from '../components/TerminalPrinter';
+import {
   Button,
   Dialog,
   EmptyState,
@@ -514,6 +518,7 @@ export function PosPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <TerminalPrinterButton />
         </div>
         <div className="chip-row" role="tablist" aria-label={t.menu.categories}>
           <button
@@ -888,6 +893,15 @@ export function PosPage() {
           onPaid={(order, change) => {
             setPaying(null);
             setResult({ order, change });
+            // This terminal prints the receipt by itself when it was set up to.
+            void autoPrintReceipt(order.id)
+              .then((printed) => printed && toast(t.terminalPrinter.printed))
+              .catch((error: unknown) =>
+                toast(
+                  `${t.terminalPrinter.failed}: ${error instanceof Error ? error.message : ''}`,
+                  'error',
+                ),
+              );
           }}
         />
       )}

@@ -340,6 +340,93 @@ ipcMain.on('shell:kind', (event) => {
   event.returnValue = KIND;
 });
 
+// ------------------------------------------------ receipt printer of THIS terminal
+// Only the Kassa application, and only pages of its own restaurant server, may use it.
+// The choice lives in this computer's own settings file: other terminals and the
+// restaurant's network (kitchen) printers are never touched.
+const PRINTER_DEFAULT = { deviceName: '', widthMm: 80, copies: 1, auto: false };
+const fromServerPage = (event) =>
+  KIND === 'cashier' &&
+  win !== null &&
+  event.sender === win.webContents &&
+  !!currentUrl &&
+  String(event.senderFrame?.url || '').startsWith(`${currentUrl}/`);
+const receiptPrinter = () => ({
+  ...PRINTER_DEFAULT,
+  ...(read(SETTINGS).receiptPrinter ?? {}),
+});
+
+ipcMain.handle('printer:list', async (event) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const printers = await win.webContents.getPrintersAsync();
+  return printers.map((p) => ({
+    name: p.name,
+    label: p.displayName || p.name,
+    isDefault: p.isDefault === true,
+  }));
+});
+
+ipcMain.handle('printer:get', (event) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  return receiptPrinter();
+});
+
+ipcMain.handle('printer:set', (event, value) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const next = {
+    deviceName: String(value?.deviceName ?? '').slice(0, 200),
+    widthMm: value?.widthMm === 58 ? 58 : 80,
+    copies: Math.min(5, Math.max(1, Math.trunc(Number(value?.copies) || 1))),
+    auto: value?.auto === true,
+  };
+  saveSettings({ receiptPrinter: next });
+  log(
+    `receipt printer: ${next.deviceName || '(Windows default)'} ${next.widthMm}mm x${next.copies}`,
+  );
+  return next;
+});
+
+/** Prints a receipt page of this server silently on the chosen Windows printer. */
+ipcMain.handle('printer:print', async (event, target) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const pagePath = String(target || '');
+  if (!/^\/(chek\/[0-9a-f-]{36}|chek-sinov)$/.test(pagePath))
+    throw new Error('Noto‘g‘ri sahifa');
+  const config = receiptPrinter();
+  const printWin = new BrowserWindow({
+    show: false,
+    webPreferences: { contextIsolation: true, sandbox: true },
+  });
+  try {
+    await printWin.loadURL(
+      `${currentUrl}${pagePath}?silent=1&width=${config.widthMm}`,
+    );
+    // The receipt is drawn after its data arrives; anything else (sign-in page, error)
+    // is never printed.
+    const drawn = await printWin.webContents.executeJavaScript(
+      `new Promise((resolve) => { const start = Date.now(); (function wait() { if (document.querySelector('.receipt')) resolve(true); else if (Date.now() - start > 8000) resolve(false); else setTimeout(wait, 100); })(); })`,
+    );
+    if (!drawn) throw new Error('Chek sahifasi ochilmadi');
+    await new Promise((resolve, reject) =>
+      printWin.webContents.print(
+        {
+          silent: true,
+          printBackground: true,
+          ...(config.deviceName ? { deviceName: config.deviceName } : {}),
+          copies: config.copies,
+          margins: { marginType: 'none' },
+          pageSize: { width: config.widthMm * 1000, height: 297000 },
+        },
+        (ok, reason) =>
+          ok ? resolve() : reject(new Error(reason || 'print failed')),
+      ),
+    );
+    return { ok: true };
+  } finally {
+    if (!printWin.isDestroyed()) printWin.destroy();
+  }
+});
+
 ipcMain.handle('admin:auto', async (event) => {
   if (!fromConnectPage(event)) throw new Error('Ruxsat yo‘q');
   return autoConnect();
