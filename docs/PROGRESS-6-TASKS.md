@@ -9,7 +9,7 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 | 3 | Ombor / Bozorlik soddalashtirish | bajarildi |
 | 4 | Owner EXE va Render 502 | bajarildi |
 | 5 | Ombor eksporti (xlsx/docx/pdf) | bajarildi |
-| 6 | Oshxona rejimlari | jarayonda |
+| 6 | Oshxona rejimlari | bajarildi |
 
 ## 1-vazifa natijasi
 - `GET /queue/display`: ro‘yxatdan o‘tgan, tasdiqlangan DISPLAY qurilmasi faqat raqam va holatni oladi (sessiyasiz). LAN, litsenziya, bloklash qoidalari amal qiladi.
@@ -40,9 +40,14 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 - Qo‘shildi: aniq mahsulotlarni tanlash (qoldiq, kam qolgan, harakatlar) va «O‘rtacha narx» ustuni (faqat tannarxni ko‘rish ruxsati borlarga).
 - Tekshiruv: eksport testlari 28/28 (test sanasi restoran vaqt zonasiga to‘g‘rilandi).
 
+## 6-vazifa natijasi
+- Markaziy katalogda «Oshxona ish rejimi» (kitchen.mode): Joriy / Barcha buyurtmalar / Avtomatik. Owner belgilaydi yoki Admin’ga topshiradi (Admin mavjud sozlamalar sahifasida tanlaydi).
+- Joriy: o‘zgarmagan. Barcha buyurtmalar: oshxona ekranida toifa filtrisiz barcha faol buyurtmalar. Avtomatik: buyurtma o‘zi qabul qilinadi (tarixga yoziladi); «Tayyor» bosilganda to‘liq to‘langan buyurtma kassadagi «Berildi» (completeOrder) orqali yakunlanadi — ombordan yechish, fiskal, sodiqlik bir marta; to‘lanmagan buyurtma «Tayyor»da qoladi.
+- Tekshiruv: 2/2 yangi, oshxona/boshqaruv regressiya 58/58.
+
 ## Yig‘ish (oxirida bir marta)
 - Server 1.14.9 → yangi versiya (backend/frontend o‘zgardi).
 - Owner EXE 1.7.1.
 
 ## Keyingi qadam
-6-vazifa: tashxis.
+Yig‘ish: Server (yangi versiya) va Owner EXE 1.7.1; zaxira; FastFood-TAYYOR.

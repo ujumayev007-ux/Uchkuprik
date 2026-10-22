@@ -31,6 +31,8 @@ export type Ordering = {
       phrase: 'ordinal' | 'cardinal';
     };
   };
+  // Kitchen screen: current workflow, all active orders, or automatic.
+  kitchen: { mode: 'current' | 'all' | 'auto' };
   waiterAlerts: {
     enabled: boolean;
     sound: boolean;
@@ -60,6 +62,7 @@ export const defaultOrdering: Ordering = {
     showReady: true,
     voice: { enabled: true, repeat: 1, volume: 100, phrase: 'ordinal' },
   },
+  kitchen: { mode: 'current' },
   waiterAlerts: {
     enabled: false,
     sound: true,

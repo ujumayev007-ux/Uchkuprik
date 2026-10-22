@@ -41,6 +41,8 @@ export type OrderingConfig = {
       phrase: 'ordinal' | 'cardinal';
     };
   };
+  // Kitchen screen: current workflow, all active orders, or automatic.
+  kitchen: { mode: 'current' | 'all' | 'auto' };
   waiterAlerts: {
     enabled: boolean;
     sound: boolean;
@@ -83,6 +85,7 @@ export function buildOrdering(input: Input): OrderingConfig {
   const tv = params('tv.display');
   const voice = params('tv.voice');
   const alerts = params('waiter.notify');
+  const kitchen = params('kitchen.mode');
 
   // Waiters are the audience of «new guest» alerts; other roles only when SUPER_OWNER
   // explicitly switched the alert on for them.
@@ -125,6 +128,13 @@ export function buildOrdering(input: Input): OrderingConfig {
         volume: num(voice.volume, 100),
         phrase: voice.phrase === 'cardinal' ? 'cardinal' : 'ordinal',
       },
+    },
+    kitchen: {
+      mode:
+        on('kitchen.mode') &&
+        (kitchen.mode === 'all' || kitchen.mode === 'auto')
+          ? kitchen.mode
+          : 'current',
     },
     waiterAlerts: {
       enabled: alertsOn,

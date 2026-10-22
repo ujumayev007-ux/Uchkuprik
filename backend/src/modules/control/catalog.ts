@@ -237,6 +237,26 @@ export const featureCatalog: FeatureDef[] = [
     ],
   }),
   f({
+    key: 'kitchen.mode',
+    kind: 'module',
+    group: 'Oshxona',
+    label: 'Oshxona ish rejimi',
+    hint: 'Joriy: hozirgi tartib. Barcha buyurtmalar: oshxona ekranida barcha faol buyurtmalar (toifa filtrisiz). Avtomatik: buyurtma o‘zi qabul qilinadi; «Tayyor» bosilganda to‘liq to‘langan buyurtma «Berildi» bo‘ladi.',
+    params: [
+      {
+        key: 'mode',
+        label: 'Rejim',
+        type: 'enum',
+        options: [
+          { value: 'current', label: 'Joriy (hozirgi tartib)' },
+          { value: 'all', label: 'Barcha buyurtmalar' },
+          { value: 'auto', label: 'Avtomatik' },
+        ],
+        default: 'current',
+      },
+    ],
+  }),
+  f({
     key: 'kitchen.manage',
     kind: 'module',
     group: 'Oshxona',

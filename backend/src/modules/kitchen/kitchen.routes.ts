@@ -35,6 +35,8 @@ import {
   syncKitchenStatus,
 } from '../orders/engine.js';
 import { kitchenVariantIds } from './kitchen-filter.js';
+import { completeOrder } from '../orders/complete.js';
+import { netPaid } from '../orders/engine.js';
 
 const stationInput = z.object({
   name: z.string().trim().min(1).max(60),
@@ -251,7 +253,42 @@ export function kitchenRouter(services: Services) {
         req.query,
       );
       const branch = await resolveBranch(db, auth, query.branchId);
-      const kitchenIds = await kitchenVariantIds(db, auth.tenantId);
+      const mode = auth.ordering.kitchen.mode;
+      // "Barcha buyurtmalar": every active order, no category filter.
+      const kitchenIds =
+        mode === 'all' ? null : await kitchenVariantIds(db, auth.tenantId);
+      // "Avtomatik": tickets are accepted by themselves (recorded in the history).
+      if (mode === 'auto') {
+        const waiting = await db.order.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            branchId: branch.id,
+            status: { in: ['PLACED', 'PREPARING'] },
+            kitchenAcceptedAt: null,
+            kitchenRejectedAt: null,
+          },
+          select: { id: true },
+          take: 200,
+        });
+        for (const { id } of waiting)
+          await db.$transaction(async (tx) => {
+            const updated = await tx.order.updateMany({
+              where: { id, kitchenAcceptedAt: null, kitchenRejectedAt: null },
+              data: { kitchenAcceptedAt: now() },
+            });
+            if (updated.count)
+              await addEvent(
+                tx,
+                auth.tenantId,
+                id,
+                auth.userId,
+                'kitchen_accept',
+                {
+                  auto: true,
+                },
+              );
+          });
+      }
       const orders = await db.order.findMany({
         where: {
           tenantId: auth.tenantId,
@@ -346,6 +383,21 @@ export function kitchenRouter(services: Services) {
     },
   );
 
+  /**
+   * "Avtomatik" mode: an order that became ready is handed over («Berildi») through the
+   * same completion as the cashier's button — only when fully paid, once (status check).
+   */
+  const autoServe = async (auth: AuthContext, orderId: string) => {
+    if (auth.ordering.kitchen.mode !== 'auto') return false;
+    return db.$transaction(async (tx) => {
+      const order = await lockOrder(tx, auth.tenantId, orderId);
+      if (order.status !== 'READY' || netPaid(order) < order.total)
+        return false;
+      await completeOrder(tx, order, auth.userId, now());
+      return true;
+    });
+  };
+
   const setItems = async (
     auth: AuthContext,
     orderId: string,
@@ -361,8 +413,24 @@ export function kitchenRouter(services: Services) {
       // A ticket must be accepted by the kitchen first (and a refused one is not cooked).
       if (order.kitchenRejectedAt)
         throw new AppError(409, 'KITCHEN_REJECTED', 'kitchenRejected');
-      if (status !== 'QUEUED' && !order.kitchenAcceptedAt)
-        throw new AppError(409, 'ACCEPT_REQUIRED', 'kitchenAcceptRequired');
+      if (status !== 'QUEUED' && !order.kitchenAcceptedAt) {
+        if (auth.ordering.kitchen.mode !== 'auto')
+          throw new AppError(409, 'ACCEPT_REQUIRED', 'kitchenAcceptRequired');
+        await tx.order.update({
+          where: { id: orderId },
+          data: { kitchenAcceptedAt: now() },
+        });
+        await addEvent(
+          tx,
+          auth.tenantId,
+          orderId,
+          auth.userId,
+          'kitchen_accept',
+          {
+            auto: true,
+          },
+        );
+      }
       const at = now();
       const where = {
         orderId,
@@ -625,8 +693,9 @@ export function kitchenRouter(services: Services) {
         req.body,
       );
       await setItems(auth, id, null, input.stationId, input.status);
+      const served = input.status === 'READY' && (await autoServe(auth, id));
       await notify(id);
-      res.json({ ok: true });
+      res.json({ ok: true, ...(served ? { served: true } : {}) });
     },
   );
 
