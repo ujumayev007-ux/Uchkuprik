@@ -93,7 +93,7 @@ export function devicesRouter(services: Services) {
         name: z.string().trim().min(2).max(60),
         // Panel the terminal serves (offline rules treat CASHIER specially).
         panel: z
-          .enum(['CASHIER', 'KITCHEN', 'WAITER', 'OTHER'])
+          .enum(['CASHIER', 'KITCHEN', 'WAITER', 'DISPLAY', 'OTHER'])
           .default('OTHER'),
       }),
       req.body,

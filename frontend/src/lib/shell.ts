@@ -19,13 +19,16 @@ const allowedPaths: Partial<Record<ShellKind, string[]>> = {
   cashier: ['/kassa', '/buyurtmalar'],
   kitchen: ['/oshxona'],
   waiter: ['/ofitsiant', '/buyurtmalar'],
+  // The TV application is a registered display: one PIN, then it opens by itself.
+  tv: ['/navbat'],
 };
 
-/** True for the Kassa, Oshxona and Ofitsiant applications (PIN sign-in, single panel). */
+/** True for the Kassa, Oshxona, Ofitsiant and TV applications (PIN sign-in, single panel). */
 export const isPanelShell = () => shellKind() in allowedPaths;
 
 /** The terminal panel this application serves, as the server stores it on the device. */
-export function shellPanel(): 'CASHIER' | 'KITCHEN' | 'WAITER' | 'OTHER' {
+export function shellPanel():
+  'CASHIER' | 'KITCHEN' | 'WAITER' | 'DISPLAY' | 'OTHER' {
   const kind = shellKind();
   return kind === 'cashier'
     ? 'CASHIER'
@@ -33,7 +36,9 @@ export function shellPanel(): 'CASHIER' | 'KITCHEN' | 'WAITER' | 'OTHER' {
       ? 'KITCHEN'
       : kind === 'waiter'
         ? 'WAITER'
-        : 'OTHER';
+        : kind === 'tv'
+          ? 'DISPLAY'
+          : 'OTHER';
 }
 
 /** Whether this application may show the given page. Admin and the browser show everything. */

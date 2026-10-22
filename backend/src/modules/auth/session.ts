@@ -31,9 +31,19 @@ const MINUTE = 60_000;
 export const sessionPolicy = {
   PASSWORD: { idleMs: 60 * MINUTE, absoluteMs: 12 * 60 * MINUTE },
   PIN: { idleMs: 30 * MINUTE, absoluteMs: 14 * 60 * MINUTE },
+  // A PIN session on a registered kitchen screen or TV display: one PIN, then the
+  // screen opens by itself every day (still bound to that device and its cookie).
+  KIOSK: { idleMs: 7 * 24 * 60 * MINUTE, absoluteMs: 30 * 24 * 60 * MINUTE },
   mfaPendingMs: 10 * MINUTE,
   reauthWindowMs: 5 * MINUTE,
 } as const;
+
+/** Device panels whose PIN sessions follow the KIOSK policy. */
+export const kioskPanels = new Set(['KITCHEN', 'DISPLAY']);
+const policyOf = (authMethod: AuthMethod, panel?: string | null) =>
+  authMethod === 'PIN' && panel && kioskPanels.has(panel)
+    ? sessionPolicy.KIOSK
+    : sessionPolicy[authMethod];
 
 export type AuthContext = {
   sessionId: string;
@@ -133,11 +143,13 @@ export async function createSession(
     mfaVerified: boolean;
     branchId: string | null;
     deviceId: string | null;
+    // Panel of that device (kitchen screens and TV displays stay signed in longer).
+    devicePanel?: string | null;
     req: Request;
   },
 ) {
   const now = services.now?.() ?? new Date();
-  const policy = sessionPolicy[input.authMethod];
+  const policy = policyOf(input.authMethod, input.devicePanel);
   const token = randomToken();
   const idleMs = input.mfaVerified ? policy.idleMs : sessionPolicy.mfaPendingMs;
   const session = await tx.session.create({
@@ -309,7 +321,8 @@ export async function authenticate(
       data: {
         lastSeenAt: now,
         idleExpiresAt: new Date(
-          now.getTime() + sessionPolicy[session.authMethod].idleMs,
+          now.getTime() +
+            policyOf(session.authMethod, session.device?.panel).idleMs,
         ),
       },
     });

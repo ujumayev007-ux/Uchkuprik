@@ -125,11 +125,13 @@ function AuthStep({
   return <Navigate to={pending ?? '/'} replace />;
 }
 
-/** Print views render without the application shell but still need a session. */
+/** Print views and the TV queue render without the application shell but still need a session. */
 function SessionOnly({ children }: { children: React.ReactNode }) {
   const me = useMe();
   if (me.isPending) return <LoadingState />;
-  if (!me.data) return <Navigate to="/kirish" replace />;
+  // Terminal applications (Kassa, Oshxona, TV...) sign in with the staff PIN pad.
+  if (!me.data)
+    return <Navigate to={isPanelShell() ? '/pin' : '/kirish'} replace />;
   return <>{children}</>;
 }
 

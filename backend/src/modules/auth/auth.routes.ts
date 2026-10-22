@@ -579,19 +579,24 @@ export function authRouter(services: Services) {
 
   // A terminal registered for a panel only lets in staff whose role allows that panel
   // (checked here, on the server, never by the app). Other terminals accept every PIN user.
-  const panelPermission: Record<string, Permission> = {
-    CASHIER: 'pos.access',
-    KITCHEN: 'kitchen.access',
-    WAITER: 'orders.create',
+  const panelPermission: Record<string, Permission[]> = {
+    CASHIER: ['pos.access'],
+    KITCHEN: ['kitchen.access'],
+    WAITER: ['orders.create'],
+    // TV display: anyone who may see the order queue.
+    DISPLAY: ['queue.view', 'kitchen.access', 'orders.view'],
   };
   const panelRoles = (panel: string) => {
-    const key = panelPermission[panel];
-    return key
+    const keys = panelPermission[panel];
+    return keys
       ? {
           roles: {
             some: {
               role: {
-                OR: [{ systemKey: 'owner' }, { permissions: { has: key } }],
+                OR: [
+                  { systemKey: 'owner' },
+                  ...keys.map((key) => ({ permissions: { has: key } })),
+                ],
               },
             },
           },
@@ -696,6 +701,7 @@ export function authRouter(services: Services) {
         mfaVerified: true,
         branchId: device.branchId,
         deviceId: device.id,
+        devicePanel: device.panel,
         req,
       });
       await audit(tx, req, {

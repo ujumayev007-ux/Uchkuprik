@@ -243,10 +243,40 @@ function setState(next) {
   paint();
 }
 
+/**
+ * The same restaurant server (its signed key verified by discovery) now answers on
+ * another address (another Wi-Fi, a new IP). Cookies belong to an address, so this
+ * application's device registration and signed-in session are carried over to the new
+ * one; otherwise the terminal would look unregistered after every address change.
+ */
+async function carryCookies(fromUrl, toUrl) {
+  if (!fromUrl || new URL(fromUrl).hostname === new URL(toUrl).hostname) return;
+  const jar = session.defaultSession.cookies;
+  const cookies = await jar.get({ url: fromUrl });
+  for (const c of cookies)
+    await jar.set({
+      url: toUrl,
+      name: c.name,
+      value: c.value,
+      path: c.path || '/',
+      httpOnly: c.httpOnly,
+      secure: c.secure,
+      sameSite: c.sameSite,
+      ...(c.session ? {} : { expirationDate: c.expirationDate }),
+    });
+  await jar.flushStore();
+  log(`sign-in moved to the new server address (${cookies.length} cookies)`);
+}
+
 /** Remembers `server` (a discovery answer) as this application's server. */
-function useServer(server) {
+async function useServer(server) {
   if (!isLocalHost(server.host)) return false;
   const url = `http://${server.host}:${server.port}`;
+  const before = read(SETTINGS);
+  if (before.url && before.serverKey === server.key)
+    await carryCookies(before.url, url).catch((error) =>
+      log(`cookie carry failed: ${error.message}`),
+    );
   saveSettings({ url, serverId: server.id, serverKey: server.key });
   currentUrl = url;
   log(`server ${server.fingerprint} at ${url} (${server.name})`);
@@ -256,7 +286,7 @@ function useServer(server) {
 /** Makes `server` (a discovery answer) this application's server and opens it. */
 async function adopt(server) {
   const before = currentUrl;
-  if (!useServer(server)) return false;
+  if (!(await useServer(server))) return false;
   const changed = currentUrl !== before;
   if (changed || onLocalFile())
     await win
@@ -662,8 +692,16 @@ ipcMain.handle('admin:save', async (event, value) => {
       error:
         'Bu manzilga ulanib bo‘lmadi. Kassa kompyuteri yoqilganini va bir xil Wi‑Fi’da ekaningizni tekshiring.',
     };
-  fs.mkdirSync(DATA, { recursive: true });
-  fs.writeFileSync(SETTINGS, JSON.stringify({ url }), { mode: 0o600 });
+  // Pair with the server answering at that address (its signed key), so a later address
+  // change is found again automatically; printer settings are kept.
+  const host = new URL(url).hostname;
+  const found = (
+    await lan.discover({ port: LAN_PORT, timeoutMs: 2500 }).catch(() => [])
+  ).find((server) => server.host === host);
+  const before = read(SETTINGS);
+  if (found && before.url && before.serverKey === found.key)
+    await carryCookies(before.url, url).catch(() => undefined);
+  saveSettings({ url, serverId: found?.id, serverKey: found?.key });
   currentUrl = url;
   log(`server address set to ${url}`);
   setTimeout(() => {
@@ -763,6 +801,16 @@ function menu() {
 
 async function boot() {
   currentUrl = serverUrl();
+  // Registration and sign-in survive a power cut: changed cookies are written to disk
+  // at once (Chromium otherwise writes them only every few seconds).
+  let flushTimer = null;
+  session.defaultSession.cookies.on('changed', () => {
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(
+      () => void session.defaultSession.cookies.flushStore().catch(() => {}),
+      300,
+    );
+  });
   // Printing and notifications are the only device features a restaurant page may use.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) =>
     done(permission === 'notifications'),
@@ -873,7 +921,7 @@ async function boot() {
         pinned: paired.key,
         timeoutMs: 2000,
       });
-      if (server && useServer(server)) {
+      if (server && (await useServer(server))) {
         ok = await reachable(currentUrl, 4000);
         if (ok) break;
       }
