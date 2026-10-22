@@ -99,3 +99,51 @@ export async function loadInventory(
   }));
   return { branch, warehouse: warehouse.name, balances, movements };
 }
+
+const purchaseStatus: Record<string, string> = {
+  DRAFT: 'Qoralama',
+  RECEIVED: 'Qabul qilingan',
+  CANCELLED: 'Bekor qilingan',
+};
+
+/**
+ * Purchases of the branch's warehouse in the period (by the receiving day, or the
+ * creation day of a purchase not received yet), in the restaurant's calendar days.
+ */
+export async function loadPurchases(
+  services: Services,
+  auth: AuthContext,
+  query: SalesQuery,
+) {
+  const { db } = services;
+  const { branch, from, to } = await reportRange(services, auth, query);
+  const warehouse = await db.$transaction((tx) =>
+    defaultWarehouse(tx, auth.tenantId, branch.id),
+  );
+  const rows = await db.$queryRaw<
+    {
+      at: Date;
+      supplier: string;
+      invoiceNo: string | null;
+      status: string;
+      lines: bigint;
+      total: number;
+    }[]
+  >`
+    SELECT COALESCE(p."receivedAt", p."createdAt") AS at, s.name AS supplier, p."invoiceNo" AS "invoiceNo",
+           p.status::text AS status, (SELECT count(*) FROM purchase_lines l WHERE l."purchaseId" = p.id) AS lines,
+           p.total AS total
+    FROM purchases p JOIN suppliers s ON s.id = p."supplierId"
+    WHERE p."tenantId" = ${auth.tenantId}::uuid AND p."warehouseId" = ${warehouse.id}::uuid
+      AND ((COALESCE(p."receivedAt", p."createdAt") AT TIME ZONE 'UTC') AT TIME ZONE ${branch.timezone})::date BETWEEN ${from}::date AND ${to}::date
+    ORDER BY at ASC LIMIT 2000`;
+  return rows.map((row) => ({
+    at: row.at,
+    supplier: row.supplier,
+    invoiceNo: row.invoiceNo ?? '',
+    status: purchaseStatus[row.status] ?? row.status,
+    cancelled: row.status === 'CANCELLED',
+    lines: Number(row.lines),
+    total: row.total,
+  }));
+}

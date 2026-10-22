@@ -21,6 +21,7 @@ import {
 import { t } from '../i18n';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
+import { InventoryExportDialog } from './InventoryExportDialog';
 import { MarketTab } from './MarketTab';
 import { StockRequestsTab } from './StockRequestsTab';
 import { SupplierReturnDialog } from './SupplierReturnDialog';
@@ -1122,12 +1123,24 @@ type Tab =
 export function InventoryPage() {
   const { data: me } = useMe();
   const [tab, setTab] = useState<Tab>('stock');
+  const [exporting, setExporting] = useState(false);
   const tabs: Tab[] = can(me, 'purchasing.manage')
     ? ['stock', 'market', 'requests', 'purchases', 'suppliers', 'movements']
     : ['stock', 'requests', 'movements'];
   return (
     <>
-      <PageHeader title={t.inventory.title} subtitle={t.inventory.subtitle} />
+      <PageHeader
+        title={t.inventory.title}
+        subtitle={t.inventory.subtitle}
+        actions={
+          <Button onClick={() => setExporting(true)}>
+            {t.inventory.export.button}
+          </Button>
+        }
+      />
+      {exporting && (
+        <InventoryExportDialog onClose={() => setExporting(false)} />
+      )}
       <div className="tabs" role="tablist">
         {tabs.map((key) => (
           <button

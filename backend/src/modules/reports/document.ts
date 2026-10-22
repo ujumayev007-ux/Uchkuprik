@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Services } from '../../context.js';
 import type { AuthContext } from '../auth/session.js';
-import { canSeeStockCost, loadInventory } from './inventory.js';
-import { loadSales, type SalesQuery } from './sales.js';
+import { canSeeStockCost, loadInventory, loadPurchases } from './inventory.js';
+import { loadSales, reportRange, type SalesQuery } from './sales.js';
 
 // ------------------------------------------------------------------ layout
 
@@ -15,7 +15,11 @@ export const sectionKeys = [
   'products',
   'stockBalances',
   'stockMovements',
+  // Ombor exports only (off in the Hisobotlar layout unless switched on there).
+  'stockLowStock',
+  'stockPurchases',
 ] as const;
+const optInSections = new Set<string>(['stockLowStock', 'stockPurchases']);
 export type SectionKey = (typeof sectionKeys)[number];
 
 export type Kind = 'text' | 'money' | 'int' | 'qty' | 'time';
@@ -46,7 +50,7 @@ export const sectionCatalog: Record<
   SectionKey,
   {
     title: string;
-    permission: 'reports.view' | 'inventory.view';
+    permission: 'reports.view' | 'inventory.view' | 'purchasing.manage';
     columns: Column[];
   }
 > = {
@@ -132,6 +136,30 @@ export const sectionCatalog: Record<
       col('reason', 'Izoh'),
     ],
   },
+  stockLowStock: {
+    title: 'Kam qolgan va tugagan mahsulotlar',
+    permission: 'inventory.view',
+    columns: [
+      col('name', 'Mahsulot', 'text', true),
+      col('unit', 'Birlik'),
+      col('quantity', 'Qoldiq', 'qty'),
+      col('minStock', 'Minimal qoldiq', 'qty'),
+      col('shortage', 'Yetishmaydi', 'qty'),
+      col('status', 'Holati'),
+    ],
+  },
+  stockPurchases: {
+    title: 'Xaridlar',
+    permission: 'purchasing.manage',
+    columns: [
+      col('at', 'Sana', 'time', true),
+      col('supplier', 'Yetkazib beruvchi'),
+      col('invoiceNo', 'Hujjat raqami'),
+      col('status', 'Holati'),
+      col('lines', 'Pozitsiyalar', 'int'),
+      col('total', 'Summa (so‘m)', 'money'),
+    ],
+  },
 };
 
 export const layoutSchema = z.object({
@@ -144,7 +172,13 @@ export const layoutSchema = z.object({
 });
 export type Layout = z.infer<typeof layoutSchema>;
 
-/** Every section appears once, in the saved order; missing ones are appended. */
+/** Sections of the Hisobotlar layout (screen, preview and its exports). */
+export const layoutSectionKeys = sectionKeys.filter(
+  (key) => !optInSections.has(key),
+);
+
+/** Every Hisobotlar section appears once, in the saved order; missing ones are appended.
+ * The Ombor-only sections stay out of this layout. */
 export function normalizeLayout(value: unknown): Layout {
   const parsed = layoutSchema.safeParse(value);
   const saved = parsed.success
@@ -153,11 +187,11 @@ export function normalizeLayout(value: unknown): Layout {
   const seen = new Set<string>();
   const sections: Layout['sections'] = [];
   for (const entry of saved.sections)
-    if (!seen.has(entry.key)) {
+    if (!seen.has(entry.key) && !optInSections.has(entry.key)) {
       seen.add(entry.key);
       sections.push(entry);
     }
-  for (const key of sectionKeys)
+  for (const key of layoutSectionKeys)
     if (!seen.has(key)) sections.push({ key, enabled: true });
   const hiddenColumns: Layout['hiddenColumns'] = {};
   for (const key of sectionKeys) {
@@ -236,6 +270,12 @@ export async function buildReportDoc(
   auth: AuthContext,
   query: SalesQuery,
   layout: Layout,
+  // Ombor export: its own title and filters on the stock sections.
+  options: {
+    title?: string;
+    search?: string;
+    stockStatus?: 'all' | 'low' | 'out';
+  } = {},
 ): Promise<ReportDoc> {
   const wanted = layout.sections.filter((entry) => entry.enabled);
   const skipped: string[] = [];
@@ -259,15 +299,30 @@ export async function buildReportDoc(
     ? await loadSales(services, auth, query, true)
     : null;
   const stock = needsStock ? await loadInventory(services, auth, query) : null;
-  const branch = (sales ?? stock)!.branch;
+  const purchases = allowed.some((entry) => entry.key === 'stockPurchases')
+    ? await loadPurchases(services, auth, query)
+    : null;
+  const search = options.search?.trim().toLocaleLowerCase('uz') ?? '';
+  const matches = (name: string) =>
+    !search || name.toLocaleLowerCase('uz').includes(search);
+  const statusOk = (status: string) =>
+    !options.stockStatus ||
+    options.stockStatus === 'all' ||
+    (options.stockStatus === 'out'
+      ? status === 'OUT'
+      : status === 'LOW' || status === 'OUT');
+  // No sales section: the branch and dates come from the same range check
+  // (also when no section is allowed at all, so the file says so instead of failing).
+  const range = sales ? null : await reportRange(services, auth, query);
+  const branch = sales?.branch ?? range!.branch;
   const tenant = await services.db.tenant.findUnique({
     where: { id: auth.tenantId },
     select: { name: true },
   });
   const timezone = branch.timezone;
   const report = sales?.report;
-  const from = report?.from ?? query.from ?? '';
-  const to = report?.to ?? query.to ?? '';
+  const from = report?.from ?? range!.from.toISOString().slice(0, 10);
+  const to = report?.to ?? range!.to.toISOString().slice(0, 10);
 
   const sections: SectionDoc[] = [];
   for (const { key } of allowed) {
@@ -375,36 +430,77 @@ export async function buildReportDoc(
       // The value column exists only for those who may see costs.
       if (!canSeeStockCost(auth))
         columns = columns.filter((c) => c.key !== 'value');
-      rows = stock.balances.map((row) => ({
-        name: row.name,
-        unit: row.unit,
-        quantity: row.quantity,
-        minStock: row.minStock,
-        status: stockStatus[row.status] ?? row.status,
-        ...('value' in row ? { value: row.value } : {}),
-      }));
+      rows = stock.balances
+        .filter((row) => matches(row.name) && statusOk(row.status))
+        .map((row) => ({
+          name: row.name,
+          unit: row.unit,
+          quantity: row.quantity,
+          minStock: row.minStock,
+          status: stockStatus[row.status] ?? row.status,
+          ...('value' in row ? { value: row.value } : {}),
+        }));
       if (columns.some((c) => c.key === 'value'))
         totals = {
           name: 'Jami qiymat',
-          value: stock.balances.reduce(
-            (sum, row) => sum + ('value' in row ? Number(row.value) : 0),
-            0,
-          ),
+          value: rows.reduce((sum, row) => sum + Number(row.value ?? 0), 0),
         };
       note = `Ombor: ${stock.warehouse}. Qoldiqlar hisobot tayyorlangan paytdagi holat.`;
     } else if (key === 'stockMovements' && stock) {
-      rows = stock.movements.map((row) => ({
-        at: localTime(row.at, timezone),
-        name: row.name,
-        type: row.type,
-        quantity: row.quantity,
-        unit: row.unit,
-        balanceAfter: row.balanceAfter,
-        reason: row.reason,
-      }));
+      rows = stock.movements
+        .filter((row) => matches(row.name))
+        .map((row) => ({
+          at: localTime(row.at, timezone),
+          name: row.name,
+          type: row.type,
+          quantity: row.quantity,
+          unit: row.unit,
+          balanceAfter: row.balanceAfter,
+          reason: row.reason,
+        }));
       if (rows.length >= 2000)
         note =
           'Faqat birinchi 2000 ta harakat ko‘rsatildi: davrni qisqartiring.';
+    } else if (key === 'stockLowStock' && stock) {
+      rows = stock.balances
+        .filter(
+          (row) =>
+            row.status !== 'OK' && matches(row.name) && statusOk(row.status),
+        )
+        .map((row) => {
+          const short = Number(row.minStock) - Number(row.quantity);
+          return {
+            name: row.name,
+            unit: row.unit,
+            quantity: row.quantity,
+            minStock: row.minStock,
+            shortage: short > 0 ? String(Number(short.toFixed(3))) : '0',
+            status: stockStatus[row.status] ?? row.status,
+          };
+        });
+      note = `Ombor: ${stock.warehouse}. ${rows.length} ta mahsulot minimal qoldiqdan kam.`;
+    } else if (key === 'stockPurchases' && purchases) {
+      rows = purchases
+        .filter((row) => matches(row.supplier))
+        .map((row) => ({
+          at: localTime(row.at, timezone),
+          supplier: row.supplier,
+          invoiceNo: row.invoiceNo,
+          status: row.status,
+          lines: row.lines,
+          total: row.total,
+        }));
+      totals = {
+        at: 'Jami (bekor qilinganlarsiz)',
+        lines: purchases
+          .filter((row) => !row.cancelled && matches(row.supplier))
+          .reduce((sum, row) => sum + row.lines, 0),
+        total: purchases
+          .filter((row) => !row.cancelled && matches(row.supplier))
+          .reduce((sum, row) => sum + row.total, 0),
+      };
+      if (rows.length >= 2000)
+        note = 'Faqat birinchi 2000 ta xarid ko‘rsatildi: davrni qisqartiring.';
     }
     sections.push({
       key,
@@ -418,7 +514,7 @@ export async function buildReportDoc(
 
   const generated = new Date();
   return {
-    title: 'FastFood hisoboti',
+    title: options.title ?? 'FastFood hisoboti',
     restaurant: tenant?.name ?? '',
     branch: branch.name,
     period: from === to ? from : `${from} — ${to}`,
@@ -426,6 +522,12 @@ export async function buildReportDoc(
     filters: [
       `Filial: ${branch.name}`,
       `Davr: ${from === to ? from : `${from} — ${to}`}`,
+      ...(search ? [`Qidiruv: ${options.search?.trim()}`] : []),
+      ...(options.stockStatus === 'low'
+        ? ['Holat: kam va tugagan']
+        : options.stockStatus === 'out'
+          ? ['Holat: tugagan']
+          : []),
     ],
     notes: skipped.length
       ? [

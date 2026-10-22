@@ -97,6 +97,10 @@ export function toPdf(doc: ReportDoc): Promise<Buffer> {
         .strokeColor('#CCCCCC')
         .lineWidth(0.5)
         .stroke();
+      // Each cell moved the text cursor: back to the row start and the left margin,
+      // so the caller advances by exactly one row and the next title starts at the margin.
+      pdf.x = MARGIN;
+      pdf.y = y;
     };
 
     const table = (section: SectionDoc) => {

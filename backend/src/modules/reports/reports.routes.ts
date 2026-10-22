@@ -8,9 +8,9 @@ import {
   buildReportDoc,
   displayCell,
   layoutSchema,
+  layoutSectionKeys,
   normalizeLayout,
   sectionCatalog,
-  sectionKeys,
 } from './document.js';
 import { toDocx } from './export/docx.js';
 import { toPdf } from './export/pdf.js';
@@ -76,7 +76,7 @@ export function reportsRouter(services: Services) {
       });
       res.json({
         layout: normalizeLayout(row?.config),
-        catalog: sectionKeys.map((key) => ({
+        catalog: layoutSectionKeys.map((key) => ({
           key,
           title: sectionCatalog[key].title,
           // A section the user may not see is listed but can not be exported.
@@ -197,6 +197,81 @@ export function reportsRouter(services: Services) {
         .set({
           'Content-Type': format.mime,
           'Content-Disposition': `attachment; filename="hisobot-${stamp}.${query.format}"`,
+          'Cache-Control': 'no-store',
+        })
+        .send(file);
+    },
+  );
+
+  // Ombor (inventory) export: the chosen stock sections and columns for the chosen days,
+  // filtered by name and stock status. Each section keeps its own permission check
+  // (purchases need purchasing.manage, cost values the cost permission).
+  const stockSections = [
+    'stockBalances',
+    'stockLowStock',
+    'stockMovements',
+    'stockPurchases',
+  ] as const;
+  router.get(
+    '/inventory/export',
+    requireAuth(),
+    requirePermission('inventory.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const query = parse(
+        salesQuery.extend({
+          format: z.enum(['xlsx', 'docx', 'pdf']),
+          sections: z
+            .string()
+            .transform((value) => value.split(',').filter(Boolean))
+            .pipe(z.array(z.enum(stockSections)).min(1).max(4)),
+          // "section.column" pairs to leave out.
+          hidden: z
+            .string()
+            .max(1000)
+            .optional()
+            .transform((value) => (value ? value.split(',') : [])),
+          q: z.string().trim().max(60).optional(),
+          status: z.enum(['all', 'low', 'out']).default('all'),
+        }),
+        req.query,
+      );
+      const hiddenColumns: Record<string, string[]> = {};
+      for (const pair of query.hidden) {
+        const [section, column] = pair.split('.');
+        if (section && column) (hiddenColumns[section] ??= []).push(column);
+      }
+      const layout = layoutSchema.parse({
+        sections: [...new Set(query.sections)].map((key) => ({
+          key,
+          enabled: true,
+        })),
+        hiddenColumns,
+      });
+      const doc = await buildReportDoc(services, auth, query, layout, {
+        title: 'Ombor hisoboti',
+        ...(query.q ? { search: query.q } : {}),
+        stockStatus: query.status,
+      });
+      const format = formats[query.format];
+      const file = await format.build(doc);
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'inventory.export',
+        entityType: 'report',
+        data: {
+          format: query.format,
+          period: doc.period,
+          sections: query.sections,
+        },
+      });
+      const stamp = doc.period.replace(/[^0-9-]+/g, '_');
+      res
+        .status(200)
+        .set({
+          'Content-Type': format.mime,
+          'Content-Disposition': `attachment; filename="ombor-${stamp}.${query.format}"`,
           'Cache-Control': 'no-store',
         })
         .send(file);

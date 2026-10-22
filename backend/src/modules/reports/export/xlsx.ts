@@ -46,7 +46,11 @@ function cellOf(
     return {
       value: Number(value),
       type: Number,
-      format: kind === 'qty' ? '#,##0.###' : '#,##0',
+      // Whole quantities without a trailing separator ("3 000", not "3 000.").
+      format:
+        kind === 'qty' && !Number.isInteger(Number(value))
+          ? '#,##0.###'
+          : '#,##0',
       align: 'right',
       ...base,
     };

@@ -620,6 +620,7 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Hisobotlarni faylga yuklab olish (CSV)',
     routes: [
       'GET /reports/export',
+      'GET /inventory/export',
       'GET /reports/sales.csv',
       'GET /reports/pnl.csv',
       'GET /payroll/periods/:id/export.csv',
