@@ -25,7 +25,10 @@ const binary = (agent: Agent, path: string) =>
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
       res.on('end', () => done(null, Buffer.concat(chunks)));
     });
-const today = new Date().toISOString().slice(0, 10);
+// The restaurant's calendar day (Asia/Tashkent), not the UTC one.
+const today = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Tashkent',
+}).format(new Date());
 const sheetText = (file: Buffer) => {
   const zip = unzipSync(new Uint8Array(file));
   return Object.entries(zip)
@@ -63,12 +66,12 @@ async function setup() {
     }).expect(201)
   ).body.id as string;
   await post(owner, `/purchases/${purchase}/receive`).expect(200);
-  return { tenant, owner, oil };
+  return { tenant, owner, oil, rice };
 }
 
 describe('Ombor export', () => {
   it('exports the chosen sections, columns and filters in all three formats', async () => {
-    const { tenant, owner } = await setup();
+    const { tenant, owner, rice } = await setup();
     const base = `/inventory/export?from=${today}&to=${today}`;
     const xlsx = await binary(
       owner,
@@ -109,6 +112,22 @@ describe('Ombor export', () => {
     );
     expect(flourOnly).toContain('Qidiruv: un');
     expect(flourOnly).not.toContain('Guruch');
+    // Chosen products only; the average purchase price is shown to cost viewers.
+    const riceOnly = sheetText(
+      (
+        await binary(
+          owner,
+          `${base}&format=xlsx&sections=stockBalances,stockMovements&items=${rice}`,
+        ).expect(200)
+      ).body as Buffer,
+    );
+    expect(riceOnly).toContain('Guruch');
+    expect(riceOnly).not.toContain('>Un<');
+    expect(riceOnly).toContain('O‘rtacha narx');
+    expect(riceOnly).toMatch(/>20</);
+    await owner
+      .get(`/api${base}&format=xlsx&sections=stockBalances&items=abc`)
+      .expect(400);
     const out = sheetText(
       (
         await binary(

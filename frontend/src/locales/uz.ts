@@ -1158,6 +1158,8 @@ export const uz = {
         out: 'Faqat tugagan',
       },
       columnsLabel: 'Ustunlar',
+      products: 'Mahsulotlar',
+      allProducts: 'hammasi',
       chooseSection:
         'Kamida bitta bo‘limni tanlang va sanalarni to‘g‘ri kiriting.',
       sections: {
@@ -1173,6 +1175,7 @@ export const uz = {
         minStock: 'Minimal qoldiq',
         status: 'Holati',
         value: 'Qiymati (so‘m)',
+        avgCost: 'O‘rtacha narx',
         shortage: 'Yetishmaydi',
         name: 'Mahsulot',
         type: 'Turi',

@@ -1,7 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { can, useMe } from '../auth/session';
 import { Checkbox, Dialog, SelectField, TextField } from '../components/ui';
 import { t } from '../i18n';
+import { api } from '../lib/api';
 
 type Section =
   'stockBalances' | 'stockLowStock' | 'stockMovements' | 'stockPurchases';
@@ -17,7 +19,7 @@ const today = () => {
 // The same sections and optional columns as the server's Ombor export (the first,
 // fixed column of each section is always included).
 const sectionColumns: Record<Section, readonly string[]> = {
-  stockBalances: ['unit', 'quantity', 'minStock', 'status', 'value'],
+  stockBalances: ['unit', 'quantity', 'minStock', 'status', 'avgCost', 'value'],
   stockLowStock: ['unit', 'quantity', 'minStock', 'shortage', 'status'],
   stockMovements: [
     'name',
@@ -47,7 +49,12 @@ export function InventoryExportDialog({ onClose }: { onClose: () => void }) {
     me?.financial?.cost !== false;
   const columnsOf = (key: Section) =>
     sectionColumns[key].filter(
-      (column) => costs || !(key === 'stockBalances' && column === 'value'),
+      (column) =>
+        costs ||
+        !(
+          key === 'stockBalances' &&
+          (column === 'value' || column === 'avgCost')
+        ),
     );
   const available = (Object.keys(sectionColumns) as Section[]).filter(
     (key) => key !== 'stockPurchases' || purchasing,
@@ -58,6 +65,15 @@ export function InventoryExportDialog({ onClose }: { onClose: () => void }) {
   const [hidden, setHidden] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'all' | 'low' | 'out'>('all');
+  // Chosen products (none = every product).
+  const [items, setItems] = useState<string[]>([]);
+  const products = useQuery({
+    queryKey: ['inventory', 'items'],
+    queryFn: () =>
+      api<{ items: { id: string; name: string; isActive: boolean }[] }>(
+        '/inventory/items',
+      ).then((data) => data.items),
+  });
 
   const toggle = <T,>(list: T[], value: T) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -74,6 +90,7 @@ export function InventoryExportDialog({ onClose }: { onClose: () => void }) {
   );
   if (hiddenPairs.length) params.set('hidden', hiddenPairs.join(','));
   if (search.trim()) params.set('q', search.trim());
+  if (items.length) params.set('items', items.join(','));
   const ready = sections.length > 0 && !!from && !!to && from <= to;
   const link = (format: Format, label: string) =>
     ready ? (
@@ -138,6 +155,23 @@ export function InventoryExportDialog({ onClose }: { onClose: () => void }) {
           </SelectField>
         </div>
         <p className="muted small">{text.periodHint}</p>
+        {(products.data ?? []).length > 0 && (
+          <details className="card">
+            <summary>
+              {text.products} ({items.length ? items.length : text.allProducts})
+            </summary>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 20px' }}>
+              {(products.data ?? []).map((product) => (
+                <Checkbox
+                  key={product.id}
+                  label={product.name}
+                  checked={items.includes(product.id)}
+                  onChange={() => setItems((list) => toggle(list, product.id))}
+                />
+              ))}
+            </div>
+          </details>
+        )}
         {available.map((key) => (
           <div key={key} className="card stack">
             <Checkbox

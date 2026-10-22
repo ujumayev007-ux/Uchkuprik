@@ -120,6 +120,7 @@ export const sectionCatalog: Record<
       col('quantity', 'Qoldiq', 'qty'),
       col('minStock', 'Minimal qoldiq', 'qty'),
       col('status', 'Holati'),
+      col('avgCost', 'O‘rtacha narx (so‘m / birlik)', 'qty'),
       col('value', 'Qiymati (so‘m)', 'money'),
     ],
   },
@@ -275,6 +276,8 @@ export async function buildReportDoc(
     title?: string;
     search?: string;
     stockStatus?: 'all' | 'low' | 'out';
+    // Chosen products (stock item ids); empty = every product.
+    items?: string[];
   } = {},
 ): Promise<ReportDoc> {
   const wanted = layout.sections.filter((entry) => entry.enabled);
@@ -305,6 +308,8 @@ export async function buildReportDoc(
   const search = options.search?.trim().toLocaleLowerCase('uz') ?? '';
   const matches = (name: string) =>
     !search || name.toLocaleLowerCase('uz').includes(search);
+  const picked = new Set(options.items ?? []);
+  const chosen = (id: string) => picked.size === 0 || picked.has(id);
   const statusOk = (status: string) =>
     !options.stockStatus ||
     options.stockStatus === 'all' ||
@@ -429,15 +434,20 @@ export async function buildReportDoc(
     } else if (key === 'stockBalances' && stock) {
       // The value column exists only for those who may see costs.
       if (!canSeeStockCost(auth))
-        columns = columns.filter((c) => c.key !== 'value');
+        columns = columns.filter(
+          (c) => c.key !== 'value' && c.key !== 'avgCost',
+        );
       rows = stock.balances
-        .filter((row) => matches(row.name) && statusOk(row.status))
+        .filter(
+          (row) => chosen(row.id) && matches(row.name) && statusOk(row.status),
+        )
         .map((row) => ({
           name: row.name,
           unit: row.unit,
           quantity: row.quantity,
           minStock: row.minStock,
           status: stockStatus[row.status] ?? row.status,
+          ...('avgCost' in row ? { avgCost: row.avgCost } : {}),
           ...('value' in row ? { value: row.value } : {}),
         }));
       if (columns.some((c) => c.key === 'value'))
@@ -448,7 +458,7 @@ export async function buildReportDoc(
       note = `Ombor: ${stock.warehouse}. Qoldiqlar hisobot tayyorlangan paytdagi holat.`;
     } else if (key === 'stockMovements' && stock) {
       rows = stock.movements
-        .filter((row) => matches(row.name))
+        .filter((row) => chosen(row.itemId) && matches(row.name))
         .map((row) => ({
           at: localTime(row.at, timezone),
           name: row.name,
@@ -465,7 +475,10 @@ export async function buildReportDoc(
       rows = stock.balances
         .filter(
           (row) =>
-            row.status !== 'OK' && matches(row.name) && statusOk(row.status),
+            row.status !== 'OK' &&
+            chosen(row.id) &&
+            matches(row.name) &&
+            statusOk(row.status),
         )
         .map((row) => {
           const short = Number(row.minStock) - Number(row.quantity);

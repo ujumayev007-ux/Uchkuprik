@@ -8,8 +8,8 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 | 2 | Admin kompyuteri o‘chiq bo‘lsa ham LAN ishlashi | bajarildi |
 | 3 | Ombor / Bozorlik soddalashtirish | bajarildi |
 | 4 | Owner EXE va Render 502 | bajarildi |
-| 5 | Ombor eksporti (xlsx/docx/pdf) | jarayonda |
-| 6 | Oshxona rejimlari | kutilmoqda |
+| 5 | Ombor eksporti (xlsx/docx/pdf) | bajarildi |
+| 6 | Oshxona rejimlari | jarayonda |
 
 ## 1-vazifa natijasi
 - `GET /queue/display`: ro‘yxatdan o‘tgan, tasdiqlangan DISPLAY qurilmasi faqat raqam va holatni oladi (sessiyasiz). LAN, litsenziya, bloklash qoidalari amal qiladi.
@@ -35,9 +35,14 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 - Render jurnallarini ko‘rib bo‘lmadi (Render API kaliti yo‘q). Doimiy yechim: Render pullik tarif (uxlamaydi).
 - Tekshiruv: 2/2 (soxta 502 → o‘zi tiklandi).
 
+## 5-vazifa natijasi
+- Eksport avvaldan bor edi (ca705ae): Excel/Word/PDF, bo‘limlar, ustunlar, sana, qidiruv, holat, qiymat va jamilar, ruxsatlar.
+- Qo‘shildi: aniq mahsulotlarni tanlash (qoldiq, kam qolgan, harakatlar) va «O‘rtacha narx» ustuni (faqat tannarxni ko‘rish ruxsati borlarga).
+- Tekshiruv: eksport testlari 28/28 (test sanasi restoran vaqt zonasiga to‘g‘rilandi).
+
 ## Yig‘ish (oxirida bir marta)
 - Server 1.14.9 → yangi versiya (backend/frontend o‘zgardi).
 - Owner EXE 1.7.1.
 
 ## Keyingi qadam
-5-vazifa: tashxis.
+6-vazifa: tashxis.

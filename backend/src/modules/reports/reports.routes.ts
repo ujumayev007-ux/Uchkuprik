@@ -233,6 +233,13 @@ export function reportsRouter(services: Services) {
             .transform((value) => (value ? value.split(',') : [])),
           q: z.string().trim().max(60).optional(),
           status: z.enum(['all', 'low', 'out']).default('all'),
+          // Chosen products: comma list of stock item ids (empty = all).
+          items: z
+            .string()
+            .max(20_000)
+            .optional()
+            .transform((value) => (value ? value.split(',') : []))
+            .pipe(z.array(z.uuid()).max(500)),
         }),
         req.query,
       );
@@ -252,6 +259,7 @@ export function reportsRouter(services: Services) {
         title: 'Ombor hisoboti',
         ...(query.q ? { search: query.q } : {}),
         stockStatus: query.status,
+        items: query.items,
       });
       const format = formats[query.format];
       const file = await format.build(doc);

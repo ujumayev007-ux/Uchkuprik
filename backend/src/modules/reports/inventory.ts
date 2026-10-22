@@ -53,6 +53,7 @@ export async function loadInventory(
           ? 'LOW'
           : 'OK';
       return {
+        id: item.id,
         name: item.name,
         unit: baseUnitLabels[item.baseUnit],
         quantity: quantity.toString(),
@@ -60,6 +61,10 @@ export async function loadInventory(
         status,
         ...(costs
           ? {
+              // Average purchase price per base unit (g, ml, dona).
+              avgCost: new Decimal(item.balances[0]?.avgCost ?? 0)
+                .toDecimalPlaces(3)
+                .toString(),
               value: quantity.isPositive()
                 ? Math.round(
                     quantity.times(item.balances[0]?.avgCost ?? 0).toNumber(),
@@ -74,6 +79,7 @@ export async function loadInventory(
   const rows = await db.$queryRaw<
     {
       at: Date;
+      itemId: string;
       name: string;
       unit: string;
       type: string;
@@ -82,7 +88,7 @@ export async function loadInventory(
       reason: string | null;
     }[]
   >`
-    SELECT m."createdAt" AS at, s.name AS name, s."baseUnit"::text AS unit, m.type::text AS type,
+    SELECT m."createdAt" AS at, s.id AS "itemId", s.name AS name, s."baseUnit"::text AS unit, m.type::text AS type,
            m.quantity AS quantity, m."balanceAfter" AS "balanceAfter", m.reason AS reason
     FROM stock_movements m JOIN stock_items s ON s.id = m."stockItemId"
     WHERE m."tenantId" = ${auth.tenantId}::uuid AND m."warehouseId" = ${warehouse.id}::uuid
@@ -90,6 +96,7 @@ export async function loadInventory(
     ORDER BY m."createdAt" ASC LIMIT 2000`;
   const movements = rows.map((row) => ({
     at: row.at,
+    itemId: row.itemId,
     name: row.name,
     unit: baseUnitLabels[row.unit as keyof typeof baseUnitLabels] ?? row.unit,
     type: movementLabels[row.type] ?? row.type,
