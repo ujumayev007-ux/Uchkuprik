@@ -32,6 +32,7 @@ import {
 import { isVendorComputer } from '../pages/VendorPage';
 import { PendingOrders } from './PendingOrders';
 import { StaffAnnouncer, VoiceButton } from './StaffAnnouncer';
+import { KitchenAutoPrint } from './TerminalPrinter';
 import { StockAlerts } from './StockAlerts';
 import { useBranding } from '../lib/branding';
 import { BrandingHost } from './BrandingHost';
@@ -644,6 +645,7 @@ export function AppShell() {
             <>
               <VoiceButton />
               <StaffAnnouncer />
+              <KitchenAutoPrint />
             </>
           )}
           {me.tenantKind === 'BUSINESS' && (

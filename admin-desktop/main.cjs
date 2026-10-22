@@ -386,27 +386,48 @@ ipcMain.handle('printer:set', (event, value) => {
   return next;
 });
 
-/** Prints a receipt page of this server silently on the chosen Windows printer. */
-ipcMain.handle('printer:print', async (event, target) => {
-  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
-  const pagePath = String(target || '');
-  if (!/^\/(chek\/[0-9a-f-]{36}|chek-sinov)$/.test(pagePath))
-    throw new Error('Noto‘g‘ri sahifa');
-  const config = receiptPrinter();
+/**
+ * Opens a print page of this server in a hidden window, waits until `selector` is drawn
+ * (anything else — sign-in page, error — is never printed), lets `decide` read the page,
+ * and prints it silently on the chosen Windows printer when `decide` says so.
+ * `fitHeight`: the paper is cut right after the content (no metres of blank roll).
+ */
+async function printServerPage(config, pageUrl, selector, decide, fitHeight) {
   const printWin = new BrowserWindow({
     show: false,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    // A hidden window is throttled by Chromium (slow timers): print without delay.
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
   });
   try {
-    await printWin.loadURL(
-      `${currentUrl}${pagePath}?silent=1&width=${config.widthMm}`,
-    );
-    // The receipt is drawn after its data arrives; anything else (sign-in page, error)
-    // is never printed.
+    await printWin.loadURL(pageUrl);
     const drawn = await printWin.webContents.executeJavaScript(
-      `new Promise((resolve) => { const start = Date.now(); (function wait() { if (document.querySelector('.receipt')) resolve(true); else if (Date.now() - start > 8000) resolve(false); else setTimeout(wait, 100); })(); })`,
+      `new Promise((resolve) => { const start = Date.now(); (function wait() { if (document.querySelector(${JSON.stringify(selector)})) resolve(true); else if (Date.now() - start > 8000) resolve(false); else setTimeout(wait, 100); })(); })`,
     );
     if (!drawn) throw new Error('Chek sahifasi ochilmadi');
+    const info = decide
+      ? await printWin.webContents.executeJavaScript(decide)
+      : { print: true };
+    if (!info.print) return info;
+    // 96 CSS px per inch; 6 mm of paper after the last line before the cut.
+    const heightMm = fitHeight
+      ? Math.min(
+          2000,
+          Math.max(
+            40,
+            Math.ceil(
+              ((await printWin.webContents.executeJavaScript(
+                `Math.ceil(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().bottom)`,
+              )) *
+                25.4) /
+                96,
+            ) + 6,
+          ),
+        )
+      : 297;
     await new Promise((resolve, reject) =>
       printWin.webContents.print(
         {
@@ -415,16 +436,179 @@ ipcMain.handle('printer:print', async (event, target) => {
           ...(config.deviceName ? { deviceName: config.deviceName } : {}),
           copies: config.copies,
           margins: { marginType: 'none' },
-          pageSize: { width: config.widthMm * 1000, height: 297000 },
+          pageSize: { width: config.widthMm * 1000, height: heightMm * 1000 },
         },
         (ok, reason) =>
           ok ? resolve() : reject(new Error(reason || 'print failed')),
       ),
     );
-    return { ok: true };
+    return info;
   } finally {
     if (!printWin.isDestroyed()) printWin.destroy();
   }
+}
+
+/** Prints a receipt page of this server silently on the chosen Windows printer. */
+ipcMain.handle('printer:print', async (event, target) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const pagePath = String(target || '');
+  if (!/^\/(chek\/[0-9a-f-]{36}|chek-sinov)$/.test(pagePath))
+    throw new Error('Noto‘g‘ri sahifa');
+  const config = receiptPrinter();
+  await printServerPage(
+    config,
+    `${currentUrl}${pagePath}?silent=1&width=${config.widthMm}`,
+    '.receipt',
+    null,
+    true,
+  );
+  return { ok: true };
+});
+
+// ------------------------------------------------ kitchen printer of THIS terminal
+// A Windows printer seen by this Kassa computer (USB, a network printer installed in
+// Windows, or a printer shared by the kitchen computer). New orders and added items are
+// printed once; items removed after printing come out as «BEKOR QILINDI». What was
+// printed is remembered here (kitchen-printed.json), so a restart never reprints.
+const KITCHEN_DEFAULT = {
+  deviceName: '',
+  widthMm: 80,
+  copies: 1,
+  auto: false,
+  // Orders placed before automatic printing was switched on are not printed.
+  enabledAt: '',
+};
+const KITCHEN_STATE = path.join(DATA, 'kitchen-printed.json');
+const KEEP_MS = 3 * 86_400_000;
+const kitchenPrinter = () => ({
+  ...KITCHEN_DEFAULT,
+  ...(read(SETTINGS).kitchenPrinter ?? {}),
+});
+
+ipcMain.handle('printer:kitchen-get', (event) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  return kitchenPrinter();
+});
+
+ipcMain.handle('printer:kitchen-set', (event, value) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const before = kitchenPrinter();
+  const auto = value?.auto === true;
+  const next = {
+    deviceName: String(value?.deviceName ?? '').slice(0, 200),
+    widthMm: value?.widthMm === 58 ? 58 : 80,
+    copies: Math.min(5, Math.max(1, Math.trunc(Number(value?.copies) || 1))),
+    auto,
+    enabledAt:
+      auto && !(before.auto && before.enabledAt)
+        ? new Date().toISOString()
+        : auto
+          ? before.enabledAt
+          : '',
+  };
+  saveSettings({ kitchenPrinter: next });
+  log(
+    `kitchen printer: ${next.deviceName || '(Windows default)'} ${next.widthMm}mm x${next.copies} auto=${next.auto}`,
+  );
+  return next;
+});
+
+ipcMain.handle('printer:kitchen-test', async (event) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const config = kitchenPrinter();
+  await printServerPage(
+    config,
+    `${currentUrl}/oshxona-chek-sinov?silent=1&width=${config.widthMm}`,
+    '.kitchen-ticket',
+    null,
+    true,
+  );
+  return { ok: true };
+});
+
+const readKitchenState = () => {
+  const state = read(KITCHEN_STATE);
+  return state && typeof state.orders === 'object' && state.orders
+    ? state
+    : { orders: {} };
+};
+function saveKitchenState(state) {
+  const now = Date.now();
+  for (const [id, entry] of Object.entries(state.orders))
+    if (!entry || now - Number(entry.at || 0) > KEEP_MS)
+      delete state.orders[id];
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(`${KITCHEN_STATE}.tmp`, JSON.stringify(state));
+  fs.renameSync(`${KITCHEN_STATE}.tmp`, KITCHEN_STATE);
+}
+
+/** One order: prints what the kitchen has not seen yet (nothing when all is printed). */
+async function printKitchenOrder(orderId) {
+  const config = kitchenPrinter();
+  if (!config.auto || !currentUrl) return { printed: false };
+  const state = readKitchenState();
+  const entry = state.orders[orderId];
+  const query = new URLSearchParams({
+    silent: '1',
+    width: String(config.widthMm),
+    printed: (entry?.p ?? []).join(','),
+    cancelled: (entry?.c ?? []).join(','),
+    ...(entry ? { known: '1' } : {}),
+    since: config.enabledAt,
+  });
+  const info = await printServerPage(
+    config,
+    `${currentUrl}/oshxona-chek/${orderId}?${query}`,
+    '.kitchen-ticket',
+    `(() => { const el = document.querySelector('.kitchen-ticket'); return { print: el.dataset.print === '1', fresh: (el.dataset.fresh || '').split(',').filter(Boolean), gone: (el.dataset.gone || '').split(',').filter(Boolean), number: el.dataset.number || '' }; })()`,
+    true,
+  );
+  const latest = readKitchenState();
+  const current = latest.orders[orderId] ?? { p: [], c: [] };
+  latest.orders[orderId] = {
+    p: [...new Set([...current.p, ...info.fresh])],
+    c: [...new Set([...current.c, ...info.gone])],
+    at: Date.now(),
+  };
+  saveKitchenState(latest);
+  if (info.print)
+    log(
+      `kitchen ticket ${info.number}: ${info.fresh.length} new, ${info.gone.length} removed`,
+    );
+  return { printed: info.print, number: info.number };
+}
+
+// Jobs run one after another (two events for one order never print twice); a failed
+// ticket (printer off, paper out) is tried again every 30 s for 10 minutes.
+let kitchenChain = Promise.resolve();
+const kitchenRetries = new Map();
+function queueKitchen(orderId) {
+  const run = kitchenChain.then(() => printKitchenOrder(orderId));
+  kitchenChain = run.catch(() => undefined);
+  run.then(
+    () => kitchenRetries.delete(orderId),
+    (error) => {
+      const attempt = (kitchenRetries.get(orderId) ?? 0) + 1;
+      log(`kitchen ticket failed (${attempt}): ${error?.message ?? error}`);
+      if (attempt > 20) {
+        kitchenRetries.delete(orderId);
+        return;
+      }
+      kitchenRetries.set(orderId, attempt);
+      setTimeout(() => {
+        if (kitchenRetries.has(orderId))
+          void queueKitchen(orderId).catch(() => undefined);
+      }, 30_000);
+    },
+  );
+  return run;
+}
+
+ipcMain.handle('printer:kitchen-order', async (event, orderId) => {
+  if (!fromServerPage(event)) throw new Error('Ruxsat yo‘q');
+  const id = String(orderId || '');
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error('Noto‘g‘ri buyurtma');
+  return queueKitchen(id);
 });
 
 ipcMain.handle('admin:auto', async (event) => {

@@ -1,5 +1,6 @@
 import { Socket } from 'node:net';
 import type { Services } from '../context.js';
+import { kitchenVariantIds } from '../modules/kitchen/kitchen-filter.js';
 import { loadOrderSettings } from '../modules/orders/settings.js';
 import { kitchenTicket } from './escpos.js';
 import { columnsForWidth } from './receipt-template.js';
@@ -69,6 +70,14 @@ export async function enqueueKitchenTickets(
         },
       },
     });
+    // «Fast Food» only, when the menu has that category (drinks stay off the ticket).
+    const kitchenIds = order
+      ? await kitchenVariantIds(tx, order.tenantId)
+      : null;
+    if (order && kitchenIds) {
+      const allowed = new Set(kitchenIds);
+      order.items = order.items.filter((item) => allowed.has(item.variantId));
+    }
     if (
       !order ||
       order.status === 'DRAFT' ||

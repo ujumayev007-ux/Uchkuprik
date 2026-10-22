@@ -5,7 +5,8 @@ import { can, useMe } from '../auth/session';
 import { PaymentDialog } from '../components/PaymentDialog';
 import { PrintReceipt } from '../components/PrintReceipt';
 import {
-  autoPrintReceipt,
+  printForKitchen,
+  receiptAfterPayment,
   TerminalPrinterButton,
 } from '../components/TerminalPrinter';
 import {
@@ -410,6 +411,7 @@ export function PosPage() {
           })),
         });
         setCart([]);
+        printForKitchen(updated.id, toast);
         await client.invalidateQueries({ queryKey: ['orders'] });
         toast(`${t.ordering.itemsAdded} ${formatOrderNo(updated.number)}`);
         navigate('/buyurtmalar');
@@ -473,6 +475,7 @@ export function PosPage() {
       )
         current = await api<Order>(`/orders/${order.id}`);
       setExtras({ phone: '', promo: '' });
+      if (place) printForKitchen(current.id, toast);
       await client.invalidateQueries({ queryKey: ['orders'] });
       if (place)
         toast(
@@ -893,15 +896,10 @@ export function PosPage() {
           onPaid={(order, change) => {
             setPaying(null);
             setResult({ order, change });
-            // This terminal prints the receipt by itself when it was set up to.
-            void autoPrintReceipt(order.id)
-              .then((printed) => printed && toast(t.terminalPrinter.printed))
-              .catch((error: unknown) =>
-                toast(
-                  `${t.terminalPrinter.failed}: ${error instanceof Error ? error.message : ''}`,
-                  'error',
-                ),
-              );
+            // This terminal prints the receipt (and the kitchen ticket of an order
+            // that went to the kitchen with the payment) by itself when set up to.
+            receiptAfterPayment(order.id, toast);
+            printForKitchen(order.id, toast);
           }}
         />
       )}

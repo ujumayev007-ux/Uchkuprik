@@ -18,6 +18,12 @@ if (kind === 'cashier')
     get: () => ipcRenderer.invoke('printer:get'),
     set: (value) => ipcRenderer.invoke('printer:set', value),
     print: (pagePath) => ipcRenderer.invoke('printer:print', pagePath),
+    // The kitchen printer (also a Windows printer seen by this computer).
+    kitchenGet: () => ipcRenderer.invoke('printer:kitchen-get'),
+    kitchenSet: (value) => ipcRenderer.invoke('printer:kitchen-set', value),
+    kitchenTest: () => ipcRenderer.invoke('printer:kitchen-test'),
+    kitchenOrder: (orderId) =>
+      ipcRenderer.invoke('printer:kitchen-order', orderId),
   });
 contextBridge.exposeInMainWorld('adminConn', {
   state: () => ipcRenderer.invoke('admin:state'),

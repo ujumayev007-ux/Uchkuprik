@@ -48,6 +48,10 @@ import { QueuePage } from './pages/QueuePage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PosPage } from './pages/PosPage';
 import { DeliverySheetPage } from './pages/DeliverySheetPage';
+import {
+  KitchenTicketPage,
+  KitchenTicketTestPage,
+} from './pages/KitchenTicketPage';
 import { ReceiptPage, ReceiptTestPage, ZReportPage } from './pages/PrintPages';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { PlatformBillingPage } from './pages/PlatformBillingPage';
@@ -344,6 +348,22 @@ const router = createBrowserRouter([
     element: (
       <SessionOnly>
         <ReceiptPage />
+      </SessionOnly>
+    ),
+  },
+  {
+    path: '/oshxona-chek-sinov',
+    element: (
+      <SessionOnly>
+        <KitchenTicketTestPage />
+      </SessionOnly>
+    ),
+  },
+  {
+    path: '/oshxona-chek/:id',
+    element: (
+      <SessionOnly>
+        <KitchenTicketPage />
       </SessionOnly>
     ),
   },

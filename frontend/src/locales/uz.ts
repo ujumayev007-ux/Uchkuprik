@@ -2374,7 +2374,7 @@ export const uz = {
   terminalPrinter: {
     open: 'Chek printeri',
     title: 'Chek printerlari sozlamalari',
-    hint: 'Faqat shu kassa kompyuteri uchun. Boshqa kassalar va oshxona printerlari o‘zgarmaydi.',
+    hint: 'Faqat shu kassa kompyuteri uchun. Boshqa kassalar va serverdagi tarmoq printerlari o‘zgarmaydi.',
     printer: 'Windows printeri',
     systemDefault: 'Windows standart printeri',
     paper: 'Qog‘oz eni',
@@ -2386,6 +2386,29 @@ export const uz = {
     testSent: 'Sinov cheki printerga yuborildi.',
     printed: 'Chek printerga yuborildi.',
     failed: 'Chop etib bo‘lmadi',
+    openBoth: 'Printerlar',
+    titleBoth: 'Printer sozlamalari (kassa va oshxona)',
+    receiptSection: 'Kassa cheki printeri',
+    kitchenSection: 'Oshxona printeri',
+    kitchenHint:
+      'Oshxona yonidagi printer shu kompyuterda Windows printeri sifatida ko‘rinishi kerak (USB, tarmoq printeri yoki oshxona kompyuteridan ulashilgan printer). Bitta restoranda buni faqat bitta kassada yoqing.',
+    kitchenAuto:
+      'Yangi buyurtma va qo‘shilgan taomlarni oshxonaga avtomatik chop etish',
+    kitchenTest: 'Oshxona sinov cheki',
+    kitchenFailed: 'Oshxona printeri: chop etib bo‘lmadi',
+    samePrinter:
+      'Kassa cheki va oshxona cheki bir xil printerga chiqadi. Ikki xil printer bo‘lsa, oshxona printerini tanlang.',
+  },
+  kitchenTicket: {
+    title: 'OSHXONA',
+    update: 'QO‘SHIMCHA / O‘ZGARISH',
+    removed: 'BEKOR QILINDI',
+    orderCancelled: 'BUYURTMA BEKOR QILINDI',
+    note: 'Izoh',
+    orderNote: 'Buyurtma izohi',
+    printedAt: 'Chop etildi',
+    test: 'SINOV CHEKI',
+    testNumber: '№ 0',
   },
   receiptTpl: {
     templates: 'Shablonlar',

@@ -29,6 +29,7 @@ import {
   recalculate,
   syncKitchenStatus,
 } from '../orders/engine.js';
+import { kitchenVariantIds } from './kitchen-filter.js';
 
 const stationInput = z.object({
   name: z.string().trim().min(1).max(60),
@@ -69,6 +70,12 @@ export function kitchenRouter(services: Services) {
       ...(kitchen ? { kitchen } : {}),
     });
   };
+
+  // Which menu variants go to the kitchen (Kassa kitchen printer); null = all.
+  router.get('/kitchen/filter', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    res.json({ variantIds: await kitchenVariantIds(db, auth.tenantId) });
+  });
 
   router.get('/kitchen/stations', requireAuth(), async (_req, res) => {
     const auth = getAuth(res);
@@ -239,6 +246,7 @@ export function kitchenRouter(services: Services) {
         req.query,
       );
       const branch = await resolveBranch(db, auth, query.branchId);
+      const kitchenIds = await kitchenVariantIds(db, auth.tenantId);
       const orders = await db.order.findMany({
         where: {
           tenantId: auth.tenantId,
@@ -256,6 +264,8 @@ export function kitchenRouter(services: Services) {
               ...(query.stationId
                 ? { OR: [{ stationId: query.stationId }, { stationId: null }] }
                 : {}),
+              // «Fast Food» only, when the menu has that category.
+              ...(kitchenIds ? { variantId: { in: kitchenIds } } : {}),
             },
             orderBy: { createdAt: 'asc' },
           },

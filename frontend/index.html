@@ -65,6 +65,12 @@
           color: #f1f3ed;
         }
       }
+      /* Never on paper: a hidden print window may not remove it before printing. */
+      @media print {
+        #boot-splash {
+          display: none !important;
+        }
+      }
     </style>
     <script>
       // Apply the last known skin before the first paint, so a restart does not flash the

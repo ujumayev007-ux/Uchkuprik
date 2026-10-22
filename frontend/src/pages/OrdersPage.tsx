@@ -7,6 +7,10 @@ import { TableAssignDialog } from '../components/TableAssignDialog';
 import { PaymentDialog } from '../components/PaymentDialog';
 import { PrintReceipt } from '../components/PrintReceipt';
 import {
+  printForKitchen,
+  receiptAfterPayment,
+} from '../components/TerminalPrinter';
+import {
   Badge,
   Button,
   Dialog,
@@ -680,6 +684,10 @@ export function OrderDetail({
           onPaid={async () => {
             setAction(null);
             toast(t.payment.done);
+            // Kassa application: the receipt (and a kitchen ticket if the payment
+            // sent the order to the kitchen) on this terminal's own printers.
+            receiptAfterPayment(o.id, toast);
+            printForKitchen(o.id, toast);
             await refresh();
           }}
         />

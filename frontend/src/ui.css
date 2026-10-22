@@ -1564,7 +1564,9 @@ textarea {
   height: 140px;
 }
 @media print {
-  body * {
+  /* Only on the page that shows a loyalty card: receipts, kitchen tickets and other
+     print pages must stay visible. */
+  body:has(#loyalty-card) * {
     visibility: hidden;
   }
   #loyalty-card,

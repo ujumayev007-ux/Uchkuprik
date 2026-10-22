@@ -242,6 +242,7 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Oshxona bekatlari va shablonlari',
     routes: [
       'GET /kitchen/stations',
+      'GET /kitchen/filter',
       'POST /kitchen/stations',
       'PATCH /kitchen/stations/:id',
       'PUT /kitchen/stations/:id/template',
