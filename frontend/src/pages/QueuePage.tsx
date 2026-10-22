@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { shellKind } from '../lib/shell';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { useMe } from '../auth/session';
 import { LiveClock } from '../components/LiveClock';
 import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
@@ -56,12 +57,15 @@ function saveAnnounced(map: Map<string, number>) {
  */
 export function QueuePage() {
   const { data: me } = useMe();
+  // The Queue TV application needs no sign-in: its registered device reads the queue.
+  const device = !me && shellKind() === 'tv';
   const online = useRealtime(me?.activeBranchId);
   const queue = useQuery({
-    queryKey: ['queue', me?.activeBranchId],
-    queryFn: () => api<Queue>('/queue'),
-    enabled: !!me?.activeBranchId,
-    refetchInterval: 15_000,
+    queryKey: ['queue', device ? 'display' : me?.activeBranchId],
+    queryFn: () => api<Queue>(device ? '/queue/display' : '/queue'),
+    enabled: device || !!me?.activeBranchId,
+    // No live channel without a session: the device screen looks every 3 s.
+    refetchInterval: device ? 3_000 : 15_000,
     retry: (count, error) =>
       !(error instanceof ApiError && error.status === 403) && count < 2,
   });
@@ -123,6 +127,31 @@ export function QueuePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue.data, ready, sound, display.voice]);
 
+  if (
+    device &&
+    queue.error instanceof ApiError &&
+    (queue.error.code === 'DEVICE_REQUIRED' ||
+      queue.error.code === 'DEVICE_PENDING')
+  )
+    return (
+      <div className="queue-screen">
+        <h1>
+          {queue.error.code === 'DEVICE_PENDING'
+            ? t.pin.pendingTitle
+            : t.pin.noDevice}
+        </h1>
+        <p>
+          {queue.error.code === 'DEVICE_PENDING'
+            ? t.pin.pendingHint
+            : t.queue.deviceHint}
+        </p>
+        {queue.error.code === 'DEVICE_REQUIRED' && (
+          <Link className="btn btn-primary btn-lg" to="/kirish">
+            {t.pin.adminSetup}
+          </Link>
+        )}
+      </div>
+    );
   if (queue.error instanceof ApiError && queue.error.status === 403)
     return (
       <div className="queue-screen">

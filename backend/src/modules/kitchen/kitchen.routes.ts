@@ -15,11 +15,16 @@ import {
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
 import {
+  cookieNames,
   getAuth,
+  readCookie,
   requireAuth,
   requirePermission,
   type AuthContext,
 } from '../auth/session.js';
+import { sha256 } from '../../lib/crypto.js';
+import { buildOrdering } from '../control/ordering.js';
+import { unlinkedView } from '../control/view.js';
 import { resolveBranch } from '../branches/access.js';
 import {
   addEvent,
@@ -691,9 +696,54 @@ export function kitchenRouter(services: Services) {
       req.query,
     );
     const branch = await resolveBranch(db, auth, branchId);
+    res.json(await queueOf(auth.tenantId, branch, auth.ordering.tv));
+  });
+
+  // Queue TV application: a registered, approved DISPLAY device shows the queue with no
+  // staff sign-in (numbers and statuses only). LAN, licence and block rules still apply.
+  router.get('/queue/display', async (req, res) => {
+    const token = readCookie(req, cookieNames(services.secureCookies).device);
+    const device = token
+      ? await db.device.findUnique({
+          where: { tokenHash: sha256(token) },
+          include: { tenant: true, branch: true },
+        })
+      : null;
+    if (device?.status === 'PENDING')
+      throw new AppError(403, 'DEVICE_PENDING', 'devicePending');
+    if (
+      !device ||
+      device.status !== 'ACTIVE' ||
+      device.panel !== 'DISPLAY' ||
+      device.tenant.status !== 'ACTIVE' ||
+      !device.branch.isActive ||
+      device.branch.deletedAt
+    )
+      throw new AppError(403, 'DEVICE_REQUIRED', 'deviceRequired');
+    const view = services.controlView
+      ? await services.controlView(device.tenantId)
+      : unlinkedView();
+    const tv = buildOrdering({
+      policy: view.policy,
+      adminSettings: view.adminSettings,
+      adminParams: view.adminParams,
+      roleKeys: ['display'],
+      offline: view.mode === 'OFFLINE',
+    }).tv;
+    if (!tv.enabled)
+      throw new AppError(403, 'FEATURE_DISABLED', 'featureDisabled');
+    res.json(await queueOf(device.tenantId, device.branch, tv));
+  });
+
+  /** Today's open orders of a branch as the queue screen shows them. */
+  async function queueOf(
+    tenantId: string,
+    branch: { id: string; name: string; timezone: string },
+    display: AuthContext['ordering']['tv'],
+  ) {
     const orders = await db.order.findMany({
       where: {
-        tenantId: auth.tenantId,
+        tenantId,
         branchId: branch.id,
         businessDate: businessDate(now(), branch.timezone),
         status: { in: ['PLACED', 'PREPARING', 'READY'] },
@@ -702,10 +752,10 @@ export function kitchenRouter(services: Services) {
       orderBy: [{ readyAt: 'desc' }, { placedAt: 'asc' }],
       select: { id: true, number: true, status: true, readyAt: true },
     });
-    res.json({
+    return {
       branch: { name: branch.name },
       // Layout, visible statuses and voice settings chosen centrally.
-      display: auth.ordering.tv,
+      display,
       preparing: orders
         .filter((order) => order.status !== 'READY')
         .map((order) => order.number),
@@ -716,8 +766,8 @@ export function kitchenRouter(services: Services) {
           number: order.number,
           readyAt: order.readyAt,
         })),
-    });
-  });
+    };
+  }
 
   return router;
 }

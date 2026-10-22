@@ -99,9 +99,17 @@ function RequireSession() {
   if (me.isPending) return <LoadingState />;
   if (me.error)
     return <ErrorState error={me.error} onRetry={() => void me.refetch()} />;
-  // Kassa, Oshxona and Ofitsiant start with the staff PIN pad, never the password form.
+  // Kassa, Oshxona and Ofitsiant start with the staff PIN pad, never the password form;
+  // the Queue TV needs no sign-in at all.
   if (!me.data)
-    return <Navigate to={isPanelShell() ? '/pin' : '/kirish'} replace />;
+    return (
+      <Navigate
+        to={
+          shellKind() === 'tv' ? '/navbat' : isPanelShell() ? '/pin' : '/kirish'
+        }
+        replace
+      />
+    );
   const step = pendingStep(me.data);
   if (step) return <Navigate to={step} replace />;
   return <AppShell />;
@@ -123,6 +131,19 @@ function AuthStep({
   const pending = pendingStep(me.data);
   if (pending === location.pathname) return <>{children}</>;
   return <Navigate to={pending ?? '/'} replace />;
+}
+
+/** Customer queue: signed-in staff, or the Queue TV application's registered device. */
+function QueueRoute() {
+  const me = useMe();
+  if (me.isPending) return <LoadingState />;
+  if (!me.data && shellKind() === 'tv') return <QueuePage />;
+  return (
+    <SessionOnly>
+      <BrandingHost forcePanel="customer" />
+      <QueuePage />
+    </SessionOnly>
+  );
 }
 
 /** Print views and the TV queue render without the application shell but still need a session. */
@@ -322,12 +343,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/navbat',
-    element: (
-      <SessionOnly>
-        <BrandingHost forcePanel="customer" />
-        <QueuePage />
-      </SessionOnly>
-    ),
+    element: <QueueRoute />,
   },
   {
     path: '/dostavka-varaqa/:id',

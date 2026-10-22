@@ -730,6 +730,8 @@ export const uz = {
     offline:
       'Aloqa uzildi — ekrandagi ma’lumot eskirgan bo‘lishi mumkin. Aloqa tiklanganda o‘zi yangilanadi.',
     soundOn: 'Ovoz yoqilgan',
+    deviceHint:
+      'Navbat ekrani administrator bir marta ro‘yxatdan o‘tkazgandan keyin kirishsiz ishlaydi.',
   },
   printers: {
     title: 'Printerlar',

@@ -233,6 +233,7 @@ export const featureCatalog: FeatureDef[] = [
       'POST /orders/:id/priority',
       'POST /orders/:id/serve',
       'GET /queue',
+      'GET /queue/display',
     ],
   }),
   f({

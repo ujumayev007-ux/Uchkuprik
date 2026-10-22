@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { meKey, useMe } from '../auth/session';
 import { t } from '../i18n';
 import { api, ApiError, post } from '../lib/api';
-import { shellPanel } from '../lib/shell';
+import { shellKind, shellPanel } from '../lib/shell';
 import { useBranches } from './AppShell';
 import { Button, FormError, LoadingState, SelectField, TextField } from './ui';
 
@@ -16,7 +16,8 @@ async function toPinPad(
   await post('/auth/logout').catch(() => undefined);
   client.setQueryData(meKey, null);
   client.clear();
-  navigate('/pin', { replace: true });
+  // The Queue TV shows the queue with no sign-in; the others use the staff PIN pad.
+  navigate(shellKind() === 'tv' ? '/navbat' : '/pin', { replace: true });
 }
 
 /**
