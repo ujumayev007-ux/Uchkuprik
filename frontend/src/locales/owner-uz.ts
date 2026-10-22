@@ -195,6 +195,7 @@ export const owner = {
       OFFLINE: 'Oflayn',
       BLOCKED: 'Bloklangan',
       NEVER: 'Hali ulanmagan',
+      PENDING: 'Tasdiq kutmoqda',
     },
     status: {
       ACTIVE: 'Faol',
@@ -210,6 +211,13 @@ export const owner = {
     terminate: 'Sessiyalarni tugatish',
     terminated: 'Buyruq yuborildi (qurilma ulanganda bajariladi)',
     terminals: 'Terminallar',
+    terminalApprove: 'Tasdiqlash',
+    terminalReject: 'Rad etish',
+    terminalApproved:
+      'Tasdiqlandi. Restoran kompyuteri keyingi aloqada (1–2 daqiqa) qurilmani yoqadi.',
+    terminalRejected: 'Rad etildi.',
+    terminalRejectConfirm: 'Bu qurilma rad etilsinmi? U ishlay olmaydi.',
+    terminalsPending: '{n} ta yangi qurilma tasdiq kutmoqda',
     queue: 'Navbatda',
     conflicts: 'Ziddiyat',
     failed: 'Xato',

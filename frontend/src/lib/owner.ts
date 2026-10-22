@@ -59,7 +59,7 @@ export const ownerPatch = <T = unknown>(path: string, body: unknown) =>
 
 // ---- types ------------------------------------------------------------------
 
-export type Presence = 'ONLINE' | 'OFFLINE' | 'BLOCKED' | 'NEVER';
+export type Presence = 'ONLINE' | 'OFFLINE' | 'BLOCKED' | 'NEVER' | 'PENDING';
 
 export type FeatureDef = {
   key: string;
@@ -153,6 +153,8 @@ export type LicenseRow = {
 
 export type TerminalRow = {
   id: string;
+  // The restaurant install's own device id (used for the Owner's approval).
+  localId: string;
   name: string;
   branchName: string | null;
   panel: string;

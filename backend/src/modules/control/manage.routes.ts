@@ -70,18 +70,28 @@ export function presenceOf(
     : 'OFFLINE';
 }
 
-type Command = {
-  id: string;
-  type: 'terminate_sessions';
-  scope: string;
-  username?: string;
-  issuedAt: string;
-};
+type Command =
+  | {
+      id: string;
+      type: 'terminate_sessions';
+      scope: string;
+      username?: string;
+      issuedAt: string;
+    }
+  | {
+      id: string;
+      type: 'device_approval';
+      localId: string;
+      approve: boolean;
+      issuedAt: string;
+    };
 
 async function queueCommand(
   tx: Db | Tx,
   activationId: string,
-  command: Omit<Command, 'id' | 'issuedAt'>,
+  command:
+    | Omit<Extract<Command, { type: 'terminate_sessions' }>, 'id' | 'issuedAt'>
+    | Omit<Extract<Command, { type: 'device_approval' }>, 'id' | 'issuedAt'>,
   at: Date,
 ) {
   const row = await tx.controlActivation.findUniqueOrThrow({
@@ -181,13 +191,15 @@ export function deviceView(
     terminals: (activation.terminals ?? []).map((terminal) => ({
       ...terminal,
       presence:
-        terminal.status !== 'ACTIVE'
-          ? 'BLOCKED'
-          : terminal.lastSeenAt &&
-              at.getTime() - terminal.lastSeenAt.getTime() <=
-                timing.presenceWindowMs * 2
-            ? 'ONLINE'
-            : 'OFFLINE',
+        terminal.status === 'PENDING'
+          ? 'PENDING'
+          : terminal.status !== 'ACTIVE'
+            ? 'BLOCKED'
+            : terminal.lastSeenAt &&
+                at.getTime() - terminal.lastSeenAt.getTime() <=
+                  timing.presenceWindowMs * 2
+              ? 'ONLINE'
+              : 'OFFLINE',
     })),
   };
 }
@@ -816,6 +828,52 @@ export function manageRouter(services: Services) {
       );
     },
   );
+
+  // ---- terminals waiting for the Owner ------------------------------------
+  // A restaurant terminal (Kassa, Oshxona, TV, Ofitsiant EXE/APK) registered by the
+  // restaurant Admin works only after the Owner approves it here; the decision reaches
+  // the install as a signed command on its next check-in and is audited on both sides.
+  for (const [path, approve] of [
+    ['approve', true],
+    ['reject', false],
+  ] as const)
+    router.post(
+      `/control/devices/:id/terminals/:localId/${path}`,
+      ...sensitive,
+      async (req, res) => {
+        const owner = getOwner(res);
+        const id = idParam(req.params.id);
+        const localId = String(req.params.localId ?? '').slice(0, 64);
+        const at = now();
+        await db.$transaction(async (tx) => {
+          const terminal = await tx.controlTerminal.findUnique({
+            where: { activationId_localId: { activationId: id, localId } },
+            include: { activation: true },
+          });
+          if (!terminal) throw errors.notFound();
+          if (terminal.status !== 'PENDING') throw errors.conflict();
+          await tx.controlTerminal.update({
+            where: { id: terminal.id },
+            data: { status: approve ? 'ACTIVE' : 'REVOKED' },
+          });
+          await queueCommand(
+            tx,
+            id,
+            { type: 'device_approval', localId, approve },
+            at,
+          );
+          await controlAudit(tx, req, {
+            ownerId: owner.ownerId,
+            customerId: terminal.activation.customerId,
+            action: approve ? 'terminal.approve' : 'terminal.reject',
+            entityType: 'terminal',
+            entityId: terminal.id,
+            data: { name: terminal.name, panel: terminal.panel, localId },
+          });
+        });
+        res.json({ ok: true });
+      },
+    );
 
   // ---- policy ------------------------------------------------------------
 

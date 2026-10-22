@@ -26,9 +26,11 @@ const tone = (presence: Presence) =>
     ? 'success'
     : presence === 'BLOCKED'
       ? 'danger'
-      : presence === 'OFFLINE'
+      : presence === 'PENDING'
         ? 'warning'
-        : 'neutral';
+        : presence === 'OFFLINE'
+          ? 'warning'
+          : 'neutral';
 
 export function DeviceCards({
   devices,
@@ -98,8 +100,23 @@ export function DeviceCards({
             {device.blockedReason && (
               <p className="muted small">{device.blockedReason}</p>
             )}
+            {device.terminals.some((x) => x.status === 'PENDING') && (
+              <p className="small">
+                <Badge tone="warning">
+                  {d.terminalsPending.replace(
+                    '{n}',
+                    String(
+                      device.terminals.filter((x) => x.status === 'PENDING')
+                        .length,
+                    ),
+                  )}
+                </Badge>
+              </p>
+            )}
             {device.terminals.length > 0 && (
-              <details>
+              <details
+                open={device.terminals.some((x) => x.status === 'PENDING')}
+              >
                 <summary className="small">
                   {d.terminals} ({device.terminals.length})
                 </summary>
@@ -118,6 +135,44 @@ export function DeviceCards({
                       <Badge tone={tone(terminal.presence)}>
                         {d.presence[terminal.presence]}
                       </Badge>
+                      {terminal.status === 'PENDING' && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  ownerPost(
+                                    `/devices/${device.id}/terminals/${terminal.localId}/approve`,
+                                  ),
+                                d.terminalApproved,
+                              )
+                            }
+                          >
+                            {d.terminalApprove}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={busy}
+                            onClick={async () => {
+                              if (!(await confirm(d.terminalRejectConfirm)))
+                                return;
+                              void run(
+                                () =>
+                                  ownerPost(
+                                    `/devices/${device.id}/terminals/${terminal.localId}/reject`,
+                                  ),
+                                d.terminalRejected,
+                              );
+                            }}
+                          >
+                            {d.terminalReject}
+                          </Button>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -76,6 +76,9 @@ async function findDevice(services: Services, req: Request) {
     where: { tokenHash: sha256(token) },
     include: { tenant: true, branch: true },
   });
+  // Registered but not yet approved by the Owner: no staff list, no PIN sign-in.
+  if (device?.status === 'PENDING')
+    throw new AppError(403, 'DEVICE_PENDING', 'devicePending');
   if (
     !device ||
     device.status !== 'ACTIVE' ||

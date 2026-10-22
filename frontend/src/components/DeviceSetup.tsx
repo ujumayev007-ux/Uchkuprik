@@ -42,9 +42,13 @@ export function DeviceSetup() {
   const missing =
     registered.error instanceof ApiError &&
     registered.error.code === 'DEVICE_REQUIRED';
+  // Already registered (approved, or waiting for the Owner): go to the PIN screen.
+  const waiting =
+    registered.error instanceof ApiError &&
+    registered.error.code === 'DEVICE_PENDING';
   useEffect(() => {
-    if (registered.isSuccess) void toPinPad(client, navigate);
-  }, [registered.isSuccess, client, navigate]);
+    if (registered.isSuccess || waiting) void toPinPad(client, navigate);
+  }, [registered.isSuccess, waiting, client, navigate]);
   if (registered.isPending || !missing) return <LoadingState />;
   return (
     <form

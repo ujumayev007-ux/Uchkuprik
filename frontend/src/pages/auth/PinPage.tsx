@@ -38,6 +38,12 @@ export function PinPage() {
     queryKey: ['pin-device'],
     queryFn: () => api<DeviceInfo>('/pin/device'),
     retry: false,
+    // Waiting for the Owner: look again by itself until the device is approved.
+    refetchInterval: (query) =>
+      query.state.error instanceof ApiError &&
+      query.state.error.code === 'DEVICE_PENDING'
+        ? 10_000
+        : false,
   });
   const [userId, setUserId] = useState<string | null>(null);
   const [pin, setPin] = useState('');
@@ -93,12 +99,27 @@ export function PinPage() {
     const unregistered =
       device.error instanceof ApiError &&
       device.error.code === 'DEVICE_REQUIRED';
+    const pending =
+      device.error instanceof ApiError &&
+      device.error.code === 'DEVICE_PENDING';
     return (
       <AuthLayout
-        title={unregistered ? t.pin.noDevice : t.common.errorTitle}
-        subtitle={unregistered ? t.pin.noDeviceHint : undefined}
+        title={
+          pending
+            ? t.pin.pendingTitle
+            : unregistered
+              ? t.pin.noDevice
+              : t.common.errorTitle
+        }
+        subtitle={
+          pending
+            ? t.pin.pendingHint
+            : unregistered
+              ? t.pin.noDeviceHint
+              : undefined
+        }
       >
-        {!unregistered && (
+        {!unregistered && !pending && (
           <ErrorState
             error={device.error}
             onRetry={() => void device.refetch()}

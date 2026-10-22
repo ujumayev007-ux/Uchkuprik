@@ -363,6 +363,57 @@ describe('licence lifecycle and activation', () => {
     );
   });
 
+  it('a restaurant terminal is activated only by the Owner (signed command, audited)', async () => {
+    const { agent } = await signedIn();
+    const lic = await createLicensedCustomer(agent, { maxInstalls: 1 });
+    const pc = device(request.agent(ctx.app));
+    const activated = await pc.activate(lic.key).expect(201);
+    const id = activated.body.activationId as string;
+    const localId = randomUUID();
+    const terminal = {
+      localId,
+      name: 'Kassa 2',
+      branchName: 'Markaziy',
+      panel: 'CASHIER',
+      status: 'PENDING',
+    };
+    await pc.heartbeat(id, { terminals: [terminal] }).expect(200);
+    const listed = (
+      await api(agent).get(`/control/devices?customerId=${lic.customerId}`)
+    ).body.devices[0].terminals[0];
+    expect(listed).toMatchObject({ localId, presence: 'PENDING' });
+    // Unknown terminal and a terminal of another install are not found.
+    await api(agent)
+      .post(`/control/devices/${id}/terminals/${randomUUID()}/approve`)
+      .expect(404);
+    await api(agent)
+      .post(`/control/devices/${id}/terminals/${localId}/approve`)
+      .expect(200);
+    // Decided once only.
+    await api(agent)
+      .post(`/control/devices/${id}/terminals/${localId}/reject`)
+      .expect(409);
+    const beat = await pc.heartbeat(id, { terminals: [terminal] }).expect(200);
+    const doc = verifyDocument<{
+      commands: { type: string; localId?: string; approve?: boolean }[];
+    }>(beat.body.response, [server.publicKey])!;
+    expect(doc.commands).toContainEqual(
+      expect.objectContaining({
+        type: 'device_approval',
+        localId,
+        approve: true,
+      }),
+    );
+    const audit = await ctx.db.controlAuditLog.findFirst({
+      where: { action: 'terminal.approve', customerId: lic.customerId },
+    });
+    expect(audit).not.toBeNull();
+    // Without an Owner session nobody can approve.
+    await api(request.agent(ctx.app))
+      .post(`/control/devices/${id}/terminals/${localId}/approve`)
+      .expect(401);
+  });
+
   it('replaces a device: the slot is freed and the old one is revoked', async () => {
     const { agent } = await signedIn();
     const lic = await createLicensedCustomer(agent, { maxInstalls: 1 });

@@ -27,7 +27,7 @@ type Device = {
   name: string;
   branchId: string;
   branchName: string;
-  status: 'ACTIVE' | 'REVOKED';
+  status: 'ACTIVE' | 'REVOKED' | 'PENDING';
   lastSeenAt: string | null;
   appVersion: string | null;
   createdAt: string;
@@ -147,6 +147,8 @@ export function DevicesPage() {
                   <td>
                     {device.status === 'ACTIVE' ? (
                       <Badge tone="success">{t.common.active}</Badge>
+                    ) : device.status === 'PENDING' ? (
+                      <Badge tone="warning">{t.devices.pending}</Badge>
                     ) : (
                       <Badge tone="danger">{t.devices.revoked}</Badge>
                     )}

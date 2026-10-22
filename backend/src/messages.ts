@@ -24,6 +24,8 @@ export const messages = {
   tenantSuspended:
     'Biznes hisobi to‘xtatilgan. Qo‘llab-quvvatlash xizmatiga murojaat qiling.',
   deviceRequired: 'Bu amal faqat ro‘yxatdan o‘tgan qurilmada bajariladi.',
+  devicePending:
+    'Bu qurilma ro‘yxatdan o‘tkazildi va Owner tasdig‘ini kutmoqda. Tasdiqlangach o‘zi ishga tushadi.',
   conflict: 'Bunday yozuv allaqachon mavjud.',
   weakPassword:
     'Parol kamida 10 ta belgidan iborat bo‘lishi va harf hamda raqamni o‘z ichiga olishi kerak.',

@@ -353,7 +353,7 @@ export function deviceRouter(services: Services) {
           panel: z
             .enum(['CASHIER', 'KITCHEN', 'WAITER', 'OTHER'])
             .default('OTHER'),
-          status: z.enum(['ACTIVE', 'REVOKED']).default('ACTIVE'),
+          status: z.enum(['ACTIVE', 'REVOKED', 'PENDING']).default('ACTIVE'),
           appVersion: z.string().max(40).nullable().optional(),
           model: z.string().max(80).nullable().optional(),
           os: z.string().max(80).nullable().optional(),

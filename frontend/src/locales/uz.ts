@@ -124,6 +124,9 @@ export const uz = {
     clear: 'Tozalash',
     erase: 'Oxirgi raqamni o‘chirish',
     noDevice: 'Bu qurilma ro‘yxatdan o‘tmagan',
+    pendingTitle: 'Owner tasdig‘i kutilmoqda',
+    pendingHint:
+      'Qurilma ro‘yxatdan o‘tkazildi. Owner uni tasdiqlashi bilan bu oyna o‘zi xodimlar ro‘yxatiga o‘tadi.',
     noDeviceHint:
       'PIN-kod bilan kirish faqat administrator ro‘yxatdan o‘tkazgan kassa yoki planshetda ishlaydi.',
     noStaff: 'Bu filialda PIN-kodi o‘rnatilgan xodim yo‘q.',
@@ -221,6 +224,7 @@ export const uz = {
     revokeConfirm:
       'Qurilma bekor qilinadi va undagi barcha seanslar yakunlanadi. Davom etasizmi?',
     revoked: 'Bekor qilingan',
+    pending: 'Owner tasdig‘ini kutmoqda',
     lastSeen: 'Oxirgi faollik',
   },
   audit: {

@@ -38,6 +38,8 @@ enum AuthMethod {
 enum DeviceStatus {
   ACTIVE
   REVOKED
+  // Registered by the restaurant Admin, waiting for the Owner (SUPER_OWNER) approval.
+  PENDING
 }
 
 model Tenant {

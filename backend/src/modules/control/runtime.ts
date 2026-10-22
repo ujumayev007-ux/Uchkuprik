@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { applyOwnerDecision } from '../devices/approval.js';
 import os from 'node:os';
 import type { Services } from '../../context.js';
 import type { ControlLink, Prisma } from '../../generated/prisma/client.js';
@@ -46,7 +47,15 @@ type BeatResponse = {
   seq: number;
   serverTime: string;
   grant: string;
-  commands: { id: string; type: string; scope?: string; username?: string }[];
+  commands: {
+    id: string;
+    type: string;
+    scope?: string;
+    username?: string;
+    // device_approval: the terminal (local device id) and the Owner's decision.
+    localId?: string;
+    approve?: boolean;
+  }[];
   update: AvailableUpdate | null;
   // Address the centre has moved to (signed with the same key as the grant).
   relocate?: string | null;
@@ -403,7 +412,7 @@ export function createControlRuntime(
         )
           ? (device.panel as 'CASHIER' | 'KITCHEN' | 'WAITER')
           : 'OTHER',
-        status: device.status === 'ACTIVE' ? 'ACTIVE' : 'REVOKED',
+        status: device.status,
         appVersion: device.appVersion,
         model: device.userAgent?.slice(0, 80) ?? null,
         os: null,
@@ -718,6 +727,10 @@ export function createControlRuntime(
       for (const command of doc.commands) {
         if (command.type === 'terminate_sessions')
           await terminateSessions(command).catch(() => undefined);
+        if (command.type === 'device_approval')
+          await applyOwnerDecision(db, command, sysNow()).catch(
+            () => undefined,
+          );
         ackIds.push(command.id);
       }
       invalidate();

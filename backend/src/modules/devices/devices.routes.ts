@@ -5,6 +5,7 @@ import type { Services } from '../../context.js';
 import { errors, parse } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
 import { audit } from '../audit/audit.js';
+import { ownerApprovalRequired } from './approval.js';
 import {
   canAccessBranch,
   cookieNames,
@@ -108,6 +109,8 @@ export function devicesRouter(services: Services) {
     });
     if (!branch || !canAccessBranch(auth, branch.id)) throw errors.forbidden();
     const token = randomToken();
+    // The restaurant Admin may only request a new terminal; the Owner activates it.
+    const status = ownerApprovalRequired(services) ? 'PENDING' : 'ACTIVE';
     const device = await db.$transaction(async (tx) => {
       await assertWithinLimit(tx, auth.tenantId, 'devices');
       const created = await tx.device.create({
@@ -118,6 +121,7 @@ export function devicesRouter(services: Services) {
           panel: input.panel,
           tokenHash: sha256(token),
           registeredById: auth.userId,
+          status,
         },
       });
       await audit(tx, req, {
@@ -127,6 +131,7 @@ export function devicesRouter(services: Services) {
         action: 'device.register',
         entityType: 'device',
         entityId: created.id,
+        data: { status, panel: input.panel, name: input.name },
       });
       return created;
     });
@@ -137,7 +142,7 @@ export function devicesRouter(services: Services) {
       token,
       DEVICE_COOKIE_MS,
     );
-    res.status(201).json({ id: device.id });
+    res.status(201).json({ id: device.id, status: device.status });
   });
 
   router.post('/devices/:id/revoke', ...manage, async (req, res) => {
