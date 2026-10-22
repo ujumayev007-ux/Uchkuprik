@@ -170,6 +170,79 @@ describe('recipe deductions', () => {
   });
 });
 
+describe('Bozorlik: several places in one save', () => {
+  it('creates one purchase and one payment per place; stock and costs follow', async () => {
+    const s = await setup();
+    // A gram product without a kg unit set up: kg still works.
+    const rice = await send(s.owner, 'post', '/inventory/items', {
+      name: 'Guruch',
+      baseUnit: 'G',
+      minStock: 0,
+    }).expect(201);
+    const saved = await send(s.owner, 'post', '/purchases/market', {
+      supplierName: 'Chorsu bozori',
+      paid: true,
+      lines: [
+        {
+          stockItemId: s.meatId,
+          quantity: '2',
+          unitName: 'kg',
+          lineTotal: 180000,
+        },
+        {
+          stockItemId: rice.body.id,
+          quantity: '5',
+          unitName: 'kg',
+          lineTotal: 75000,
+          supplierName: 'Ulgurji ombor',
+        },
+        {
+          newItem: { name: 'Pomidor', baseUnit: 'G' },
+          quantity: '3',
+          unitName: 'kg',
+          lineTotal: 30000,
+        },
+      ],
+    }).expect(201);
+    expect(saved.body.total).toBe(285000);
+    expect(saved.body.purchases).toHaveLength(2);
+    expect((await balance(s)).quantity).toBe('2000');
+    const riceRow = await ctx.db.stockBalance.findFirstOrThrow({
+      where: { stockItemId: rice.body.id },
+    });
+    expect(riceRow.quantity.toString()).toBe('5000');
+    expect(riceRow.avgCost.toString()).toBe('15');
+    const purchases = await ctx.db.purchase.findMany({
+      where: {
+        id: { in: saved.body.purchases.map((p: { id: string }) => p.id) },
+      },
+      include: { supplier: true },
+    });
+    expect(
+      purchases.map((p) => [p.supplier.name, p.total, p.status]).sort(),
+    ).toEqual([
+      ['Chorsu bozori', 210000, 'RECEIVED'],
+      ['Ulgurji ombor', 75000, 'RECEIVED'],
+    ]);
+    const payments = await ctx.db.supplierPayment.findMany({
+      where: { tenantId: s.tenantId, note: 'Bozorlik' },
+    });
+    expect(payments.map((p) => p.amount).sort()).toEqual([210000, 75000]);
+    // An unknown unit is still refused (nothing saved).
+    await send(s.owner, 'post', '/purchases/market', {
+      lines: [
+        {
+          stockItemId: rice.body.id,
+          quantity: '1',
+          unitName: 'qop',
+          lineTotal: 1000,
+        },
+      ],
+    }).expect(400);
+    expect(riceRow.quantity.toString()).toBe('5000');
+  });
+});
+
 describe('quantity edit (one-line stocktake with a reason)', () => {
   it('keeps the reason on the movement and in the audit history; rejects bad input', async () => {
     const s = await setup();

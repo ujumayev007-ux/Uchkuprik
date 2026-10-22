@@ -1104,6 +1104,7 @@ export const uz = {
     quantity: 'Miqdori',
     unit: 'Birlik',
     paidFor: 'To‘langan summa',
+    lineSupplier: 'Qayerdan (boshqa joy bo‘lsa)',
     addLine: 'Yana mahsulot',
     paidCash: 'Pul darhol to‘landi (qarz emas)',
     total: 'Jami',

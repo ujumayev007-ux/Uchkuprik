@@ -6,8 +6,8 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 |---|--------|-------|
 | 1 | Alohida navbat TV EXE (login/PIN yo‘q) | bajarildi (commit pastda) |
 | 2 | Admin kompyuteri o‘chiq bo‘lsa ham LAN ishlashi | bajarildi |
-| 3 | Ombor / Bozorlik soddalashtirish | jarayonda |
-| 4 | Owner EXE va Render 502 | kutilmoqda |
+| 3 | Ombor / Bozorlik soddalashtirish | bajarildi |
+| 4 | Owner EXE va Render 502 | jarayonda |
 | 5 | Ombor eksporti (xlsx/docx/pdf) | kutilmoqda |
 | 6 | Oshxona rejimlari | kutilmoqda |
 
@@ -23,8 +23,13 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 - Bulut/sinxronlash yo‘q: server qaysi kompyuterda bo‘lsa, ma’lumot o‘sha yerda.
 - Tekshiruv: ko‘chirish 10/10 (parol, PIN, LAN kaliti, qayta shifrlash, eski server to‘xtashi). Menyu bandining o‘zi faqat haqiqiy EXE’da sinaladi.
 
+## 3-vazifa natijasi
+- Bozorlik allaqachon: bir nechta mahsulot, yangi mahsulot, birlik, summa (narx ko‘rsatiladi), to‘landi → yetkazib beruvchiga to‘lov (xarajat), ombor va tannarx yangilanadi.
+- Qo‘shildi: har qatorga «Qayerdan» (boshqa joy) — bitta saqlashda har joy uchun alohida xarid va to‘lov (bitta tranzaksiya); gramm/millilitr mahsulotlar uchun kg/l doim mavjud.
+- Tekshiruv: backend 11/11, UI (Bozorlik saqlash, yangi mahsulot, kg) o‘tdi.
+
 ## Yig‘ish (oxirida bir marta)
 - Server 1.14.9 → yangi versiya (backend/frontend o‘zgardi).
 
 ## Keyingi qadam
-3-vazifa: tashxis.
+4-vazifa: Render 502 va Owner EXE tashxisi.

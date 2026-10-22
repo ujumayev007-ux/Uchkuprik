@@ -22,6 +22,8 @@ const NEW = '__new__';
 
 type Line = {
   stockItemId: string;
+  // Where it was bought; empty = the place above.
+  supplier: string;
   newName: string;
   newUnit: 'G' | 'ML' | 'PCS';
   quantity: string;
@@ -31,6 +33,7 @@ type Line = {
 
 const empty = (): Line => ({
   stockItemId: '',
+  supplier: '',
   newName: '',
   newUnit: 'G',
   quantity: '',
@@ -82,7 +85,12 @@ export function MarketTab() {
   const unitsFor = (line: Line): string[] => {
     if (line.stockItemId === NEW) return [...newUnits[line.newUnit]];
     const item = list.find((candidate) => candidate.id === line.stockItemId);
-    return item ? [...item.units.map((unit) => unit.name), item.unitLabel] : [];
+    if (!item) return [];
+    const names = [...item.units.map((unit) => unit.name), item.unitLabel];
+    // kg / l are always available for gram / millilitre products.
+    const standard =
+      item.baseUnit === 'G' ? 'kg' : item.baseUnit === 'ML' ? 'l' : null;
+    return standard && !names.includes(standard) ? [standard, ...names] : names;
   };
   const set = (index: number, change: Partial<Line>) =>
     setLines(
@@ -118,6 +126,9 @@ export function MarketTab() {
           quantity: line.quantity,
           unitName: line.unitName,
           lineTotal: line.lineTotal,
+          ...(line.supplier.trim()
+            ? { supplierName: line.supplier.trim() }
+            : {}),
         })),
       });
       toast(m.saved.replace('{sum}', formatMoney(total)));
@@ -225,6 +236,14 @@ export function MarketTab() {
                     </option>
                   ))}
                 </SelectField>
+                <TextField
+                  label={m.lineSupplier}
+                  placeholder={place.trim() || 'Bozor'}
+                  value={line.supplier}
+                  onChange={(event) =>
+                    set(index, { supplier: event.target.value })
+                  }
+                />
                 <MoneyField
                   label={m.paidFor}
                   value={line.lineTotal}

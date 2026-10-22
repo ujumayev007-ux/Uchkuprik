@@ -78,8 +78,12 @@ async function toBase(
   if (unitName === baseUnitLabels[item.baseUnit])
     return { item, factor: new Decimal(1) };
   const unit = item.units.find((candidate) => candidate.name === unitName);
-  if (!unit) throw new AppError(400, 'UNKNOWN_UNIT', 'unknownUnit');
-  return { item, factor: new Decimal(unit.factor) };
+  if (unit) return { item, factor: new Decimal(unit.factor) };
+  // kg for gram items and l for millilitre items work without being set up first.
+  const standard =
+    item.baseUnit === 'G' ? 'kg' : item.baseUnit === 'ML' ? 'l' : null;
+  if (unitName === standard) return { item, factor: new Decimal(1000) };
+  throw new AppError(400, 'UNKNOWN_UNIT', 'unknownUnit');
 }
 
 export function inventoryRouter(services: Services) {
@@ -947,6 +951,8 @@ export function inventoryRouter(services: Services) {
             quantity: positive,
             unitName: z.string().trim().min(1).max(40),
             lineTotal: amount,
+            // Where this product was bought (default: supplierName of the purchase).
+            supplierName: z.string().trim().min(1).max(100).optional(),
           })
           .refine((line) => !!line.stockItemId !== !!line.newItem),
       )
@@ -959,13 +965,43 @@ export function inventoryRouter(services: Services) {
     const input = parse(marketInput, req.body);
     const branch = await resolveBranch(db, auth, input.branchId);
     const canCreateItems = auth.permissions.has('inventory.manage');
-    const result = await db.$transaction(async (tx) => {
+    // Lines bought from several places are saved as one purchase per supplier.
+    const groups = new Map<string, typeof input.lines>();
+    for (const line of input.lines) {
+      const name = line.supplierName ?? input.supplierName;
+      groups.set(name, [...(groups.get(name) ?? []), line]);
+    }
+    const results = await db.$transaction(async (tx) => {
+      const saved: { id: string; total: number; supplier: string }[] = [];
+      for (const [supplierName, groupLines] of groups) {
+        saved.push(
+          await savePurchase(tx, supplierName, groupLines, saved.length === 0),
+        );
+      }
+      return saved;
+    });
+    services.events?.publish({
+      type: 'inventory.changed',
+      tenantId: auth.tenantId,
+    });
+    res.status(201).json({
+      id: results[0]!.id,
+      total: results.reduce((sum, purchase) => sum + purchase.total, 0),
+      purchases: results,
+    });
+
+    async function savePurchase(
+      tx: Tx,
+      supplierName: string,
+      groupLines: typeof input.lines,
+      first: boolean,
+    ) {
       const supplier =
         (await tx.supplier.findFirst({
-          where: { tenantId: auth.tenantId, name: input.supplierName },
+          where: { tenantId: auth.tenantId, name: supplierName },
         })) ??
         (await tx.supplier.create({
-          data: { tenantId: auth.tenantId, name: input.supplierName },
+          data: { tenantId: auth.tenantId, name: supplierName },
         }));
       const warehouse = await defaultWarehouse(tx, auth.tenantId, branch.id);
       const now = services.now?.() ?? new Date();
@@ -984,7 +1020,7 @@ export function inventoryRouter(services: Services) {
         baseQuantity: Decimal;
         lineTotal: number;
       }[] = [];
-      for (const line of input.lines) {
+      for (const line of groupLines) {
         let stockItemId = line.stockItemId;
         if (line.newItem) {
           const existing = await tx.stockItem.findFirst({
@@ -1088,7 +1124,7 @@ export function inventoryRouter(services: Services) {
         entityId: purchase.id,
         data: { total, supplierId: supplier.id, paid: input.paid },
       });
-      if (input.requestIds.length)
+      if (first && input.requestIds.length)
         await tx.stockRequest.updateMany({
           where: {
             id: { in: input.requestIds },
@@ -1097,13 +1133,8 @@ export function inventoryRouter(services: Services) {
           },
           data: { status: 'FULFILLED' },
         });
-      return { id: purchase.id, total };
-    });
-    services.events?.publish({
-      type: 'inventory.changed',
-      tenantId: auth.tenantId,
-    });
-    res.status(201).json(result);
+      return { id: purchase.id, total, supplier: supplier.name };
+    }
   });
 
   // --- Supplier returns -------------------------------------------------------
