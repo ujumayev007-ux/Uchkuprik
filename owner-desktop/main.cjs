@@ -642,6 +642,28 @@ async function boot() {
         void showConnectionError(`${description} (${code})`);
     },
   );
+  // The hosting answers 502/503/504 while the server sleeps, restarts or deploys: that
+  // page is never shown; the splash waits for the server and reopens the console.
+  let recovering = false;
+  win.webContents.on('did-navigate', (_event, target, status) => {
+    if (recovering || status < 500 || !currentUrl) return;
+    if (!String(target).startsWith(currentUrl)) return;
+    recovering = true;
+    try {
+      fs.appendFileSync(
+        path.join(DATA, 'owner.log'),
+        `${new Date().toISOString()} server answered HTTP ${status}; waiting for it\n`,
+      );
+    } catch {
+      /* logging must never break the app */
+    }
+    // Start once that page has finished loading, so no load in progress is aborted.
+    win.webContents.once('did-finish-load', () => {
+      void openConsole(currentUrl, 180_000).finally(() => {
+        recovering = false;
+      });
+    });
+  });
   // Fail early (and clearly) when the OS cannot protect the device key.
   identity();
   // The server may be asleep (a cold start takes up to a minute or two): a branded
