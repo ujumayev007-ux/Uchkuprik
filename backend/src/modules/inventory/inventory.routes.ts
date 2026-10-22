@@ -390,6 +390,8 @@ export function inventoryRouter(services: Services) {
           )
           .min(1)
           .max(500),
+        // Why the quantity was corrected (Ombor → quantity edit); kept on each movement.
+        reason: z.string().trim().min(3).max(200).optional(),
       }),
       req.body,
     );
@@ -420,6 +422,7 @@ export function inventoryRouter(services: Services) {
           quantity: difference,
           referenceType: 'stocktake',
           referenceId: reference,
+          reason: input.reason ?? null,
           actorId: auth.userId,
           allowNegative: true,
         });
@@ -435,7 +438,10 @@ export function inventoryRouter(services: Services) {
         action: 'inventory.stocktake',
         entityType: 'stocktake',
         entityId: reference,
-        data: { differences },
+        data: {
+          differences,
+          ...(input.reason ? { reason: input.reason } : {}),
+        },
       });
       return { stocktakeId: reference, differences };
     });

@@ -170,6 +170,35 @@ describe('recipe deductions', () => {
   });
 });
 
+describe('quantity edit (one-line stocktake with a reason)', () => {
+  it('keeps the reason on the movement and in the audit history; rejects bad input', async () => {
+    const s = await setup();
+    await receive(s, '10', 80000);
+    await send(s.owner, 'post', '/inventory/stocktakes', {
+      counts: [{ stockItemId: s.meatId, counted: '9000' }],
+      reason: 'Sanab chiqildi',
+    }).expect(201);
+    expect((await balance(s)).quantity).toBe('9000');
+    const movement = await ctx.db.stockMovement.findFirstOrThrow({
+      where: { stockItemId: s.meatId, type: 'STOCKTAKE' },
+      orderBy: { id: 'desc' },
+    });
+    expect(movement.reason).toBe('Sanab chiqildi');
+    expect(movement.quantity.toString()).toBe('-1000');
+    const log = await ctx.db.auditLog.findFirstOrThrow({
+      where: { tenantId: s.tenantId, action: 'inventory.stocktake' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(JSON.stringify(log.data)).toContain('Sanab chiqildi');
+    for (const bad of [
+      { counts: [{ stockItemId: s.meatId, counted: '-5' }], reason: 'Xato' },
+      { counts: [{ stockItemId: s.meatId, counted: '5' }], reason: 'x' },
+    ])
+      await send(s.owner, 'post', '/inventory/stocktakes', bad).expect(400);
+    expect((await balance(s)).quantity).toBe('9000');
+  });
+});
+
 describe('waste, stocktake and transfers', () => {
   it('keeps the ledger consistent with balances', async () => {
     const s = await setup();

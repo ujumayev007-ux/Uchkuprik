@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { shellKind } from './shell';
 import { api } from './api';
 
 // Remote design and advertising as the screens see it (the server resolves the layers).
@@ -82,13 +83,12 @@ export function applySkin(skin: Skin | null | undefined) {
 
 // ---- which application shell hosts this page -------------------------------------
 export function loginPanel(): PanelKey {
-  const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
-    .fastfoodShell;
-  if (shell?.kind === 'admin') return 'admin';
-  if (shell?.kind === 'cashier') return 'cashier';
-  if (shell?.kind === 'waiter') return 'waiter';
-  if (shell?.kind === 'kitchen') return 'kitchen';
-  if (shell?.kind === 'tv') return 'customer';
+  const kind = shellKind();
+  if (kind === 'admin') return 'admin';
+  if (kind === 'cashier') return 'cashier';
+  if (kind === 'waiter') return 'waiter';
+  if (kind === 'kitchen') return 'kitchen';
+  if (kind === 'tv') return 'customer';
   if ((window as unknown as { FastFoodAndroid?: unknown }).FastFoodAndroid)
     return 'waiter';
   if ('fastfoodDesktop' in window) return 'cashier';

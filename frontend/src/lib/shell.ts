@@ -3,14 +3,25 @@ export type ShellKind =
   'admin' | 'cashier' | 'waiter' | 'kitchen' | 'tv' | 'pos';
 
 export function shellKind(): ShellKind {
-  const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
-    .fastfoodShell;
-  return shell?.kind === 'admin' ||
-    shell?.kind === 'cashier' ||
-    shell?.kind === 'waiter' ||
-    shell?.kind === 'kitchen' ||
-    shell?.kind === 'tv'
-    ? shell.kind
+  const w = window as unknown as {
+    fastfoodShell?: { kind?: string };
+    // The Android Oshxona / TV apps answer here (the waiter app answers "").
+    FastFoodAndroid?: { shellKind?: () => string };
+  };
+  let kind = w.fastfoodShell?.kind;
+  if (!kind) {
+    try {
+      kind = w.FastFoodAndroid?.shellKind?.();
+    } catch {
+      kind = undefined;
+    }
+  }
+  return kind === 'admin' ||
+    kind === 'cashier' ||
+    kind === 'waiter' ||
+    kind === 'kitchen' ||
+    kind === 'tv'
+    ? kind
     : 'pos';
 }
 

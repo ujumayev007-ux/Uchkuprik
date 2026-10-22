@@ -19,8 +19,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(
   readFileSync(join(here, '..', 'desktop', 'package.json'), 'utf8'),
 );
-// waiter (default) or tv: both are built from the same code (see app/build.gradle).
-const kind = process.argv[2] === 'tv' ? 'tv' : 'waiter';
+// waiter (default), tv or kitchen: all built from the same code (see app/build.gradle).
+const kind = ['tv', 'kitchen'].includes(process.argv[2]) ? process.argv[2] : 'waiter';
 const javaHome = process.env.JAVA_HOME;
 const gradle = process.env.GRADLE_BIN;
 const sdk =
@@ -103,7 +103,11 @@ mkdirSync(join(here, 'release'), { recursive: true });
 const target = join(
   here,
   'release',
-  kind === 'tv' ? `FastFood-TV-${version}.apk` : `FastFood-${version}.apk`,
+  kind === 'tv'
+    ? `FastFood-TV-${version}.apk`
+    : kind === 'kitchen'
+      ? `FastFood-Oshxona-${version}.apk`
+      : `FastFood-${version}.apk`,
 );
 copyFileSync(output, target);
 console.log(`Ready: ${target}`);

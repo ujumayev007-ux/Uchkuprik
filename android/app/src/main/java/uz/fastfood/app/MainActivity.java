@@ -8,6 +8,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
@@ -30,6 +32,7 @@ import org.json.JSONObject;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
 
 /**
  * FastFood for phones and tablets: connects to the FastFood computer in the
@@ -39,6 +42,9 @@ import java.net.URL;
 public class MainActivity extends Activity {
     private static final String PREFS = "fastfood";
     private static final String KEY_SERVER = "server";
+    // The paired restaurant computer (its signed LAN key): found again after a Wi-Fi change.
+    private static final String KEY_SERVER_ID = "serverId";
+    private static final String KEY_SERVER_KEY = "serverKey";
     private static final int FILE_REQUEST = 41;
     private static final int NOTIFY_REQUEST = 42;
 
@@ -46,12 +52,15 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     // Page to open once the app is up (a tapped notification: «Stol belgilash»).
     private String pendingPath;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean reconnecting = false;
+    private int failures = 0;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        // A TV screen never sleeps.
-        if (BuildConfig.IS_TV) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // A TV or kitchen screen never sleeps.
+        if (BuildConfig.KEEP_SCREEN_ON) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pendingPath = pathFrom(getIntent());
         String server = prefs().getString(KEY_SERVER, null);
         if (server == null) showSetup(null);
@@ -103,6 +112,12 @@ public class MainActivity extends Activity {
                 AlertService.start(MainActivity.this);
             } catch (Exception ignored) {
             }
+        }
+
+        /** "kitchen" / "tv": registered-device apps (PIN once); "" for the waiter app. */
+        @JavascriptInterface
+        public String shellKind() {
+            return BuildConfig.SHELL_KIND;
         }
 
         @JavascriptInterface
@@ -177,6 +192,7 @@ public class MainActivity extends Activity {
     }
 
     private void showSetup(String error) {
+        handler.removeCallbacks(watchdog);
         if (web != null) {
             web.destroy();
             web = null;
@@ -195,9 +211,8 @@ public class MainActivity extends Activity {
         box.addView(title);
 
         TextView hint = new TextView(this);
-        hint.setText("Restoran kompyuteridagi FastFood manzilini kiriting.\n"
-            + "Uni kompyuterda: FastFood → Telefonlar uchun manzil.\n"
-            + "Telefon shu Wi‑Fi tarmog‘ida bo‘lishi kerak.");
+        hint.setText("Telefon restoran kompyuteri bilan bir Wi‑Fi’da bo‘lsin: FastFood kompyuterni o‘zi topadi.\n"
+            + "Topilmasa, manzilni qo‘lda kiriting (kompyuterda: FastFood → Telefonlar uchun manzil).");
         hint.setTextSize(15);
         hint.setGravity(Gravity.CENTER);
         hint.setPadding(0, dp(12), 0, dp(16));
@@ -222,6 +237,46 @@ public class MainActivity extends Activity {
         connect.setText("Ulanish");
         box.addView(connect, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        Button search = new Button(this);
+        search.setText("Kompyuterni avtomatik qidirish");
+        box.addView(search, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout results = new LinearLayout(this);
+        results.setOrientation(LinearLayout.VERTICAL);
+        box.addView(results);
+        Runnable runSearch = () -> {
+            search.setEnabled(false);
+            results.removeAllViews();
+            status.setTextColor(Color.DKGRAY);
+            status.setText("Kompyuter qidirilmoqda…");
+            new Thread(() -> {
+                List<LanDiscovery.Server> found = LanDiscovery.discover(BuildConfig.LAN_PORT, null, 2500);
+                runOnUiThread(() -> {
+                    search.setEnabled(true);
+                    String pairedKey = prefs().getString(KEY_SERVER_KEY, null);
+                    LanDiscovery.Server own = null;
+                    for (LanDiscovery.Server s : found) if (s.key.equals(pairedKey)) own = s;
+                    // This phone's own computer, or the only one: connect; several: the person chooses.
+                    if (own != null || found.size() == 1) {
+                        adopt(own != null ? own : found.get(0));
+                        return;
+                    }
+                    if (found.isEmpty()) {
+                        status.setTextColor(Color.rgb(192, 57, 43));
+                        status.setText("Kompyuter topilmadi. FastFood kompyuterda ochiqligini va bir Wi‑Fi’da ekaningizni tekshiring yoki manzilni kiriting.");
+                        return;
+                    }
+                    status.setText("Bir nechta kompyuter topildi. Kodini kompyuter ekranidagi bilan solishtirib tanlang:");
+                    for (LanDiscovery.Server s : found) {
+                        Button choice = new Button(this);
+                        choice.setText(s.name + "  ·  " + s.fingerprint() + "  ·  " + s.host);
+                        choice.setOnClickListener(c -> adopt(s));
+                        results.addView(choice);
+                    }
+                });
+            }).start();
+        };
+        search.setOnClickListener(v -> runSearch.run());
+
         connect.setOnClickListener(v -> {
             String server = normalize(input.getText().toString());
             if (server == null) {
@@ -236,8 +291,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     connect.setEnabled(true);
                     if (ok) {
-                        prefs().edit().putString(KEY_SERVER, server).apply();
-                        showApp(server);
+                        pairManual(server);
                     } else {
                         status.setTextColor(Color.rgb(192, 57, 43));
                         status.setText("Kompyuterga ulanib bo‘lmadi. Manzil va Wi‑Fi’ni tekshiring, FastFood kompyuterda ochiq bo‘lsin.");
@@ -246,7 +300,129 @@ public class MainActivity extends Activity {
             }).start();
         });
         setContentView(box);
+        // First start: look for the restaurant computer by itself.
+        if (prefs().getString(KEY_SERVER, null) == null) runSearch.run();
     }
+
+    /** Makes `server` (a verified discovery answer) this app's computer and opens it. */
+    private void adopt(LanDiscovery.Server server) {
+        String before = prefs().getString(KEY_SERVER, null);
+        String pairedKey = prefs().getString(KEY_SERVER_KEY, null);
+        // The same computer on a new address: device registration and sign-in move with it.
+        if (before != null && server.key.equals(pairedKey)) carryCookies(before, server.url());
+        prefs().edit()
+            .putString(KEY_SERVER, server.url())
+            .putString(KEY_SERVER_ID, server.id)
+            .putString(KEY_SERVER_KEY, server.key)
+            .apply();
+        if (AlertService.wanted(this)) AlertService.start(this);
+        showApp(server.url());
+    }
+
+    /** A typed address: pair with the computer answering there, so it is found again later. */
+    private void pairManual(String server) {
+        new Thread(() -> {
+            LanDiscovery.Server match = null;
+            try {
+                String host = new URL(server).getHost();
+                for (LanDiscovery.Server s : LanDiscovery.discover(BuildConfig.LAN_PORT, null, 2500))
+                    if (s.host.equals(host)) match = s;
+            } catch (Exception ignored) {
+            }
+            LanDiscovery.Server found = match;
+            runOnUiThread(() -> {
+                if (found != null && found.url().equals(server)) {
+                    adopt(found);
+                    return;
+                }
+                prefs().edit().putString(KEY_SERVER, server).remove(KEY_SERVER_ID).remove(KEY_SERVER_KEY).apply();
+                showApp(server);
+            });
+        }).start();
+    }
+
+    /** Cookies belong to an address: copy them to the computer's new address. */
+    private static void carryCookies(String from, String to) {
+        try {
+            if (new URL(from).getHost().equals(new URL(to).getHost())) return;
+            CookieManager jar = CookieManager.getInstance();
+            String cookies = jar.getCookie(from);
+            if (cookies == null) return;
+            for (String part : cookies.split(";\\s*"))
+                if (part.contains("=")) jar.setCookie(to, part + "; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax");
+            jar.flush();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * The computer stopped answering (Wi‑Fi changed, new IP, restart): look for the paired
+     * computer again (only its signed key is accepted) and reopen the app there.
+     */
+    private void reconnect(String error) {
+        String pairedKey = prefs().getString(KEY_SERVER_KEY, null);
+        String server = prefs().getString(KEY_SERVER, null);
+        if (pairedKey == null || server == null) {
+            showSetup(error);
+            return;
+        }
+        if (reconnecting) return;
+        reconnecting = true;
+        handler.removeCallbacks(watchdog);
+        if (web != null) {
+            web.destroy();
+            web = null;
+        }
+        TextView wait = new TextView(this);
+        wait.setText("Kompyuter bilan aloqa yo‘q.\nQayta ulanmoqda…");
+        wait.setTextSize(20);
+        wait.setGravity(Gravity.CENTER);
+        wait.setBackgroundColor(Color.rgb(247, 246, 242));
+        setContentView(wait);
+        new Thread(() -> {
+            LanDiscovery.Server found = null;
+            boolean back = false;
+            long end = System.currentTimeMillis() + 90_000;
+            while (found == null && !back && System.currentTimeMillis() < end) {
+                if (reachable(server)) back = true;
+                else {
+                    List<LanDiscovery.Server> list = LanDiscovery.discover(BuildConfig.LAN_PORT, pairedKey, 2500);
+                    if (!list.isEmpty()) found = list.get(0);
+                    else try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ignored) {
+                    }
+                }
+            }
+            LanDiscovery.Server result = found;
+            boolean same = back;
+            runOnUiThread(() -> {
+                reconnecting = false;
+                if (result != null) adopt(result);
+                else if (same) showApp(server);
+                else showSetup(error);
+            });
+        }).start();
+    }
+
+    /** Every 15 s while the app is open: is the computer there? Two misses: find it again. */
+    private final Runnable watchdog = new Runnable() {
+        @Override
+        public void run() {
+            String server = prefs().getString(KEY_SERVER, null);
+            if (web == null || server == null) return;
+            new Thread(() -> {
+                boolean ok = reachable(server);
+                runOnUiThread(() -> {
+                    failures = ok ? 0 : failures + 1;
+                    if (failures >= 2) {
+                        failures = 0;
+                        reconnect("Kompyuterga ulanib bo‘lmadi. FastFood kompyuterda ochiqligini va Wi‑Fi’ni tekshiring.");
+                    } else if (web != null) handler.postDelayed(watchdog, 15_000);
+                });
+            }).start();
+        }
+    };
 
     private static boolean reachable(String server) {
         try {
@@ -290,7 +466,13 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request.isForMainFrame())
-                    showSetup("Kompyuterga ulanib bo‘lmadi. FastFood kompyuterda ochiqligini va Wi‑Fi’ni tekshiring.");
+                    reconnect("Kompyuterga ulanib bo‘lmadi. FastFood kompyuterda ochiqligini va Wi‑Fi’ni tekshiring.");
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                // Registration and sign-in are written at once (a phone may be switched off).
+                CookieManager.getInstance().flush();
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -313,6 +495,9 @@ public class MainActivity extends Activity {
         web.loadUrl(server + (pendingPath != null ? pendingPath : BuildConfig.START_PATH));
         pendingPath = null;
         setContentView(web);
+        failures = 0;
+        handler.removeCallbacks(watchdog);
+        handler.postDelayed(watchdog, 15_000);
     }
 
     @Override

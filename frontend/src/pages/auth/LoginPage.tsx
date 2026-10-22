@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { shellKind } from '../../lib/shell';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { meKey } from '../../auth/session';
@@ -19,14 +20,7 @@ function rememberedTenant() {
 
 /** The Kassa, Ofitsiant, Oshxona and TV applications go straight to the PIN keypad once this device is registered. */
 function usesPinShell() {
-  const shell = (window as unknown as { fastfoodShell?: { kind?: string } })
-    .fastfoodShell;
-  return (
-    shell?.kind === 'cashier' ||
-    shell?.kind === 'waiter' ||
-    shell?.kind === 'kitchen' ||
-    shell?.kind === 'tv'
-  );
+  return ['cashier', 'waiter', 'kitchen', 'tv'].includes(shellKind());
 }
 
 export function LoginPage() {

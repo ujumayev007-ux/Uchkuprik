@@ -6,9 +6,11 @@ plugins {
 def appVersion = (project.findProperty("appVersion") ?: "1.0.0").toString()
 def parts = appVersion.tokenize(".").collect { it as int }
 def versionSlug = appVersion.replace(".", "_")
-// waiter (Ofitsiant, default) or tv (customer queue screen on Android TV): same code, own start page.
+// waiter (Ofitsiant, default), tv (customer queue screen) or kitchen (Oshxona screen):
+// same code, own start page and package.
 def appKind = (project.findProperty("appKind") ?: "waiter").toString()
 def isTv = appKind == "tv"
+def isKitchen = appKind == "kitchen"
 
 android {
     namespace "uz.fastfood.app"
@@ -16,14 +18,19 @@ android {
 
     defaultConfig {
         // A distinct package per version: versions install side by side on the phone.
-        applicationId "uz.fastfood.app." + (isTv ? "tv." : "") + "v" + versionSlug
+        applicationId "uz.fastfood.app." + (isTv ? "tv." : isKitchen ? "kitchen." : "") + "v" + versionSlug
         minSdk 24
         targetSdk 36
         versionCode parts[0] * 10000 + parts[1] * 100 + parts[2]
         versionName appVersion
-        resValue "string", "app_name", (isTv ? "FastFood TV " : "FastFood Ofitsiant ") + appVersion
-        buildConfigField "String", "START_PATH", isTv ? "\"/navbat\"" : "\"/ofitsiant\""
+        resValue "string", "app_name", (isTv ? "FastFood TV " : isKitchen ? "FastFood Oshxona " : "FastFood Ofitsiant ") + appVersion
+        buildConfigField "String", "START_PATH", isTv ? "\"/navbat\"" : isKitchen ? "\"/oshxona\"" : "\"/ofitsiant\""
         buildConfigField "boolean", "IS_TV", isTv.toString()
+        // TV and kitchen screens never sleep and are registered devices (PIN once).
+        buildConfigField "boolean", "KEEP_SCREEN_ON", (isTv || isKitchen).toString()
+        buildConfigField "String", "SHELL_KIND", isTv ? "\"tv\"" : isKitchen ? "\"kitchen\"" : "\"\""
+        // LAN discovery port of the restaurant computer (desktop/lan.cjs).
+        buildConfigField "int", "LAN_PORT", "47870"
     }
 
     signingConfigs {

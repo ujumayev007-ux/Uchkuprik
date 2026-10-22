@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { shellKind } from '../lib/shell';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMe } from '../auth/session';
 import { LiveClock } from '../components/LiveClock';
@@ -66,11 +67,7 @@ export function QueuePage() {
   });
   // Browsers only allow audio after a user gesture: one tap on the overlay.
   // The TV application plays the ready announcements without a tap.
-  const [sound, setSound] = useState(
-    () =>
-      (window as unknown as { fastfoodShell?: { kind?: string } }).fastfoodShell
-        ?.kind === 'tv',
-  );
+  const [sound, setSound] = useState(() => shellKind() === 'tv');
   const [overlayDismissed, setOverlayDismissed] = useState(false);
   const announced = useRef<Map<string, number> | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);

@@ -365,6 +365,97 @@ function MovementForm({
   );
 }
 
+/**
+ * Sets one product's quantity to what is really there (a one-line stocktake): the
+ * difference is posted as a movement with the reason and recorded in the audit history.
+ */
+function QuantityForm({
+  item,
+  onDone,
+}: {
+  item: StockItem;
+  onDone: () => void;
+}) {
+  const text = t.inventory.quantityEdit;
+  const [value, setValue] = useState(String(Number(item.quantity)));
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const number = Number(value.replace(',', '.'));
+  const valid =
+    value.trim() !== '' &&
+    Number.isFinite(number) &&
+    number >= 0 &&
+    number <= 100_000_000 &&
+    /^\d+([.,]\d{1,3})?$/.test(value.trim());
+  const reasonOk = reason.trim().length >= 3;
+  return (
+    <form
+      className="stack"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!valid || !reasonOk) return;
+        setBusy(true);
+        setError(null);
+        try {
+          await post('/inventory/stocktakes', {
+            counts: [{ stockItemId: item.id, counted: String(number) }],
+            reason: reason.trim(),
+          });
+          onDone();
+        } catch (caught) {
+          setError(caught);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <p className="muted">
+        {text.current}:{' '}
+        <strong>
+          {qty(item.quantity)} {item.unitLabel}
+        </strong>
+      </p>
+      <TextField
+        label={`${text.newQuantity} (${item.unitLabel})`}
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        error={value.trim() !== '' && !valid ? text.invalid : undefined}
+        required
+        autoFocus
+      />
+      {valid && (
+        <p className="muted small">
+          {text.difference}:{' '}
+          {(number - Number(item.quantity) > 0 ? '+' : '') +
+            qty(String(number - Number(item.quantity)))}{' '}
+          {item.unitLabel}
+        </p>
+      )}
+      <TextField
+        label={text.reason}
+        hint={text.reasonHint}
+        value={reason}
+        maxLength={200}
+        onChange={(e) => setReason(e.target.value)}
+        required
+      />
+      <FormError error={error} />
+      <div className="form-actions">
+        <Button
+          type="submit"
+          variant="primary"
+          busy={busy}
+          disabled={!valid || !reasonOk}
+        >
+          {t.common.save}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function StockTab() {
   const { data: me } = useMe();
   const client = useQueryClient();
@@ -386,9 +477,11 @@ function StockTab() {
   });
   const [dialog, setDialog] = useState<
     | { kind: 'item'; item: StockItem | null }
+    | { kind: 'quantity'; item: StockItem }
     | { kind: 'WASTE' | 'ADJUSTMENT' | 'STOCKTAKE' | 'TRANSFER' }
     | null
   >(null);
+  const [search, setSearch] = useState('');
   const manage = can(me, 'inventory.manage');
   const done = async () => {
     setDialog(null);
@@ -400,6 +493,17 @@ function StockTab() {
     return (
       <ErrorState error={items.error} onRetry={() => void items.refetch()} />
     );
+  // Search by name or code (case- and apostrophe-insensitive).
+  const norm = (value: string) =>
+    value.toLocaleLowerCase('uz').replace(/[‘’ʻʼ'`]/g, '');
+  const needle = norm(search.trim());
+  const shown = needle
+    ? items.data.filter(
+        (item) =>
+          norm(item.name).includes(needle) ||
+          norm(item.sku ?? '').includes(needle),
+      )
+    : items.data;
   return (
     <div className="stack">
       {manage && (
@@ -451,6 +555,14 @@ function StockTab() {
           </ul>
         </section>
       )}
+      {items.data.length > 0 && (
+        <TextField
+          label={t.inventory.quantityEdit.search}
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
       {items.data.length === 0 ? (
         <EmptyState />
       ) : (
@@ -471,7 +583,14 @@ function StockTab() {
               </tr>
             </thead>
             <tbody>
-              {items.data.map((item) => (
+              {shown.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted">
+                    {t.inventory.quantityEdit.notFound}
+                  </td>
+                </tr>
+              )}
+              {shown.map((item) => (
                 <tr
                   key={item.id}
                   className={item.isActive ? '' : 'is-inactive'}
@@ -512,7 +631,16 @@ function StockTab() {
                     </>
                   )}
                   {manage && (
-                    <td className="right">
+                    <td className="right nowrap">
+                      {item.isActive && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDialog({ kind: 'quantity', item })}
+                        >
+                          {t.inventory.quantityEdit.button}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -532,24 +660,29 @@ function StockTab() {
         open={dialog !== null}
         wide
         title={
-          dialog?.kind === 'item'
-            ? dialog.item
-              ? t.inventory.editItem
-              : t.inventory.addItem
-            : dialog?.kind === 'WASTE'
-              ? t.inventory.waste
-              : dialog?.kind === 'ADJUSTMENT'
-                ? t.inventory.adjust
-                : dialog?.kind === 'TRANSFER'
-                  ? t.inventory.transfer
-                  : t.inventory.stocktake
+          dialog?.kind === 'quantity'
+            ? `${t.inventory.quantityEdit.title}: ${dialog.item.name}`
+            : dialog?.kind === 'item'
+              ? dialog.item
+                ? t.inventory.editItem
+                : t.inventory.addItem
+              : dialog?.kind === 'WASTE'
+                ? t.inventory.waste
+                : dialog?.kind === 'ADJUSTMENT'
+                  ? t.inventory.adjust
+                  : dialog?.kind === 'TRANSFER'
+                    ? t.inventory.transfer
+                    : t.inventory.stocktake
         }
         onClose={() => setDialog(null)}
       >
         {dialog?.kind === 'item' && (
           <ItemForm item={dialog.item} onDone={done} />
         )}
-        {dialog && dialog.kind !== 'item' && (
+        {dialog?.kind === 'quantity' && (
+          <QuantityForm item={dialog.item} onDone={done} />
+        )}
+        {dialog && dialog.kind !== 'item' && dialog.kind !== 'quantity' && (
           <MovementForm
             items={items.data.filter((item) => item.isActive)}
             mode={dialog.kind}

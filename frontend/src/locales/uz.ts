@@ -1197,6 +1197,19 @@ export const uz = {
     waste: 'Chiqitga chiqarish',
     adjust: 'Tuzatish',
     stocktake: 'Inventarizatsiya',
+    quantityEdit: {
+      search: 'Mahsulot qidirish (nomi yoki kodi)',
+      notFound: 'Bunday mahsulot topilmadi.',
+      button: 'Miqdor',
+      title: 'Qoldiqni o‘zgartirish',
+      current: 'Hozirgi qoldiq',
+      newQuantity: 'Haqiqiy qoldiq',
+      invalid: 'Musbat son kiriting (ko‘pi bilan 3 ta kasr raqam).',
+      difference: 'Farq',
+      reason: 'Sabab',
+      reasonHint:
+        'Masalan: sanab chiqildi, xato kiritilgan edi. «Harakatlar» va audit tarixida saqlanadi.',
+    },
     stocktakeHint:
       'Haqiqiy sanalgan miqdorlarni kiriting. Farqlar avtomatik hisobga olinadi.',
     counted: 'Sanalgan',
