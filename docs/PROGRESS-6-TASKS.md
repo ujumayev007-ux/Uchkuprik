@@ -49,5 +49,15 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 - Server 1.14.9 → yangi versiya (backend/frontend o‘zgardi).
 - Owner EXE 1.7.1.
 
+## Yig‘ildi (2026-10-23)
+- Server 1.14.10: `Desktop\FastFood-TAYYOR\2-Server\FastFood-Admin-Setup-1.14.10.exe` (eski 1.14.9 zaxirada: `desktop/release/FastFood-Admin-Setup-1.14.9-oldingi-b666a2f.exe`)
+- Owner 1.7.1: `Desktop\FastFood-TAYYOR\1-Owner\FastFood-Owner-Setup-1.7.1.exe`
+- Kassa/Oshxona/TV/Ofitsiant 1.6.1 va APK 1.14.9 o‘zgarmadi (qayta yig‘ilmadi).
+
+## Qolgan
+- «Oshxona ish rejimi» Owner konsolida ko‘rinishi uchun markaz (Render) yangilanishi kerak (deploy qilinmadi). Hozircha rejim «Joriy».
+- Render 502 butunlay yo‘qolishi uchun pullik tarif (uxlamaydi).
+- Server ko‘chirish menyusi va 1.14.10 haqiqiy kompyuterda sinalmagan.
+
 ## Keyingi qadam
-Yig‘ish: Server (yangi versiya) va Owner EXE 1.7.1; zaxira; FastFood-TAYYOR.
+Hammasi bajarildi.
