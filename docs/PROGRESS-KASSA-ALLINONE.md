@@ -28,6 +28,16 @@ Branch `feature/six-tasks-20261023`, commit 2a9f6a7. Push/deploy qilinmagan.
    o‘chirish (ma’lumotlar o‘chmaydi). Ikkalasi qolsa ham ikkinchi baza ochilmaydi (attach).
 4. Kassa oynasi bir marta administrator paroli bilan ro‘yxatdan o‘tadi → Owner tasdiqlaydi.
 
+## 1.14.12 tuzatish (commit 3270c71)
+- Xato «Maxfiy kalitlarni ochib bo‘lmadi»: 1.14.11 Kassa o‘z Electron profilida
+  (`%APPDATA%\FastFood-Kassa-App`) ishlagan; `secrets.enc` esa server profilidagi
+  `%APPDATA%\FastFood\Local State` kaliti bilan shifrlangan. 1.14.12 server profilini ishlatadi.
+- Oddiy nusxa (ko‘chirish paketi emas) uchun: eski kompyuterda `KALIT-OLISH.cmd`
+  (faqat o‘qiydi) → `FastFood-Data\kochirish-kaliti.txt`. Kassa birinchi ishga tushishda
+  kalitlarni ochadi, o‘z kaliti bilan qayta shifrlaydi, kalit faylini o‘chiradi; eski
+  `*.enc` lar `*.enc.eski-<vaqt>` bo‘lib qoladi. Kalit to‘g‘ri kelmasa hech narsa o‘zgarmaydi.
+- Kassa endi `Programs\FastFoodKassaServer` ga o‘rnatiladi (yengil Kassa ilovasi papkasiga emas).
+
 ## Qolgan
 - Render (markaziy server) hali b666a2f: `kitchen.mode` Owner konsolida ko‘rinmaydi.
 - Bu kompyuterdagi jonli server Owner ga bog‘lanmagan (litsenziya — foydalanuvchi o‘zi).
