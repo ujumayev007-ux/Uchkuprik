@@ -34,6 +34,7 @@ import { DevicesPage } from './pages/DevicesPage';
 import { FinancePage } from './pages/FinancePage';
 import { FloorPage } from './pages/FloorPage';
 import { InventoryPage } from './pages/InventoryPage';
+import { MarketTab } from './pages/MarketTab';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
 import { PaymentsPage } from './pages/PaymentsPage';
@@ -469,6 +470,21 @@ const router = createBrowserRouter([
             }
           >
             <InventoryPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/bozorlik',
+        element: (
+          <Guard
+            feature="inventory"
+            allow={(me) =>
+              can(me, 'pos.access') ||
+              can(me, 'inventory.view') ||
+              can(me, 'purchasing.manage')
+            }
+          >
+            <MarketTab isStandalonePage />
           </Guard>
         ),
       },

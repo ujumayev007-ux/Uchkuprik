@@ -16,18 +16,19 @@ const post = (agent: Agent, path: string, body: object = {}) =>
 
 // The Owner delegated the kitchen mode; the Admin chose `mode`.
 function useMode(mode: string | null) {
-  ctx.services.controlView =
-    mode === null
-      ? undefined
-      : async () => {
-          const policy = defaultPolicy();
-          policy.features['kitchen.mode'] = { mode: 'ADMIN' } as never;
-          return {
-            ...unlinkedView(),
-            policy,
-            adminParams: new Map([['kitchen.mode|*', { mode }]]),
-          };
-        };
+  if (mode === null) {
+    delete ctx.services.controlView;
+  } else {
+    ctx.services.controlView = async () => {
+      const policy = defaultPolicy();
+      policy.features['kitchen.mode'] = { mode: 'ADMIN' } as never;
+      return {
+        ...unlinkedView(),
+        policy,
+        adminParams: new Map([['kitchen.mode|*', { mode }]]),
+      };
+    };
+  }
 }
 
 async function setup() {

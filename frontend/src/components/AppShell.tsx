@@ -97,6 +97,12 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'orders.view'),
   },
   {
+    to: '/bozorlik',
+    label: t.market.title,
+    icon: '🛒',
+    visible: (me) => can(me, 'pos.access') || can(me, 'purchasing.manage'),
+  },
+  {
     to: '/oshxona',
     label: t.nav.kitchen,
     icon: '♨',

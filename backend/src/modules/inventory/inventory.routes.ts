@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -17,6 +18,7 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { findOpenShift } from '../shifts/shifts.routes.js';
 import { syncStockAlert } from './alert-sync.js';
 import {
   baseUnitLabels,
@@ -122,8 +124,15 @@ export function inventoryRouter(services: Services) {
     });
   });
 
-  router.get('/inventory/items', ...view, async (req, res) => {
+  router.get('/inventory/items', requireAuth(), async (req, res) => {
     const auth = getAuth(res);
+    if (
+      !auth.permissions.has('inventory.view') &&
+      !auth.permissions.has('purchasing.manage') &&
+      !auth.permissions.has('pos.access')
+    ) {
+      throw errors.forbidden();
+    }
     const { branchId } = parse(
       z.object({ branchId: z.uuid().optional() }),
       req.query,
@@ -786,8 +795,14 @@ export function inventoryRouter(services: Services) {
     await tx.purchase.update({ where: { id: purchaseId }, data: { total } });
   };
 
-  router.get('/purchases', ...purchasing, async (_req, res) => {
+  const canViewPurchases = (auth: AuthContext) =>
+    auth.permissions.has('purchasing.manage') ||
+    auth.permissions.has('pos.access') ||
+    auth.permissions.has('inventory.view');
+
+  router.get('/purchases', requireAuth(), async (_req, res) => {
     const auth = getAuth(res);
+    if (!canViewPurchases(auth)) throw errors.forbidden();
     const purchases = await db.purchase.findMany({
       where: { tenantId: auth.tenantId },
       orderBy: { createdAt: 'desc' },
@@ -795,24 +810,35 @@ export function inventoryRouter(services: Services) {
       include: { supplier: { select: { name: true } }, lines: true },
     });
     res.json({
-      purchases: purchases.map((purchase) => ({
-        id: purchase.id,
-        supplierId: purchase.supplierId,
-        supplier: purchase.supplier.name,
-        status: purchase.status,
-        invoiceNo: purchase.invoiceNo,
-        note: purchase.note,
-        total: purchase.total,
-        createdAt: purchase.createdAt,
-        receivedAt: purchase.receivedAt,
-        lines: purchase.lines.map((line) => ({
-          stockItemId: line.stockItemId,
-          quantity: line.quantity.toString(),
-          unitName: line.unitName,
-          unitPrice: line.unitPrice,
-          lineTotal: line.lineTotal,
-        })),
-      })),
+      purchases: purchases.map((purchase) => {
+        const paymentMethod = purchase.invoiceNo?.startsWith('mkt:CARD')
+          ? 'CARD'
+          : purchase.invoiceNo?.startsWith('mkt:DEBT')
+            ? 'DEBT'
+            : purchase.note?.toLowerCase().includes('nasiya') ||
+                purchase.note?.toLowerCase().includes('qarz')
+              ? 'DEBT'
+              : 'CASH';
+        return {
+          id: purchase.id,
+          supplierId: purchase.supplierId,
+          supplier: purchase.supplier.name,
+          status: purchase.status,
+          invoiceNo: purchase.invoiceNo,
+          note: purchase.note,
+          total: purchase.total,
+          paymentMethod,
+          createdAt: purchase.createdAt,
+          receivedAt: purchase.receivedAt,
+          lines: purchase.lines.map((line) => ({
+            stockItemId: line.stockItemId,
+            quantity: line.quantity.toString(),
+            unitName: line.unitName,
+            unitPrice: line.unitPrice,
+            lineTotal: line.lineTotal,
+          })),
+        };
+      }),
     });
   });
 
@@ -935,6 +961,8 @@ export function inventoryRouter(services: Services) {
     supplierName: z.string().trim().min(1).max(100).default('Bozor'),
     note: z.string().trim().max(300).nullable().optional(),
     paid: z.boolean().default(true),
+    paymentMethod: z.enum(['CASH', 'CARD', 'DEBT']).optional(),
+    idempotencyKey: z.string().trim().min(8).max(100).optional(),
     // Approved stock requests this purchase fulfils.
     requestIds: z.array(z.uuid()).max(20).default([]),
     lines: z
@@ -960,11 +988,47 @@ export function inventoryRouter(services: Services) {
       .max(200),
   });
 
-  router.post('/purchases/market', ...purchasing, async (req, res) => {
+  const canEnterMarketPurchase = (auth: AuthContext) =>
+    auth.permissions.has('purchasing.manage') ||
+    auth.permissions.has('pos.access');
+
+  router.post('/purchases/market', requireAuth(), async (req, res) => {
     const auth = getAuth(res);
+    if (!canEnterMarketPurchase(auth)) throw errors.forbidden();
     const input = parse(marketInput, req.body);
     const branch = await resolveBranch(db, auth, input.branchId);
-    const canCreateItems = auth.permissions.has('inventory.manage');
+    const canCreateItems =
+      auth.permissions.has('inventory.manage') ||
+      auth.permissions.has('pos.access') ||
+      auth.permissions.has('purchasing.manage');
+    const method = input.paymentMethod ?? (input.paid ? 'CASH' : 'DEBT');
+    const isDebt = method === 'DEBT';
+    const fromCash = method === 'CASH';
+
+    // Prevent duplicate submissions via idempotencyKey
+    if (input.idempotencyKey) {
+      const existing = await db.purchase.findFirst({
+        where: {
+          tenantId: auth.tenantId,
+          invoiceNo: { startsWith: `mkt:${input.idempotencyKey}` },
+        },
+        include: { supplier: true },
+      });
+      if (existing) {
+        return res.status(200).json({
+          id: existing.id,
+          total: existing.total,
+          purchases: [
+            {
+              id: existing.id,
+              total: existing.total,
+              supplier: existing.supplier.name,
+            },
+          ],
+        });
+      }
+    }
+
     // Lines bought from several places are saved as one purchase per supplier.
     const groups = new Map<string, typeof input.lines>();
     for (const line of input.lines) {
@@ -1005,11 +1069,15 @@ export function inventoryRouter(services: Services) {
         }));
       const warehouse = await defaultWarehouse(tx, auth.tenantId, branch.id);
       const now = services.now?.() ?? new Date();
+      const invoiceKey = input.idempotencyKey
+        ? `mkt:${input.idempotencyKey}:${method}`
+        : `mkt:${method}:${randomUUID()}`;
       const purchase = await tx.purchase.create({
         data: {
           tenantId: auth.tenantId,
           supplierId: supplier.id,
           warehouseId: warehouse.id,
+          invoiceNo: invoiceKey,
           note: input.note ?? null,
           createdById: auth.userId,
         },
@@ -1105,16 +1173,45 @@ export function inventoryRouter(services: Services) {
           receivedById: auth.userId,
         },
       });
-      if (input.paid && total > 0)
+      if (!isDebt && total > 0) {
         await tx.supplierPayment.create({
           data: {
             tenantId: auth.tenantId,
             supplierId: supplier.id,
             amount: total,
-            note: 'Bozorlik',
+            note: `Bozorlik (${fromCash ? 'Naqd' : 'Karta'})`,
             createdById: auth.userId,
           },
         });
+        if (fromCash) {
+          const shift = await findOpenShift(tx, auth, branch.id);
+          if (shift) {
+            await tx.cashMovement.create({
+              data: {
+                tenantId: auth.tenantId,
+                shiftId: shift.id,
+                amount: -total,
+                reason: `Bozorlik: ${supplier.name}`.slice(0, 200),
+                createdById: auth.userId,
+              },
+            });
+          }
+        }
+        await tx.expense.create({
+          data: {
+            tenantId: auth.tenantId,
+            branchId: branch.id,
+            category: 'Bozorlik',
+            amount: total,
+            date: now,
+            recipient: supplier.name,
+            fromCash,
+            note: input.note ?? null,
+            approvalStatus: 'APPROVED',
+            createdById: auth.userId,
+          },
+        });
+      }
       await audit(tx, req, {
         tenantId: auth.tenantId,
         branchId: branch.id,
@@ -1122,7 +1219,13 @@ export function inventoryRouter(services: Services) {
         action: 'purchase.market',
         entityType: 'purchase',
         entityId: purchase.id,
-        data: { total, supplierId: supplier.id, paid: input.paid },
+        data: {
+          total,
+          supplierId: supplier.id,
+          paid: !isDebt,
+          paymentMethod: method,
+          fromCash,
+        },
       });
       if (first && input.requestIds.length)
         await tx.stockRequest.updateMany({
@@ -1135,6 +1238,253 @@ export function inventoryRouter(services: Services) {
         });
       return { id: purchase.id, total, supplier: supplier.name };
     }
+  });
+
+  // Admin correction for saved purchases: strictly requires purchasing.manage (admin only).
+  // Cashier cannot edit or correct. Audited with old and new values and mandatory reason.
+  const correctPurchaseInput = z.object({
+    reason: z.string().trim().min(3).max(300),
+    note: z.string().trim().max(300).nullable().optional(),
+    supplierName: z.string().trim().min(1).max(100).optional(),
+    lines: z
+      .array(
+        z.object({
+          stockItemId: z.uuid(),
+          quantity: positive,
+          unitName: z.string().trim().min(1).max(40),
+          lineTotal: amount,
+        }),
+      )
+      .min(1)
+      .max(200),
+  });
+
+  router.post('/purchases/:id/correct', ...purchasing, async (req, res) => {
+    const auth = getAuth(res);
+    if (!auth.permissions.has('purchasing.manage')) {
+      throw errors.forbidden();
+    }
+    const id = parse(z.uuid(), req.params.id);
+    const input = parse(correctPurchaseInput, req.body);
+    const now = services.now?.() ?? new Date();
+
+    const result = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM purchases WHERE id = ${id}::uuid FOR UPDATE`;
+      const purchase = await tx.purchase.findFirst({
+        where: { id, tenantId: auth.tenantId },
+        include: {
+          supplier: true,
+          lines: true,
+        },
+      });
+      if (!purchase) throw errors.notFound();
+      if (purchase.status !== 'RECEIVED') {
+        throw new AppError(
+          409,
+          'PURCHASE_NOT_RECEIVED',
+          'Faqat qabul qilingan xaridni tuzatish mumkin',
+        );
+      }
+
+      const warehouse = await tx.warehouse.findFirstOrThrow({
+        where: { id: purchase.warehouseId },
+      });
+
+      const oldSupplierName = purchase.supplier.name;
+      const oldTotal = purchase.total;
+      const oldLines = purchase.lines.map((l) => ({
+        stockItemId: l.stockItemId,
+        quantity: l.quantity.toString(),
+        unitName: l.unitName,
+        lineTotal: l.lineTotal,
+        baseQuantity: l.baseQuantity.toString(),
+      }));
+
+      // Supplier resolution if updated
+      let supplierId = purchase.supplierId;
+      if (input.supplierName && input.supplierName !== oldSupplierName) {
+        const sup =
+          (await tx.supplier.findFirst({
+            where: { tenantId: auth.tenantId, name: input.supplierName },
+          })) ??
+          (await tx.supplier.create({
+            data: { tenantId: auth.tenantId, name: input.supplierName },
+          }));
+        supplierId = sup.id;
+      }
+
+      // Track old base quantities per stockItemId
+      const oldBaseMap = new Map<string, Decimal>();
+      for (const line of purchase.lines) {
+        const cur = oldBaseMap.get(line.stockItemId) ?? ZERO;
+        oldBaseMap.set(line.stockItemId, cur.plus(line.baseQuantity));
+      }
+
+      // Compute new lines and base quantities
+      let newTotal = 0;
+      const newLinesData: {
+        stockItemId: string;
+        quantity: Decimal;
+        unitName: string;
+        factor: Decimal;
+        baseQuantity: Decimal;
+        unitPrice: number;
+        lineTotal: number;
+      }[] = [];
+      const newBaseMap = new Map<string, Decimal>();
+
+      for (const line of input.lines) {
+        const { factor } = await toBase(
+          tx,
+          auth.tenantId,
+          line.stockItemId,
+          line.unitName,
+        );
+        const baseQuantity = line.quantity.times(factor);
+        newTotal += line.lineTotal;
+        const unitPrice = Math.round(
+          new Decimal(line.lineTotal).dividedBy(line.quantity).toNumber(),
+        );
+        newLinesData.push({
+          stockItemId: line.stockItemId,
+          quantity: line.quantity,
+          unitName: line.unitName,
+          factor,
+          baseQuantity,
+          unitPrice,
+          lineTotal: line.lineTotal,
+        });
+        const cur = newBaseMap.get(line.stockItemId) ?? ZERO;
+        newBaseMap.set(line.stockItemId, cur.plus(baseQuantity));
+      }
+
+      // Post delta movements for each stock item
+      const allItemIds = new Set([...oldBaseMap.keys(), ...newBaseMap.keys()]);
+      for (const itemId of allItemIds) {
+        const oldBase = oldBaseMap.get(itemId) ?? ZERO;
+        const newBase = newBaseMap.get(itemId) ?? ZERO;
+        const delta = newBase.minus(oldBase);
+        if (!delta.isZero()) {
+          await postMovement(tx, {
+            tenantId: auth.tenantId,
+            warehouseId: purchase.warehouseId,
+            stockItemId: itemId,
+            type: 'ADJUSTMENT',
+            quantity: delta,
+            allowNegative: true,
+            referenceType: 'purchase_correction',
+            referenceId: purchase.id,
+            actorId: auth.userId,
+          });
+        }
+      }
+
+      // Replace lines
+      await tx.purchaseLine.deleteMany({ where: { purchaseId: purchase.id } });
+      for (const nl of newLinesData) {
+        await tx.purchaseLine.create({
+          data: {
+            tenantId: auth.tenantId,
+            purchaseId: purchase.id,
+            ...nl,
+          },
+        });
+      }
+
+      // Update purchase record
+      await tx.purchase.update({
+        where: { id: purchase.id },
+        data: {
+          supplierId,
+          note: input.note ?? purchase.note,
+          total: newTotal,
+        },
+      });
+
+      // Update financial records if any
+      const totalDelta = newTotal - oldTotal;
+      if (totalDelta !== 0) {
+        const payment = await tx.supplierPayment.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            supplierId: purchase.supplierId,
+            amount: oldTotal,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (payment) {
+          await tx.supplierPayment.update({
+            where: { id: payment.id },
+            data: {
+              amount: newTotal,
+              supplierId,
+              note: `Bozorlik (tuzatildi: ${input.reason})`,
+            },
+          });
+        }
+        const expense = await tx.expense.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            branchId: warehouse.branchId,
+            category: 'Bozorlik',
+            amount: oldTotal,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (expense) {
+          await tx.expense.update({
+            where: { id: expense.id },
+            data: {
+              amount: newTotal,
+              recipient: input.supplierName ?? purchase.supplier.name,
+              note: `Tuzatildi: ${input.reason}${input.note ? ` (${input.note})` : ''}`,
+            },
+          });
+        }
+      }
+
+      // Audit the correction with old and new values and reason
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: warehouse.branchId,
+        actorUserId: auth.userId,
+        action: 'purchase.correct',
+        entityType: 'purchase',
+        entityId: purchase.id,
+        data: {
+          reason: input.reason,
+          oldValues: {
+            supplier: oldSupplierName,
+            total: oldTotal,
+            note: purchase.note,
+            lines: oldLines,
+          },
+          newValues: {
+            supplier: input.supplierName ?? oldSupplierName,
+            total: newTotal,
+            note: input.note ?? purchase.note,
+            lines: newLinesData.map((l) => ({
+              stockItemId: l.stockItemId,
+              quantity: l.quantity.toString(),
+              unitName: l.unitName,
+              lineTotal: l.lineTotal,
+              baseQuantity: l.baseQuantity.toString(),
+            })),
+          },
+          user: auth.userId,
+          time: now.toISOString(),
+        },
+      });
+
+      return { id: purchase.id, total: newTotal };
+    });
+
+    services.events?.publish({
+      type: 'inventory.changed',
+      tenantId: auth.tenantId,
+    });
+
+    res.json({ ok: true, id: result.id, total: result.total });
   });
 
   // --- Supplier returns -------------------------------------------------------

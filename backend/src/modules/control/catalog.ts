@@ -429,6 +429,7 @@ export const featureCatalog: FeatureDef[] = [
       'PATCH /purchases/:id',
       'POST /purchases/:id/cancel',
       'POST /purchases/:id/receive',
+      'POST /purchases/:id/correct',
       'POST /purchases/market',
       'POST /suppliers',
       'PATCH /suppliers/:id',

@@ -521,6 +521,14 @@ export function PosPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => navigate('/bozorlik')}
+            title={t.market.title}
+          >
+            🛒 {t.market.title}
+          </Button>
           <TerminalPrinterButton />
         </div>
         <div className="chip-row" role="tablist" aria-label={t.menu.categories}>
