@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
-import { errors, isUniqueViolation, parse } from '../../http/errors.js';
+import { AppError, errors, isUniqueViolation, parse } from '../../http/errors.js';
 import { randomToken } from '../../lib/crypto.js';
 import { audit } from '../audit/audit.js';
 import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
@@ -235,6 +235,201 @@ export function floorRouter(services: Services) {
       });
     });
     res.json({ ok: true });
+  });
+
+  const batchIdsSchema = z.object({
+    ids: z.array(z.uuid()).min(1).max(100),
+  });
+
+  const ACTIVE_ORDER_STATUSES = [
+    'DRAFT',
+    'PENDING',
+    'PLACED',
+    'PREPARING',
+    'READY',
+    'SERVED',
+  ] as const;
+
+  // Delete / deactivate an individual dining table safely
+  router.delete('/tables/:id', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+
+    const result = await db.$transaction(async (tx) => {
+      const table = await tx.diningTable.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!table) throw errors.notFound();
+      await resolveBranch(tx, auth, table.branchId);
+
+      // Never delete a table with an active order
+      const activeOrders = await tx.order.count({
+        where: {
+          tenantId: auth.tenantId,
+          tableId: id,
+          status: { in: [...ACTIVE_ORDER_STATUSES] },
+        },
+      });
+      if (activeOrders > 0) {
+        throw new AppError(409, 'TABLE_HAS_ACTIVE_ORDERS', 'tableHasOrder');
+      }
+
+      // Check historical orders; use safe soft deactivation if historical references exist
+      const totalOrders = await tx.order.count({
+        where: { tenantId: auth.tenantId, tableId: id },
+      });
+
+      if (totalOrders > 0) {
+        await tx.diningTable.update({
+          where: { id },
+          data: { isActive: false },
+        });
+      } else {
+        await tx.diningTable.delete({
+          where: { id },
+        });
+      }
+
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: table.branchId,
+        actorUserId: auth.userId,
+        action: 'table.delete',
+        entityType: 'table',
+        entityId: id,
+        data: { name: table.name, deactivated: totalOrders > 0 },
+      });
+
+      return { ok: true, deactivated: totalOrders > 0 };
+    });
+
+    res.json(result);
+  });
+
+  // Restore a deactivated dining table
+  router.post('/tables/:id/restore', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+
+    await db.$transaction(async (tx) => {
+      const table = await tx.diningTable.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!table) throw errors.notFound();
+      await resolveBranch(tx, auth, table.branchId);
+
+      await tx.diningTable.update({
+        where: { id },
+        data: { isActive: true },
+      });
+
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: table.branchId,
+        actorUserId: auth.userId,
+        action: 'table.restore',
+        entityType: 'table',
+        entityId: id,
+        data: { name: table.name },
+      });
+    });
+
+    res.json({ ok: true });
+  });
+
+  // Batch delete / deactivate dining tables
+  router.post('/tables/batch-delete', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const { ids } = parse(batchIdsSchema, req.body);
+
+    const result = await db.$transaction(async (tx) => {
+      let deactivatedCount = 0;
+      let deletedCount = 0;
+
+      for (const id of ids) {
+        const table = await tx.diningTable.findFirst({
+          where: { id, tenantId: auth.tenantId },
+        });
+        if (!table) continue;
+        await resolveBranch(tx, auth, table.branchId);
+
+        // Never delete a table with an active order
+        const activeOrders = await tx.order.count({
+          where: {
+            tenantId: auth.tenantId,
+            tableId: id,
+            status: { in: [...ACTIVE_ORDER_STATUSES] },
+          },
+        });
+        if (activeOrders > 0) {
+          throw new AppError(409, 'TABLE_HAS_ACTIVE_ORDERS', 'tableHasOrder');
+        }
+
+        const totalOrders = await tx.order.count({
+          where: { tenantId: auth.tenantId, tableId: id },
+        });
+
+        if (totalOrders > 0) {
+          await tx.diningTable.update({
+            where: { id },
+            data: { isActive: false },
+          });
+          deactivatedCount++;
+        } else {
+          await tx.diningTable.delete({
+            where: { id },
+          });
+          deletedCount++;
+        }
+
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: table.branchId,
+          actorUserId: auth.userId,
+          action: 'table.delete',
+          entityType: 'table',
+          entityId: id,
+          data: { name: table.name, deactivated: totalOrders > 0 },
+        });
+      }
+
+      return { ok: true, deleted: deletedCount, deactivated: deactivatedCount };
+    });
+
+    res.json(result);
+  });
+
+  // Batch restore dining tables
+  router.post('/tables/batch-restore', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const { ids } = parse(batchIdsSchema, req.body);
+
+    await db.$transaction(async (tx) => {
+      for (const id of ids) {
+        const table = await tx.diningTable.findFirst({
+          where: { id, tenantId: auth.tenantId },
+        });
+        if (!table) continue;
+        await resolveBranch(tx, auth, table.branchId);
+
+        await tx.diningTable.update({
+          where: { id },
+          data: { isActive: true },
+        });
+
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          branchId: table.branchId,
+          actorUserId: auth.userId,
+          action: 'table.restore',
+          entityType: 'table',
+          entityId: id,
+          data: { name: table.name },
+        });
+      }
+    });
+
+    res.json({ ok: true, count: ids.length });
   });
 
   return router;

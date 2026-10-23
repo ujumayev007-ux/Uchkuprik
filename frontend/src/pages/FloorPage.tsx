@@ -17,7 +17,7 @@ import {
   useToast,
 } from '../components/ui';
 import { t } from '../i18n';
-import { api, patch, post } from '../lib/api';
+import { api, del, errorMessage, patch, post } from '../lib/api';
 import { TableQrDialog } from '../components/TableQrDialog';
 
 export type Table = {
@@ -210,9 +210,96 @@ export function FloorPage() {
   const { confirm, element: confirmElement } = useConfirm();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [qrFor, setQrFor] = useState<Table | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const manage = can(me, 'tables.manage');
   const refresh = () => client.invalidateQueries({ queryKey: ['floor'] });
   const rooms = floor.data?.rooms ?? [];
+
+  const allVisibleTables = rooms.flatMap((r) =>
+    r.tables.filter((t) => showInactive || t.isActive),
+  );
+  const allSelected =
+    allVisibleTables.length > 0 &&
+    allVisibleTables.every((t) => selectedIds.includes(t.id));
+
+  async function handleDeleteTable(table: Table) {
+    if (!(await confirm(t.floor.deleteTableConfirm))) return;
+    try {
+      await del(`/tables/${table.id}`);
+      toast(t.floor.tableDeleted);
+      setSelectedIds((prev) => prev.filter((id) => id !== table.id));
+      await refresh();
+    } catch (caught) {
+      const msg = errorMessage(caught);
+      if (
+        msg.includes('TABLE_HAS_ACTIVE_ORDERS') ||
+        msg.includes('tableHasOrder')
+      ) {
+        toast(t.floor.hasActiveOrders, 'error');
+      } else {
+        toast(msg, 'error');
+      }
+    }
+  }
+
+  async function handleRestoreTable(table: Table) {
+    if (!(await confirm(t.floor.restoreTableConfirm))) return;
+    try {
+      await post(`/tables/${table.id}/restore`);
+      toast(t.floor.tableRestored);
+      setSelectedIds((prev) => prev.filter((id) => id !== table.id));
+      await refresh();
+    } catch (caught) {
+      toast(errorMessage(caught), 'error');
+    }
+  }
+
+  async function handleBatchDelete() {
+    if (selectedIds.length === 0) return;
+    const msg = t.floor.deleteSelectedConfirm.replace(
+      '{count}',
+      String(selectedIds.length),
+    );
+    if (!(await confirm(msg))) return;
+    try {
+      await post('/tables/batch-delete', { ids: selectedIds });
+      toast(
+        t.floor.batchDeleted.replace('{count}', String(selectedIds.length)),
+      );
+      setSelectedIds([]);
+      await refresh();
+    } catch (caught) {
+      const msgErr = errorMessage(caught);
+      if (
+        msgErr.includes('TABLE_HAS_ACTIVE_ORDERS') ||
+        msgErr.includes('tableHasOrder')
+      ) {
+        toast(t.floor.hasActiveOrders, 'error');
+      } else {
+        toast(msgErr, 'error');
+      }
+    }
+  }
+
+  async function handleBatchRestore() {
+    if (selectedIds.length === 0) return;
+    const msg = t.floor.restoreSelectedConfirm.replace(
+      '{count}',
+      String(selectedIds.length),
+    );
+    if (!(await confirm(msg))) return;
+    try {
+      await post('/tables/batch-restore', { ids: selectedIds });
+      toast(
+        t.floor.batchRestored.replace('{count}', String(selectedIds.length)),
+      );
+      setSelectedIds([]);
+      await refresh();
+    } catch (caught) {
+      toast(errorMessage(caught), 'error');
+    }
+  }
 
   return (
     <>
@@ -243,6 +330,68 @@ export function FloorPage() {
           )
         }
       />
+      {manage && rooms.length > 0 && (
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '10px 16px',
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Checkbox
+              label={t.floor.showInactive}
+              checked={showInactive}
+              onChange={setShowInactive}
+            />
+          </div>
+          {allVisibleTables.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (allSelected) {
+                    setSelectedIds([]);
+                  } else {
+                    setSelectedIds(allVisibleTables.map((t) => t.id));
+                  }
+                }}
+              >
+                {allSelected ? t.floor.deselectAll : t.floor.selectAll}
+              </Button>
+              {selectedIds.length > 0 && (
+                <>
+                  <span className="muted" style={{ fontSize: 13 }}>
+                    ({selectedIds.length})
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={handleBatchDelete}
+                  >
+                    {t.floor.deleteSelected}
+                  </Button>
+                  {showInactive && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleBatchRestore}
+                    >
+                      {t.floor.restoreSelected}
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {!me?.activeBranchId ? (
         <EmptyState title={t.nav.selectBranch} />
       ) : floor.isPending ? (
@@ -253,96 +402,164 @@ export function FloorPage() {
         <EmptyState title={t.floor.noRooms} />
       ) : (
         <div className="card-list">
-          {rooms.map((room) => (
-            <section key={room.id} className="card">
-              <header className="room-header">
-                <h2 className="room-title">
-                  {room.name}{' '}
-                  {!room.isActive && <Badge>{t.common.inactive}</Badge>}
-                </h2>
-                {manage && (
-                  <div className="form-actions">
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        setEditing({
-                          kind: 'table',
-                          table: null,
-                          roomId: room.id,
-                        })
-                      }
+          {rooms.map((room) => {
+            const visibleTables = room.tables.filter(
+              (table) => showInactive || table.isActive,
+            );
+            return (
+              <section key={room.id} className="card">
+                <header className="room-header">
+                  <h2 className="room-title">
+                    {room.name}{' '}
+                    {!room.isActive && <Badge>{t.common.inactive}</Badge>}
+                  </h2>
+                  {manage && (
+                    <div className="form-actions">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          setEditing({
+                            kind: 'table',
+                            table: null,
+                            roomId: room.id,
+                          })
+                        }
+                      >
+                        + {t.floor.addTable}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditing({ kind: 'room', room })}
+                      >
+                        {t.common.edit}
+                      </Button>
+                    </div>
+                  )}
+                </header>
+                <div className="table-grid">
+                  {visibleTables.map((table) => (
+                    <div
+                      key={table.id}
+                      className={`table-tile ${table.isActive ? '' : 'is-inactive'}`}
+                      style={{ position: 'relative' }}
                     >
-                      + {t.floor.addTable}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditing({ kind: 'room', room })}
-                    >
-                      {t.common.edit}
-                    </Button>
-                  </div>
-                )}
-              </header>
-              <div className="table-grid">
-                {room.tables.map((table) => (
-                  <div
-                    key={table.id}
-                    className={`table-tile ${table.isActive ? '' : 'is-inactive'}`}
-                  >
-                    <strong>{table.name}</strong>
-                    <span className="muted">
-                      {table.seats} {t.floor.seatsShort}
-                    </span>
-                    {manage && (
-                      <div className="tile-actions">
-                        <button
-                          className="text-link"
-                          onClick={() =>
-                            setEditing({
-                              kind: 'table',
-                              table,
-                              roomId: room.id,
-                            })
-                          }
-                        >
-                          {t.common.edit}
-                        </button>
-                        {table.qrToken && (
-                          <button
-                            className="text-link"
-                            onClick={() => setQrFor(table)}
-                          >
-                            {t.online.qr}
-                          </button>
-                        )}
-                        <button
-                          className="text-link"
-                          onClick={async () => {
-                            if (!(await confirm(t.floor.rotateConfirm))) return;
-                            try {
-                              await post(`/tables/${table.id}/rotate-qr`);
-                              toast(t.common.saved);
-                              await refresh();
-                            } catch (caught) {
-                              toast(
-                                caught instanceof Error
-                                  ? caught.message
-                                  : t.common.errorTitle,
-                                'error',
-                              );
-                            }
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
                           }}
                         >
-                          {t.floor.rotateQr}
-                        </button>
+                          {manage && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(table.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedIds((prev) => [...prev, table.id]);
+                                } else {
+                                  setSelectedIds((prev) =>
+                                    prev.filter((id) => id !== table.id),
+                                  );
+                                }
+                              }}
+                              aria-label={table.name}
+                            />
+                          )}
+                          <strong>{table.name}</strong>
+                        </div>
+                        {!table.isActive && (
+                          <Badge tone="warning">{t.common.inactive}</Badge>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
+                      <span className="muted">
+                        {table.seats} {t.floor.seatsShort}
+                      </span>
+                      {manage && (
+                        <div className="tile-actions">
+                          {table.isActive ? (
+                            <>
+                              <button
+                                type="button"
+                                className="text-link"
+                                onClick={() =>
+                                  setEditing({
+                                    kind: 'table',
+                                    table,
+                                    roomId: room.id,
+                                  })
+                                }
+                              >
+                                {t.common.edit}
+                              </button>
+                              {table.qrToken && (
+                                <button
+                                  type="button"
+                                  className="text-link"
+                                  onClick={() => setQrFor(table)}
+                                >
+                                  {t.online.qr}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="text-link"
+                                onClick={async () => {
+                                  if (!(await confirm(t.floor.rotateConfirm))) {
+                                    return;
+                                  }
+                                  try {
+                                    await post(`/tables/${table.id}/rotate-qr`);
+                                    toast(t.common.saved);
+                                    await refresh();
+                                  } catch (caught) {
+                                    toast(errorMessage(caught), 'error');
+                                  }
+                                }}
+                              >
+                                {t.floor.rotateQr}
+                              </button>
+                              <button
+                                type="button"
+                                className="text-link"
+                                style={{
+                                  color: 'var(--color-danger, #ef4444)',
+                                }}
+                                onClick={() => handleDeleteTable(table)}
+                              >
+                                {t.common.delete}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-link"
+                              style={{
+                                color: 'var(--color-primary, #10b981)',
+                                fontWeight: 600,
+                              }}
+                              onClick={() => handleRestoreTable(table)}
+                            >
+                              {t.floor.restoreTable}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
       <Dialog
