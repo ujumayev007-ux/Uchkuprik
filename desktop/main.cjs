@@ -28,6 +28,7 @@ const reports = require('./reports.cjs');
 const lan = require('./lan.cjs');
 const move = require('./move.cjs');
 const registerPrinters = require('./printers.cjs');
+const foreignKeys = require('./foreign-keys.cjs');
 
 const RES = app.isPackaged
   ? process.resourcesPath
@@ -58,8 +59,9 @@ if (TEST)
   );
 // Kassa edition (edition.json baked by build.mjs with BUILD_EDITION=cashier): the same
 // server, database and LAN host, but its window is the Kassa (staff PIN pad, sale screen,
-// this computer's receipt and kitchen printers). One fixed profile for every version, so
-// the registered Kassa device (cookie) survives upgrades.
+// this computer's receipt and kitchen printers). It keeps the server's own profile
+// (%APPDATA%FastFood, the same for every version): the key that seals secrets.enc lives
+// there, so the Kassa opens the data of a server installed earlier on this computer.
 const CASHIER = (() => {
   try {
     return (
@@ -72,14 +74,6 @@ const CASHIER = (() => {
 })();
 const START = CASHIER ? '/kassa' : '/';
 const NAME = CASHIER ? 'FastFood Kassa' : 'FastFood';
-if (CASHIER)
-  app.setPath(
-    'userData',
-    path.join(
-      app.getPath('appData'),
-      TEST ? 'FastFood-Test-Kassa-App' : 'FastFood-Kassa-App',
-    ),
-  );
 
 // FASTFOOD_PORT / FASTFOOD_PG_PORT let a second copy run next to the installed one
 // (support and release checks) without touching it.
@@ -154,7 +148,7 @@ function secrets() {
       value = JSON.parse(safeStorage.decryptString(fs.readFileSync(sealed)));
     } catch {
       throw new Error(
-        'Maxfiy kalitlarni ochib bo‘lmadi (boshqa Windows foydalanuvchisi yoki kompyuter).',
+        `Maxfiy kalitlarni ochib bo‘lmadi (boshqa Windows foydalanuvchisi yoki kompyuter). Ma’lumotlar boshqa kompyuterdan nusxalangan bo‘lsa: o‘sha kompyuterda KALIT-OLISH.cmd ni bajaring va ${foreignKeys.KEY_FILE} faylini ${DATA} ichiga qo‘ying.`,
       );
     }
   } else if (fs.existsSync(plain)) {
@@ -1059,6 +1053,8 @@ async function boot() {
     app.exit(0);
     return;
   }
+  // A data folder copied from another computer: open its keys once (see foreign-keys.cjs).
+  foreignKeys.importForeignKeys({ dataDir: DATA, safeStorage, log });
   adoptKassaPrinters();
   win = new BrowserWindow({
     width: 1366,

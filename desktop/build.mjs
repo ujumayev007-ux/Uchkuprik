@@ -181,7 +181,7 @@ await build({
     appId: `uz.fastfood.${CASHIER ? 'kassa' : 'desktop'}.${TEST ? 'test.' : ''}v${slug}`,
     productName: `${product} ${TEST ? 'TEST ' : ''}${version}`,
     // A TEST build installs into its own folder so it never overwrites the working app.
-    executableName: `${CASHIER ? 'FastFoodKassa' : 'FastFood'}${TEST ? 'Test' : ''}`,
+    executableName: `${CASHIER ? 'FastFoodKassaServer' : 'FastFood'}${TEST ? 'Test' : ''}`,
     directories: {
       output: join(here, out),
       buildResources: join(here, 'build'),
@@ -197,6 +197,7 @@ await build({
       'lan.cjs',
       'move.cjs',
       'printers.cjs',
+      'foreign-keys.cjs',
       'loading.html',
       'package.json',
     ],
