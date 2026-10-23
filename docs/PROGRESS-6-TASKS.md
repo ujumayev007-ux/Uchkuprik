@@ -71,13 +71,14 @@ Hammasi bajarildi.
 | 1 | Kassa Bozorlik (Cashier Market Purchase) | Bajarildi | `9ffcb16` |
 | 2 | Professional Printer boshqaruvi (ESC/POS, LAN discovery, Ping) | Bajarildi | `04a0b6e` |
 | 3 | Professional Chek Dizayneri (6 ta andoza, QR/shtrixkod, Fiskal) | Bajarildi | `36bafd8` |
-| 4 | Kassa kompyuterini doimiy LAN server qilish (Permanent Cashier Host) | Bajarildi | (joriy) |
+| 4 | Kassa kompyuterini doimiy LAN server qilish (Permanent Cashier Host) | Bajarildi | `ea215d4` |
+| 5 | Admin Stol boshqaruvi: stollarni o‘chirish, nofaol qilish va tiklash | Bajarildi | `0299c19` |
 
 ### 1-vazifa: Kassa Bozorlik
 - Kassa oynasida (POS) `🛒 Bozorlik` tezkor tugmasi va `/bozorlik` marshruti qo‘shildi.
 - Kassir faqat yangi xarid qo‘shishi va tarixini ko‘rishi mumkin (o‘chirish/tahrirlash huquqi yo‘q).
 - Xarid turlari: Naqd, Karta va Nasiya (qarz). Naqd/karta tanlanganda kassa balansi va xarajatlar aniq hisoblanadi.
-- Admin uchun xaridni xavfsiz tuzatish imkoniyati (`POST /purchases/:id/correct`). Tuzatishda eski va yangi qiymatlar, sababi va foydalanuvchi ma'lumoti o‘zgarmas `audit_logs` jadvaliga yoziladi.
+- Admin uchun xaridni xavfsiz tuzatish imkoniyati (`POST /purchases/:id/correct`). Tuzatishda eski va analytical ma'lumotlar, sababi va foydalanuvchi ma'lumoti o‘zgarmas `audit_logs` jadvaliga yoziladi.
 - Testlar: `test/bozorlik-cashier.test.ts` (4/4 test o‘tdi).
 
 ### 2-vazifa: Professional Printer boshqaruvi
@@ -104,6 +105,15 @@ Hammasi bajarildi.
 - Oshxona, Ofitsiant va TV qurilmalari Kassa serveriga LAN (UDP beacon) orqali avtomatik ulanadi.
 - Ikki server bir vaqtda bitta bazani ishlatmasligi uchun `moved.json` bloki mavjud.
 - Ko‘chirish va ortga qaytarish (Rollback) jarayoni sinovdan o‘tdi (`test/server-migration.test.ts`, 2/2 test o‘tdi).
-- Yangi o‘rnatuvchilar yig‘ildi va `Desktop\FastFood-TAYYOR` papkasiga joylashtirildi.
+- Alohida xavfsiz portda (54399) 130 ta jadval to‘liq ma’lumotlar bilan tekshirib tiklandi (PASS).
+
+### 5-vazifa: Admin Stol boshqaruvi (Table Deletion & Restoration)
+- Admin panelida zallardagi stollarni yakka holda o‘chirish (`DELETE /tables/:id`) va tanlanganlarni guruhlab o‘chirish (`POST /tables/batch-delete`).
+- Xavfsizlik: faol buyurtmasi (`DRAFT`, `PENDING`, `PLACED`, `PREPARING`, `READY`, `SERVED`) mavjud stolni o‘chirish qat’iy taqiqlanadi (409 TABLE_HAS_ACTIVE_ORDERS).
+- Moliyaviy va hisobot butunligi: agar stolda avval buyurtmalar bo‘lgan bo‘lsa, u bazadan o‘chirilmaydi, balki xavfsiz nofaol holatga (`isActive: false`) o‘tkaziladi. Shu tariqa barcha o‘tgan cheklar, hisobotlar va auditlar 100% saqlanadi. Buyurtma bo‘lmagan stol to‘liq o‘chiriladi.
+- Qayta tiklash: Admin nofaol stollarni ko‘rish (`showInactive`) va 1-klikda qayta tiklash (`POST /tables/:id/restore` va `POST /tables/batch-restore`) imkoniyatiga ega.
+- Kassa, Ofitsiant va QR-menyu interfeyslaridan o‘chirilgan/nofaol stollar avtomatik yashiriladi va yangi buyurtma ochish bloklanadi.
+- Testlar: `test/floor-tables.test.ts` (4/4 test o‘tdi).
+
 
 
