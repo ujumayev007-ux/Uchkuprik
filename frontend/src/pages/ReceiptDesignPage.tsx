@@ -20,6 +20,7 @@ import {
   logoFromFile,
   rasterizeLogo,
   normalizeLayout,
+  receiptPresets,
   type ReceiptLayout,
 } from '../lib/receipt';
 
@@ -60,6 +61,11 @@ const visibility = [
   'showServiceCharge',
   'showPayments',
   'showChange',
+  'showDeliveryDetails',
+  'showFiscalData',
+  'showSocialMedia',
+  'showQrCode',
+  'showBarcode',
 ] as const;
 
 const label = (key: string): string =>
@@ -237,6 +243,104 @@ export function ReceiptDesignPage() {
         </Button>
       </div>
 
+      <div
+        className="card stack compact"
+        style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          padding: '12px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '8px',
+          }}
+        >
+          <div>
+            <strong style={{ fontSize: '0.95em' }}>✨ {k.presets}</strong>
+            <p className="muted small" style={{ margin: 0 }}>
+              6 ta tayyor professional andozadan birini tanlang va o‘zingizga moslang
+            </p>
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '10px',
+            marginTop: '6px',
+          }}
+        >
+          {(
+            Object.entries(receiptPresets) as [
+              keyof typeof receiptPresets,
+              (typeof receiptPresets)[keyof typeof receiptPresets],
+            ][]
+          ).map(([presetKey, preset]) => (
+            <button
+              key={presetKey}
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                textAlign: 'left',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                height: 'auto',
+                background:
+                  form.presetKey === presetKey ? '#eff6ff' : '#fff',
+                borderColor:
+                  form.presetKey === presetKey ? '#3b82f6' : '#cbd5e1',
+                boxShadow:
+                  form.presetKey === presetKey
+                    ? '0 0 0 2px rgba(59, 130, 246, 0.25)'
+                    : 'none',
+              }}
+              onClick={() => {
+                setForm(
+                  normalizeLayout({
+                    ...form,
+                    ...preset.layout,
+                    presetKey,
+                  }),
+                );
+                if (key === 'new' && !name) {
+                  setName(preset.name);
+                  setKind(preset.kind);
+                }
+                toast(`${preset.name} — ${k.presetApplied}`);
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: '0.9em',
+                  color: '#1e293b',
+                }}
+              >
+                {preset.name}
+              </div>
+              <div
+                style={{
+                  fontSize: '0.78em',
+                  color: '#64748b',
+                  marginTop: '3px',
+                  lineHeight: 1.35,
+                }}
+              >
+                {preset.desc}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="receipt-design">
         <form
           className="card stack"
@@ -324,6 +428,22 @@ export function ReceiptDesignPage() {
                 }
               >
                 {Object.entries(k.spacings).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={k.separatorStyle}
+                value={form.separatorStyle || 'dashed'}
+                onChange={(event) =>
+                  set(
+                    'separatorStyle',
+                    event.target.value as ReceiptLayout['separatorStyle'],
+                  )
+                }
+              >
+                {Object.entries(k.separators).map(([value, text]) => (
                   <option key={value} value={value}>
                     {text}
                   </option>
@@ -495,6 +615,52 @@ export function ReceiptDesignPage() {
                 />
               )}
             </div>
+            {form.showQrCode && (
+              <div
+                className="form-grid"
+                style={{
+                  marginTop: '8px',
+                  padding: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                }}
+              >
+                <TextField
+                  label={k.qrContent}
+                  value={form.qrContent || ''}
+                  placeholder="https://t.me/azizxon_bot"
+                  maxLength={300}
+                  onChange={(event) => set('qrContent', event.target.value)}
+                />
+                <TextField
+                  label={k.qrLabel}
+                  value={form.qrLabel || ''}
+                  placeholder="Fikr bildirish yoki buyurtma uchun skanerlang"
+                  maxLength={100}
+                  onChange={(event) => set('qrLabel', event.target.value)}
+                />
+              </div>
+            )}
+            {form.showSocialMedia && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  padding: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                }}
+              >
+                <TextField
+                  label={k.socialMedia}
+                  value={form.socialMedia || ''}
+                  placeholder="@azizxon_choyxona"
+                  maxLength={100}
+                  onChange={(event) => set('socialMedia', event.target.value)}
+                />
+              </div>
+            )}
           </fieldset>
           <TextField
             label={r.extraLines}

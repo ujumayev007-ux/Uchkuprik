@@ -71,6 +71,19 @@ export const receiptTemplateSchema = z.object({
   title: z.string().trim().max(60).default(''),
   extraLines: z.string().trim().max(500).default(''),
   thankYou: z.string().trim().max(120).default('Xaridingiz uchun rahmat!'),
+  separatorStyle: z
+    .enum(['single', 'dashed', 'double', 'stars', 'heavy'])
+    .default('dashed'),
+  showQrCode: z.boolean().default(false),
+  qrContent: z.string().trim().max(300).default(''),
+  qrLabel: z.string().trim().max(100).default(''),
+  showBarcode: z.boolean().default(false),
+  showFiscalData: z.boolean().default(false),
+  showDeliveryDetails: z.boolean().default(false),
+  showSocialMedia: z.boolean().default(false),
+  socialMedia: z.string().trim().max(100).default(''),
+  presetKey: z.string().optional(),
+  sectionOrder: z.array(z.string()).optional(),
 });
 export type ReceiptTemplateSettings = z.infer<typeof receiptTemplateSchema>;
 

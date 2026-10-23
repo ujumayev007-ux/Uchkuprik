@@ -61,3 +61,38 @@ Tarmoq: `feature/six-tasks-20261023` (asosi `b666a2f` = main).
 
 ## Keyingi qadam
 Hammasi bajarildi.
+
+---
+
+# Yangi 3 ta vazifa (Ketma-ket bajarildi)
+
+| # | Vazifa | Holat | Commit |
+|---|--------|-------|--------|
+| 1 | Kassa Bozorlik (Cashier Market Purchase) | Bajarildi | `9ffcb16` |
+| 2 | Professional Printer boshqaruvi (ESC/POS, LAN discovery, Ping) | Bajarildi | `04a0b6e` |
+| 3 | Professional Chek Dizayneri (6 ta andoza, QR/shtrixkod, Fiskal) | Bajarildi | (joriy) |
+
+### 1-vazifa: Kassa Bozorlik
+- Kassa oynasida (POS) `🛒 Bozorlik` tezkor tugmasi va `/bozorlik` marshruti qo‘shildi.
+- Kassir faqat yangi xarid qo‘shishi va tarixini ko‘rishi mumkin (o‘chirish/tahrirlash huquqi yo‘q).
+- Xarid turlari: Naqd, Karta va Nasiya (qarz). Naqd/karta tanlanganda kassa balansi va xarajatlar aniq hisoblanadi.
+- Admin uchun xaridni xavfsiz tuzatish imkoniyati (`POST /purchases/:id/correct`). Tuzatishda eski va yangi qiymatlar, sababi va foydalanuvchi ma'lumoti o‘zgarmas `audit_logs` jadvaliga yoziladi.
+- Testlar: `test/bozorlik-cashier.test.ts` (4/4 test o‘tdi).
+
+### 2-vazifa: Professional Printer boshqaruvi
+- Avtomatik topish: Windows/USB printerlar va mahalliy LAN subnet (masalan, `192.168.1.*` port 9100) printerlarini skanerlash (`POST /printers/discover-lan`).
+- IP to‘qnashuvlarini oldini olish (bir xil IP uchun 409 DUPLICATE_PRINTER_IP ogohlantirishi).
+- Jonli TCP ping diagnostikasi (`POST /printers/:id/ping` va `/printers/ping-host`).
+- Bo‘limlarga marshrutlash: Kassa, Asosiy oshxona, Baliqxona, Kabobxona, Fastfud, Ichimliklar (`POST /printers/seed-departments`).
+- Zaxira printer (backup printer) va kassa tortmasini avtomatik ochish (`cashDrawer(2)`).
+- Testlar: `test/printing-pro.test.ts` (5/5 test o‘tdi).
+
+### 3-vazifa: Professional Chek Dizayneri
+- 6 ta professional andoza: `Klassik (Classic)`, `Premium`, `Minimal (58 mm)`, `Oshxona (Kitchen)`, `Yetkazib berish (Delivery)`, `Brendli (Branded)`.
+- 1-klikda andozani qo‘llash va moslashtirish imkoniyati.
+- Ajratuvchi chiziq uslublari: Uzuk-uzuk (`- - - -`), Yakka to‘g‘ri (`─────`), Qo‘shaloq (`═════`), Yulduzchalar (`* * * *`), Qalin (`━━━━━`).
+- QR-kod va Shtrixkod (ESC/POS va brauzer preview uchun to‘liq qo‘llab-quvvatlandi).
+- Fiskal OFD maʼlumotlari, Yetkazib berish maʼlumotlari va ijtimoiy tarmoqlar integratsiyasi.
+- Jonli ko‘rinish (Live preview) va printerga sinov chop etish.
+- Testlar: `test/receipt-templates-pro.test.ts` (6/6 test o‘tdi).
+

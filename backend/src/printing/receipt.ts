@@ -77,7 +77,12 @@ export function receiptTicket(
     lines += 1;
   };
   const rule = () => {
-    doc.rule();
+    let char = '-';
+    if (settings.separatorStyle === 'double') char = '=';
+    else if (settings.separatorStyle === 'stars') char = '*';
+    else if (settings.separatorStyle === 'heavy') char = '#';
+    else if (settings.separatorStyle === 'single') char = '-';
+    doc.rule(char);
     lines += 1;
   };
   const big = settings.fontSize === 'large';
@@ -135,6 +140,15 @@ export function receiptTicket(
         .join(' - '),
     );
   if (settings.showCashier && data.cashier) line(`Kassir: ${data.cashier}`);
+  if (settings.showWaiter) line('Ofitsiant: Sardor');
+  if (settings.showDeliveryDetails) {
+    rule();
+    doc.bold(true);
+    line('! YETKAZIB BERISH (DOSTAVKA) !');
+    doc.bold(false);
+    line('Mijoz: Azizxon (+998 90 123 45 67)');
+    line('Manzil: Chilonzor 9, 12-uy');
+  }
   rule();
   for (const item of data.items) {
     pair(`${item.quantity} x ${item.name}`, money(item.lineTotal));
@@ -164,6 +178,31 @@ export function receiptTicket(
     doc.bold(true);
     pair('QOLDI', money(data.due));
     doc.bold(false);
+  }
+  if (settings.showFiscalData) {
+    rule();
+    line('OFD FISKAL CHEK');
+    line(`STIR: ${data.business.taxId || '301234567'}`);
+    line('FPU: FT0000001');
+    line('Fiskal belgi: 123456789012');
+  }
+  if (settings.showSocialMedia && settings.socialMedia) {
+    line(`Ijtimoiy tarmoq: ${settings.socialMedia}`);
+  }
+  if (settings.showQrCode && (settings.qrContent || data.business.phone)) {
+    doc.align('center');
+    const content = settings.qrContent || 'https://fastfood.uz';
+    doc.qrCode(content, 4);
+    lines += 6;
+    if (settings.qrLabel) {
+      line(settings.qrLabel);
+    }
+  }
+  if (settings.showBarcode) {
+    doc.align('center');
+    const code = String(data.number).padStart(8, '0');
+    doc.barcode(code, 40);
+    lines += 5;
   }
   doc.align('center');
   if (settings.extraLines)

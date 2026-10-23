@@ -21,7 +21,14 @@ export function checkPrinterPing(
       if (done) return;
       done = true;
       socket.destroy();
-      resolve({ online, latencyMs: Date.now() - start, error });
+      const result: { online: boolean; latencyMs: number; error?: string } = {
+        online,
+        latencyMs: Date.now() - start,
+      };
+      if (error !== undefined) {
+        result.error = error;
+      }
+      resolve(result);
     };
     socket.setTimeout(timeoutMs, () => finish(false, 'Timeout'));
     socket.once('error', (err) => finish(false, err.message));
@@ -154,6 +161,7 @@ export function printersRouter(services: Services) {
       throw new AppError(
         409,
         'DUPLICATE_PRINTER_IP',
+        'conflict',
         `Ushbu IP manzil (${input.host}:${input.port}) allaqachon "${duplicate.name}" printerida ishlatilmoqda`,
       );
     }
@@ -199,6 +207,7 @@ export function printersRouter(services: Services) {
       throw new AppError(
         409,
         'DUPLICATE_PRINTER_IP',
+        'conflict',
         `Ushbu IP manzil (${input.host}:${input.port}) allaqachon "${duplicate.name}" printerida ishlatilmoqda`,
       );
     }

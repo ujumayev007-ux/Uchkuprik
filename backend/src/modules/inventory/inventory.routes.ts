@@ -1282,6 +1282,7 @@ export function inventoryRouter(services: Services) {
         throw new AppError(
           409,
           'PURCHASE_NOT_RECEIVED',
+          'conflict',
           'Faqat qabul qilingan xaridni tuzatish mumkin',
         );
       }

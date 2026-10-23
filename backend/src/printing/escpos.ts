@@ -117,6 +117,43 @@ export class EscPos {
     // ESC p m t1 t2: 0x1b 0x70 [0 for pin 2, 1 for pin 5] 0x19 0xfa (standard kick-out pulse)
     return this.raw(ESC, 0x70, pin === 2 ? 0 : 1, 25, 250);
   }
+  qrCode(content: string, size = 4) {
+    if (!content) return this;
+    const bytes = Buffer.from(content, 'utf-8');
+    const len = bytes.length + 3;
+    const pL = len & 0xff;
+    const pH = (len >> 8) & 0xff;
+    return this.raw(
+      // Model 2
+      GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+      // Size
+      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, Math.max(1, Math.min(16, size)),
+      // Error correction Level M
+      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31,
+      // Store data
+      GS, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30,
+      ...bytes,
+      // Print
+      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30
+    );
+  }
+  barcode(code: string, height = 50) {
+    const printable = toPrintable(code).replace(/[^0-9A-Za-z]/g, '');
+    if (!printable) return this;
+    const bytes = Buffer.from(printable, 'ascii');
+    return this.raw(
+      // Barcode height
+      GS, 0x68, Math.max(20, Math.min(255, height)),
+      // Barcode width multiplier
+      GS, 0x77, 2,
+      // HRI characters below
+      GS, 0x48, 2,
+      // CODE39
+      GS, 0x6b, 0x04,
+      ...bytes,
+      0x00
+    );
+  }
   raw(...bytes: number[]) {
     this.chunks.push(...bytes);
     return this;
