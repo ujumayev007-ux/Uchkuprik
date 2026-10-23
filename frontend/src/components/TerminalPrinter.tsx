@@ -32,8 +32,32 @@ type PrinterBridge = {
   ) => Promise<{ printed: boolean; number?: string }>;
 };
 
-export const terminalPrinter = () =>
-  (window as unknown as { fastfoodPrinter?: PrinterBridge }).fastfoodPrinter;
+// The application reports a failed call as "Error invoking remote method 'printer:print':
+// Error: <reason>"; the cashier sees only the reason (e.g. the printer is disconnected).
+const printerError = (error: unknown) =>
+  new Error(
+    (error instanceof Error ? error.message : String(error)).replace(
+      /^Error invoking remote method '[^']+':\s*(Error:\s*)?/,
+      '',
+    ),
+  );
+
+export const terminalPrinter = (): PrinterBridge | undefined => {
+  const bridge = (window as unknown as { fastfoodPrinter?: PrinterBridge })
+    .fastfoodPrinter;
+  if (!bridge) return undefined;
+  return Object.fromEntries(
+    Object.entries(bridge).map(([name, call]) => [
+      name,
+      (...args: unknown[]) =>
+        (call as (...a: unknown[]) => Promise<unknown>)(...args).catch(
+          (error: unknown) => {
+            throw printerError(error);
+          },
+        ),
+    ]),
+  ) as PrinterBridge;
+};
 
 /** Prints the order's receipt on this terminal's printer (silently). */
 export const printOnTerminal = (orderId: string) =>

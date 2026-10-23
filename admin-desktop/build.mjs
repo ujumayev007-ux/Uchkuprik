@@ -90,6 +90,11 @@ for (const name of [
   copyFileSync(join(here, name), join(stage, name));
 // Automatic connection (LAN discovery) is shared with the server application.
 copyFileSync(join(here, '..', 'desktop', 'lan.cjs'), join(stage, 'lan.cjs'));
+// So are the Kassa receipt and kitchen printers.
+copyFileSync(
+  join(here, '..', 'desktop', 'printers.cjs'),
+  join(stage, 'printers.cjs'),
+);
 writeFileSync(
   join(stage, 'package.json'),
   JSON.stringify({

@@ -748,6 +748,10 @@ export const uz = {
     soundOn: 'Ovoz yoqilgan',
     deviceHint:
       'Navbat ekrani administrator bir marta ro‘yxatdan o‘tkazgandan keyin kirishsiz ishlaydi.',
+    selfRegistering: 'Ekran serverga ulanmoqda…',
+    pickBranch: 'Bu ekran qaysi filialda turadi?',
+    selfPendingHint:
+      'Ekran ro‘yxatdan o‘tdi. Parol yoki PIN kerak emas: Owner tasdiqlashi bilan navbat o‘zi ko‘rinadi.',
   },
   printers: {
     title: 'Printerlar',

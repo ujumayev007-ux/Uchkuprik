@@ -25,6 +25,11 @@ const { version } = JSON.parse(
 // BUILD_CHANNEL=test makes an isolated TEST installer: own app id, data folder,
 // ports and output folder; it never bakes the production status/report settings.
 const TEST = process.env.BUILD_CHANNEL === 'test';
+// BUILD_EDITION=cashier: the Kassa all-in-one installer (server, database and the Kassa
+// window in one application); without it, the full-panel server ("FastFood Admin").
+const CASHIER = process.env.BUILD_EDITION === 'cashier';
+if (process.env.BUILD_EDITION && !CASHIER)
+  throw new Error('BUILD_EDITION must be cashier (or unset).');
 const sh = (command, cwd = root) =>
   execSync(command, { cwd, stdio: 'inherit' });
 
@@ -122,11 +127,23 @@ if (!TEST && existsSync(vendorState)) {
       join(server, 'control.json'),
       JSON.stringify({ url: settings.url, publicKey: settings.publicKey }),
     );
+  // Without it the Owner can not link the install and new terminals wait forever:
+  // a production installer is refused (ALLOW_NO_CONTROL=1 only for a deliberate offline build).
+  else if (!TEST && process.env.ALLOW_NO_CONTROL !== '1')
+    throw new Error(
+      'Central control not baked in: set CONTROL_URL and CONTROL_PUBLIC_KEY (or desktop/control.json).',
+    );
   else
     console.warn(
       'Central control not baked in: set CONTROL_URL and CONTROL_PUBLIC_KEY (or desktop/control.json).',
     );
 }
+
+if (CASHIER)
+  writeFileSync(
+    join(server, 'edition.json'),
+    JSON.stringify({ kind: 'cashier' }),
+  );
 
 if (TEST)
   writeFileSync(
@@ -147,16 +164,26 @@ if (!existsSync(join(native, 'bin', 'postgres.exe')))
 cpSync(native, join(stage, 'postgres'), { recursive: true });
 
 const slug = version.replace(/\./g, '-');
+// Kassa edition: own app id, name and output folder (never replaces the server edition).
+const product = CASHIER ? 'FastFood Kassa' : 'FastFood';
+const fileBase = CASHIER ? 'FastFood-Kassa-Server' : 'FastFood-Admin';
+const out = CASHIER
+  ? TEST
+    ? 'release-kassa-test'
+    : 'release-kassa'
+  : TEST
+    ? 'release-test'
+    : 'release';
 const { build } = require('electron-builder');
 await build({
   projectDir: here,
   config: {
-    appId: `uz.fastfood.desktop.${TEST ? 'test.' : ''}v${slug}`,
-    productName: `FastFood ${TEST ? 'TEST ' : ''}${version}`,
+    appId: `uz.fastfood.${CASHIER ? 'kassa' : 'desktop'}.${TEST ? 'test.' : ''}v${slug}`,
+    productName: `${product} ${TEST ? 'TEST ' : ''}${version}`,
     // A TEST build installs into its own folder so it never overwrites the working app.
-    executableName: TEST ? 'FastFoodTest' : 'FastFood',
+    executableName: `${CASHIER ? 'FastFoodKassa' : 'FastFood'}${TEST ? 'Test' : ''}`,
     directories: {
-      output: join(here, TEST ? 'release-test' : 'release'),
+      output: join(here, out),
       buildResources: join(here, 'build'),
     },
     files: [
@@ -169,6 +196,7 @@ await build({
       'safe-json.cjs',
       'lan.cjs',
       'move.cjs',
+      'printers.cjs',
       'loading.html',
       'package.json',
     ],
@@ -185,15 +213,21 @@ await build({
       createDesktopShortcut: true,
       // Customers see the server as their Admin application (it shows the full Admin
       // panel and runs the server silently); app id, folders and profile are unchanged.
-      shortcutName: TEST ? `FastFood TEST ${version}` : 'FastFood Admin',
+      shortcutName: CASHIER
+        ? TEST
+          ? `FastFood Kassa TEST ${version}`
+          : 'FastFood Kassa'
+        : TEST
+          ? `FastFood TEST ${version}`
+          : 'FastFood Admin',
       artifactName: TEST
-        ? `FastFood-TEST-Setup-${version}.exe`
-        : `FastFood-Admin-Setup-${version}.exe`,
+        ? `${CASHIER ? 'FastFood-Kassa-Server' : 'FastFood'}-TEST-Setup-${version}.exe`
+        : `${fileBase}-Setup-${version}.exe`,
       // Uninstalling a version never touches the shared data folder.
       deleteAppDataOnUninstall: false,
     },
   },
 });
 console.log(
-  `Ready: desktop/${TEST ? 'release-test/FastFood-TEST' : 'release/FastFood-Admin'}-Setup-${version}.exe`,
+  `Ready: desktop/${out}/${TEST ? `${CASHIER ? 'FastFood-Kassa-Server' : 'FastFood'}-TEST` : fileBase}-Setup-${version}.exe`,
 );

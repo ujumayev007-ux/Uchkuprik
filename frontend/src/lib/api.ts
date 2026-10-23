@@ -6,6 +6,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly details?: unknown,
   ) {
     super(message);
   }
@@ -73,12 +74,14 @@ export async function api<T = unknown>(
   const payload = (await response.json().catch(() => null)) as {
     code?: string;
     message?: string;
+    details?: unknown;
   } | null;
   if (response.ok) return payload as T;
   const error = new ApiError(
     response.status,
     payload?.code ?? 'UNKNOWN',
     payload?.message ?? t.common.errorTitle,
+    payload?.details,
   );
   // Privileged operations need a fresh password check; ask once, then retry.
   if (

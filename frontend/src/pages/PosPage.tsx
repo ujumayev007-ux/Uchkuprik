@@ -53,6 +53,16 @@ type CartLine = {
   note: string;
 };
 
+// The sale in progress survives a visit to another page of the Kassa (e.g. «Bozorlik»)
+// and back: same signed-in person and branch only; cleared once the cart is empty.
+let saleDraft: {
+  owner: string;
+  cart: CartLine[];
+  type: OrderType;
+  tableId: string;
+  key: string;
+} | null = null;
+
 const unitTotal = (line: CartLine) =>
   line.variant.price +
   line.options.reduce((sum, option) => sum + option.price, 0);
@@ -268,7 +278,14 @@ export function PosPage() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [picking, setPicking] = useState<Product | null>(null);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  // A link (?stol= / ?mijoz= / ?buyurtma=) starts its own sale instead of the draft.
+  const [draft] = useState(() =>
+    saleDraft?.owner === `${me?.userId}|${branchId}` &&
+    !/[?&](stol|mijoz|buyurtma)=/.test(window.location.search)
+      ? saleDraft
+      : null,
+  );
+  const [cart, setCart] = useState<CartLine[]>(() => draft?.cart ?? []);
   // A sale in progress is never covered by an advertisement.
   useBusy('pos-sale', cart.length > 0);
   const ordering = useOrdering();
@@ -276,8 +293,10 @@ export function PosPage() {
   const allowedTypes = (['TAKEAWAY', 'DINE_IN', 'DELIVERY'] as const).filter(
     (value) => ordering.types[value],
   );
-  const [type, setType] = useState<OrderType>(allowedTypes[0] ?? 'TAKEAWAY');
-  const [tableId, setTableId] = useState('');
+  const [type, setType] = useState<OrderType>(
+    () => draft?.type ?? allowedTypes[0] ?? 'TAKEAWAY',
+  );
+  const [tableId, setTableId] = useState(() => draft?.tableId ?? '');
   // Adding items to an existing order: /kassa?buyurtma=<orderId>.
   const [addToId, setAddToId] = useState<string | null>(null);
   // Waiter panel opens the POS for a table: /kassa?stol=<tableId>.
@@ -339,11 +358,23 @@ export function PosPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   // One idempotency key per cart, so a retried submit cannot create two orders.
-  const cartKey = useRef(newKey());
+  const cartKey = useRef(draft?.key ?? newKey());
 
   useEffect(() => {
     if (cart.length === 0) cartKey.current = newKey();
   }, [cart.length]);
+  useEffect(() => {
+    saleDraft =
+      cart.length > 0
+        ? {
+            owner: `${me?.userId}|${branchId}`,
+            cart,
+            type,
+            tableId,
+            key: cartKey.current,
+          }
+        : null;
+  }, [cart, type, tableId, me?.userId, branchId]);
 
   const products = useMemo(
     () =>

@@ -27,6 +27,7 @@ const alerts = require('./vendor-alerts.cjs');
 const reports = require('./reports.cjs');
 const lan = require('./lan.cjs');
 const move = require('./move.cjs');
+const registerPrinters = require('./printers.cjs');
 
 const RES = app.isPackaged
   ? process.resourcesPath
@@ -54,6 +55,30 @@ if (TEST)
   app.setPath(
     'userData',
     path.join(app.getPath('appData'), 'FastFood-Test-App'),
+  );
+// Kassa edition (edition.json baked by build.mjs with BUILD_EDITION=cashier): the same
+// server, database and LAN host, but its window is the Kassa (staff PIN pad, sale screen,
+// this computer's receipt and kitchen printers). One fixed profile for every version, so
+// the registered Kassa device (cookie) survives upgrades.
+const CASHIER = (() => {
+  try {
+    return (
+      JSON.parse(fs.readFileSync(path.join(SERVER, 'edition.json'), 'utf8'))
+        .kind === 'cashier'
+    );
+  } catch {
+    return false;
+  }
+})();
+const START = CASHIER ? '/kassa' : '/';
+const NAME = CASHIER ? 'FastFood Kassa' : 'FastFood';
+if (CASHIER)
+  app.setPath(
+    'userData',
+    path.join(
+      app.getPath('appData'),
+      TEST ? 'FastFood-Test-Kassa-App' : 'FastFood-Kassa-App',
+    ),
   );
 
 // FASTFOOD_PORT / FASTFOOD_PG_PORT let a second copy run next to the installed one
@@ -716,6 +741,62 @@ const ANYDESK_PATHS = [
   path.join(os.homedir(), 'Desktop', 'AnyDesk.exe'),
 ];
 
+// The page learns whether it is the Kassa (Kassa edition) or the full panel ('').
+ipcMain.on('shell:kind', (event) => {
+  event.returnValue = CASHIER ? 'cashier' : '';
+});
+
+// Kassa edition: printer choices live in the data folder (kept by every version, backups
+// and the server move). The first start takes over the separate Kassa application's
+// printers and its record of printed kitchen tickets, so nothing is set up or printed twice.
+const KASSA_SETTINGS = path.join(DATA, 'kassa-settings.json');
+function adoptKassaPrinters() {
+  if (!CASHIER || fs.existsSync(KASSA_SETTINGS)) return;
+  const old = path.join(app.getPath('appData'), 'FastFood Kassa');
+  try {
+    let settings = {};
+    try {
+      settings = JSON.parse(
+        fs.readFileSync(path.join(old, 'admin-settings.json'), 'utf8'),
+      );
+    } catch {
+      /* no separate Kassa application on this computer */
+    }
+    safeJson.writeJson(
+      KASSA_SETTINGS,
+      JSON.stringify({
+        ...(settings.receiptPrinter
+          ? { receiptPrinter: settings.receiptPrinter }
+          : {}),
+        ...(settings.kitchenPrinter
+          ? { kitchenPrinter: settings.kitchenPrinter }
+          : {}),
+      }),
+    );
+    const printed = path.join(old, 'kitchen-printed.json');
+    const target = path.join(DATA, 'kitchen-printed.json');
+    if (fs.existsSync(printed) && !fs.existsSync(target))
+      fs.copyFileSync(printed, target);
+    log('kassa: printer settings adopted from the Kassa application');
+  } catch (error) {
+    log(`kassa: printer settings not adopted: ${error.message}`);
+  }
+}
+registerPrinters({
+  enabled: () => CASHIER,
+  getWin: () => (win && !win.isDestroyed() ? win : null),
+  getUrl: () => `http://localhost:${APP_PORT}`,
+  dataDir: DATA,
+  settingsFile: KASSA_SETTINGS,
+  saveSettings: (change) => {
+    safeJson.writeJson(KASSA_SETTINGS, {
+      ...safeJson.readJson(KASSA_SETTINGS, {}, () => undefined),
+      ...change,
+    });
+  },
+  log,
+});
+
 ipcMain.handle('anydesk:open', async () => {
   const exe = ANYDESK_PATHS.find((candidate) => fs.existsSync(candidate));
   if (!exe) {
@@ -868,7 +949,7 @@ async function createTray() {
     .catch(() => nativeImage.createEmpty());
   tray = new Tray(icon);
   tray.setToolTip(
-    TEST ? `FastFood TEST ${VERSION} — server` : `FastFood ${VERSION} — server`,
+    TEST ? `${NAME} TEST ${VERSION} — server` : `${NAME} ${VERSION} — server`,
   );
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -978,11 +1059,12 @@ async function boot() {
     app.exit(0);
     return;
   }
+  adoptKassaPrinters();
   win = new BrowserWindow({
     width: 1366,
     height: 860,
     show: !HIDDEN,
-    title: TEST ? `FastFood TEST ${VERSION}` : `FastFood ${VERSION}`,
+    title: TEST ? `${NAME} TEST ${VERSION}` : `${NAME} ${VERSION}`,
     autoHideMenuBar: false,
     webPreferences: {
       contextIsolation: true,
@@ -1017,7 +1099,7 @@ async function boot() {
   if (await ping(live)) {
     log('server already running; attaching');
     startLan();
-    win.loadURL(`http://localhost:${APP_PORT}/`);
+    win.loadURL(`http://localhost:${APP_PORT}${START}`);
     void askNetworkPermission();
     return;
   }
@@ -1058,7 +1140,7 @@ async function boot() {
     throw new Error('Server ishga tushmadi. Jurnallarni tekshiring.');
   scheduleBackups(keys);
   startLan();
-  win.loadURL(`http://localhost:${APP_PORT}/`);
+  win.loadURL(`http://localhost:${APP_PORT}${START}`);
   void askNetworkPermission();
 }
 

@@ -1224,6 +1224,8 @@ const openRoutes = [
   '* /license',
   '* /license/*',
   'POST /devices/heartbeat',
+  // Queue TV first start (LAN only, always PENDING until the Owner approves).
+  'POST /devices/display/register',
   '* /control/*',
   'GET /public/plans',
   'POST /public/register',

@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { assertWithinLimit } from '../billing/entitlements.js';
 import type { Services } from '../../context.js';
-import { errors, parse } from '../../http/errors.js';
+import { AppError, errors, parse } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
 import { audit } from '../audit/audit.js';
+import { isLocalClient } from '../control/network.js';
 import { ownerApprovalRequired } from './approval.js';
 import {
   canAccessBranch,
@@ -142,6 +143,95 @@ export function devicesRouter(services: Services) {
       token,
       DEVICE_COOKIE_MS,
     );
+    res.status(201).json({ id: device.id, status: device.status });
+  });
+
+  /**
+   * Queue TV application, first start: the screen registers itself with no password or
+   * PIN. Only on a restaurant install (self-hosted), only from the restaurant's own
+   * network, and always as a PENDING display: it shows nothing until the Owner approves
+   * it (signed central command). A TV that already holds a device cookie re-uses it.
+   */
+  router.post('/devices/display/register', async (req, res) => {
+    if (
+      !ownerApprovalRequired(services) ||
+      !isLocalClient(req.socket.remoteAddress)
+    )
+      throw errors.forbidden();
+    const input = parse(
+      z.object({ branchId: z.uuid().optional() }),
+      req.body ?? {},
+    );
+    const names = cookieNames(services.secureCookies);
+    const existing = readCookie(req, names.device);
+    if (existing) {
+      const device = await db.device.findUnique({
+        where: { tokenHash: sha256(existing) },
+        select: { id: true, status: true, panel: true },
+      });
+      if (device && device.status !== 'REVOKED') {
+        res.json({ id: device.id, status: device.status });
+        return;
+      }
+    }
+    // The restaurant of this install (same choice as the control runtime's link).
+    const tenant = await db.tenant.findFirst({
+      where: { kind: 'BUSINESS' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, status: true },
+    });
+    if (tenant?.status !== 'ACTIVE') throw errors.forbidden();
+    const tenantId = tenant.id;
+    const branches = await db.branch.findMany({
+      where: { tenantId, deletedAt: null, isActive: true },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const branch =
+      branches.length === 1
+        ? branches[0]
+        : branches.find((b) => b.id === input.branchId);
+    // Several branches: the TV shows them once and the person setting it up taps one.
+    if (!branch)
+      throw new AppError(409, 'BRANCH_REQUIRED', 'conflict', { branches });
+    // Unapproved self-registered screens are capped, so the Owner's list can not be flooded.
+    const waiting = await db.device.count({
+      where: { tenantId, panel: 'DISPLAY', status: 'PENDING' },
+    });
+    if (waiting >= 5) throw new AppError(429, 'RATE_LIMITED', 'rateLimited');
+    const owner = await db.user.findFirst({
+      where: { tenantId, roles: { some: { role: { systemKey: 'owner' } } } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!owner) throw errors.forbidden();
+    const token = randomToken();
+    const device = await db.$transaction(async (tx) => {
+      await assertWithinLimit(tx, tenantId, 'devices');
+      const created = await tx.device.create({
+        data: {
+          tenantId,
+          branchId: branch.id,
+          name: `TV ${new Date().toISOString().slice(0, 10)} ${randomToken().slice(0, 4).toUpperCase()}`,
+          panel: 'DISPLAY',
+          tokenHash: sha256(token),
+          registeredById: owner.id,
+          status: 'PENDING',
+          userAgent: req.get('user-agent')?.slice(0, 200) ?? null,
+          lastIp: req.ip ?? null,
+        },
+      });
+      await audit(tx, req, {
+        tenantId,
+        branchId: branch.id,
+        action: 'device.register',
+        entityType: 'device',
+        entityId: created.id,
+        data: { status: 'PENDING', panel: 'DISPLAY', self: true },
+      });
+      return created;
+    });
+    setCookie(res, services, names.device, token, DEVICE_COOKIE_MS);
     res.status(201).json({ id: device.id, status: device.status });
   });
 

@@ -7,6 +7,23 @@ contextBridge.exposeInMainWorld('fastfoodDesktop', {
   installUpdate: () => ipcRenderer.invoke('updates:install'),
 });
 
+// Kassa edition: the page is the Kassa application with this computer's printers (the
+// same bridge as the separate Kassa application). The full-panel server exposes neither.
+if (ipcRenderer.sendSync('shell:kind') === 'cashier') {
+  contextBridge.exposeInMainWorld('fastfoodShell', { kind: 'cashier' });
+  contextBridge.exposeInMainWorld('fastfoodPrinter', {
+    list: () => ipcRenderer.invoke('printer:list'),
+    get: () => ipcRenderer.invoke('printer:get'),
+    set: (value) => ipcRenderer.invoke('printer:set', value),
+    print: (pagePath) => ipcRenderer.invoke('printer:print', pagePath),
+    kitchenGet: () => ipcRenderer.invoke('printer:kitchen-get'),
+    kitchenSet: (value) => ipcRenderer.invoke('printer:kitchen-set', value),
+    kitchenTest: () => ipcRenderer.invoke('printer:kitchen-test'),
+    kitchenOrder: (orderId) =>
+      ipcRenderer.invoke('printer:kitchen-order', orderId),
+  });
+}
+
 // Vendor tools: present (and working) only on the vendor's computer, which holds the
 // private signing key. Customers' installs report isVendor = false.
 const isVendor = ipcRenderer.sendSync('vendor:isVendor') === true;

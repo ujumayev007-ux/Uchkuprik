@@ -6,7 +6,7 @@ import { useMe } from '../auth/session';
 import { LiveClock } from '../components/LiveClock';
 import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
 import { t } from '../i18n';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, post } from '../lib/api';
 import { defaultOrdering, type Ordering } from '../lib/ordering';
 import { useFlip } from '../lib/flip';
 import { useRealtime } from '../lib/realtime';
@@ -69,6 +69,41 @@ export function QueuePage() {
     retry: (count, error) =>
       !(error instanceof ApiError && error.status === 403) && count < 2,
   });
+  // First start of the TV application: the screen registers itself (no password or
+  // PIN); the server keeps it PENDING until the Owner approves it.
+  const [setup, setSetup] = useState<
+    | { state: 'idle' | 'busy' | 'refused' }
+    | { state: 'branch'; branches: { id: string; name: string }[] }
+  >({ state: 'idle' });
+  const selfRegister = async (branchId?: string) => {
+    setSetup({ state: 'busy' });
+    try {
+      await post('/devices/display/register', branchId ? { branchId } : {});
+      setSetup({ state: 'idle' });
+      await queue.refetch();
+    } catch (caught) {
+      const branches =
+        caught instanceof ApiError && caught.code === 'BRANCH_REQUIRED'
+          ? (caught.details as { branches?: { id: string; name: string }[] })
+              ?.branches
+          : undefined;
+      setSetup(
+        branches?.length
+          ? { state: 'branch', branches }
+          : caught instanceof ApiError && caught.status === 403
+            ? { state: 'refused' }
+            : { state: 'idle' },
+      );
+    }
+  };
+  const needsDevice =
+    device &&
+    queue.error instanceof ApiError &&
+    queue.error.code === 'DEVICE_REQUIRED';
+  useEffect(() => {
+    if (needsDevice && setup.state === 'idle') void selfRegister();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsDevice]);
   // Browsers only allow audio after a user gesture: one tap on the overlay.
   // The TV application plays the ready announcements without a tap.
   const [sound, setSound] = useState(() => shellKind() === 'tv');
@@ -142,14 +177,32 @@ export function QueuePage() {
         </h1>
         <p>
           {queue.error.code === 'DEVICE_PENDING'
-            ? t.pin.pendingHint
-            : t.queue.deviceHint}
+            ? t.queue.selfPendingHint
+            : setup.state === 'branch'
+              ? t.queue.pickBranch
+              : setup.state === 'refused'
+                ? t.queue.deviceHint
+                : t.queue.selfRegistering}
         </p>
-        {queue.error.code === 'DEVICE_REQUIRED' && (
-          <Link className="btn btn-primary btn-lg" to="/kirish">
-            {t.pin.adminSetup}
-          </Link>
-        )}
+        {queue.error.code === 'DEVICE_REQUIRED' &&
+          setup.state === 'branch' &&
+          setup.branches.map((branch) => (
+            <button
+              key={branch.id}
+              type="button"
+              className="btn btn-primary btn-lg"
+              onClick={() => void selfRegister(branch.id)}
+            >
+              {branch.name}
+            </button>
+          ))}
+        {/* A hosted (cloud) server keeps the administrator's one-time setup. */}
+        {queue.error.code === 'DEVICE_REQUIRED' &&
+          setup.state === 'refused' && (
+            <Link className="btn btn-primary btn-lg" to="/kirish">
+              {t.pin.adminSetup}
+            </Link>
+          )}
       </div>
     );
   if (queue.error instanceof ApiError && queue.error.status === 403)
