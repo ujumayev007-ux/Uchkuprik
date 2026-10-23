@@ -113,6 +113,10 @@ export class EscPos {
   cut() {
     return this.raw(GS, 0x56, 0x42, 0x00);
   }
+  cashDrawer(pin: 2 | 5 = 2) {
+    // ESC p m t1 t2: 0x1b 0x70 [0 for pin 2, 1 for pin 5] 0x19 0xfa (standard kick-out pulse)
+    return this.raw(ESC, 0x70, pin === 2 ? 0 : 1, 25, 250);
+  }
   raw(...bytes: number[]) {
     this.chunks.push(...bytes);
     return this;

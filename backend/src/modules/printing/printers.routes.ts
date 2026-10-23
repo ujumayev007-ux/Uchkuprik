@@ -1,11 +1,33 @@
+import { Socket } from 'node:net';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
-import { errors, parse } from '../../http/errors.js';
+import { AppError, errors, parse } from '../../http/errors.js';
 import { EscPos } from '../../printing/escpos.js';
 import { audit } from '../audit/audit.js';
 import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+
+export function checkPrinterPing(
+  host: string,
+  port: number,
+  timeoutMs = 1500,
+): Promise<{ online: boolean; latencyMs: number; error?: string }> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const socket = new Socket();
+    let done = false;
+    const finish = (online: boolean, error?: string) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve({ online, latencyMs: Date.now() - start, error });
+    };
+    socket.setTimeout(timeoutMs, () => finish(false, 'Timeout'));
+    socket.once('error', (err) => finish(false, err.message));
+    socket.connect(port, host, () => finish(true));
+  });
+}
 
 /**
  * The API opens TCP connections to printer addresses, so addresses are limited to
@@ -39,6 +61,7 @@ const printerInput = z.object({
   fallbackPrinterId: z.uuid().nullable().optional(),
   // 58 and 80 mm are the common widths; other widths are custom (40-112 mm).
   paperWidth: z.number().int().min(40).max(112).default(80),
+  allowDuplicate: z.boolean().default(false).optional(),
 });
 
 export function printersRouter(services: Services) {
@@ -117,6 +140,24 @@ export function printersRouter(services: Services) {
     const auth = getAuth(res);
     const input = parse(printerInput, req.body);
     await resolveBranch(db, auth, input.branchId);
+
+    const duplicate = await db.printer.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        branchId: input.branchId,
+        host: input.host,
+        port: input.port,
+        isActive: true,
+      },
+    });
+    if (duplicate && !input.allowDuplicate) {
+      throw new AppError(
+        409,
+        'DUPLICATE_PRINTER_IP',
+        `Ushbu IP manzil (${input.host}:${input.port}) allaqachon "${duplicate.name}" printerida ishlatilmoqda`,
+      );
+    }
+
     const data = await write(auth.tenantId, input);
     const printer = await db.printer.create({
       data: { tenantId: auth.tenantId, ...data },
@@ -143,6 +184,25 @@ export function printersRouter(services: Services) {
     if (!existing) throw errors.notFound();
     await resolveBranch(db, auth, existing.branchId);
     await resolveBranch(db, auth, input.branchId);
+
+    const duplicate = await db.printer.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        branchId: input.branchId,
+        host: input.host,
+        port: input.port,
+        isActive: true,
+        id: { not: id },
+      },
+    });
+    if (duplicate && !input.allowDuplicate) {
+      throw new AppError(
+        409,
+        'DUPLICATE_PRINTER_IP',
+        `Ushbu IP manzil (${input.host}:${input.port}) allaqachon "${duplicate.name}" printerida ishlatilmoqda`,
+      );
+    }
+
     await db.printer.update({
       where: { id },
       data: await write(auth.tenantId, input),
@@ -159,24 +219,118 @@ export function printersRouter(services: Services) {
     res.json({ ok: true });
   });
 
-  router.post('/printers/:id/test', ...manage, async (req, res) => {
+  router.post('/printers/:id/ping', ...manage, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
     const printer = await db.printer.findFirst({
       where: { id, tenantId: auth.tenantId },
     });
     if (!printer) throw errors.notFound();
+    const status = await checkPrinterPing(printer.host, printer.port);
+    res.json({ ...status, printerId: printer.id, host: printer.host, port: printer.port });
+  });
+
+  router.post('/printers/ping-host', ...manage, async (req, res) => {
+    const input = parse(
+      z.object({
+        host: z.string().trim().refine(isAllowedPrinterHost),
+        port: z.number().int().min(9100).max(9109).default(9100),
+      }),
+      req.body,
+    );
+    const status = await checkPrinterPing(input.host, input.port);
+    res.json(status);
+  });
+
+  router.post('/printers/discover-lan', ...manage, async (req, res) => {
+    const input = parse(
+      z.object({
+        subnet: z
+          .string()
+          .trim()
+          .regex(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+          .optional(),
+      }),
+      req.body,
+    );
+    const prefix = input.subnet || '192.168.1';
+    const hosts = Array.from({ length: 254 }, (_, i) => `${prefix}.${i + 1}`);
+    const batchSize = 32;
+    const discovered: Array<{ host: string; port: number; latencyMs: number }> = [];
+    for (let i = 0; i < hosts.length; i += batchSize) {
+      const batch = hosts.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (host) => {
+          const ping = await checkPrinterPing(host, 9100, 350);
+          return ping.online ? { host, port: 9100, latencyMs: ping.latencyMs } : null;
+        }),
+      );
+      for (const r of results) {
+        if (r) discovered.push(r);
+      }
+    }
+    res.json({ discovered });
+  });
+
+  router.post('/printers/seed-departments', ...manage, async (_req, res) => {
+    const auth = getAuth(res);
+    const standards = [
+      { name: 'Kassa', sortOrder: 1 },
+      { name: 'Asosiy oshxona', sortOrder: 2 },
+      { name: 'Baliqxona', sortOrder: 3 },
+      { name: 'Kabobxona', sortOrder: 4 },
+      { name: 'Fastfud', sortOrder: 5 },
+      { name: 'Ichimliklar', sortOrder: 6 },
+    ];
+    for (const item of standards) {
+      const exists = await db.kitchenStation.findFirst({
+        where: { tenantId: auth.tenantId, name: item.name },
+      });
+      if (!exists) {
+        await db.kitchenStation.create({
+          data: {
+            tenantId: auth.tenantId,
+            name: item.name,
+            sortOrder: item.sortOrder,
+            isActive: true,
+          },
+        });
+      }
+    }
+    const stations = await db.kitchenStation.findMany({
+      where: { tenantId: auth.tenantId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    res.json({ stations });
+  });
+
+  router.post('/printers/:id/test', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const printer = await db.printer.findFirst({
+      where: { id, tenantId: auth.tenantId },
+      include: { station: true },
+    });
+    if (!printer) throw errors.notFound();
     await resolveBranch(db, auth, printer.branchId);
-    const payload = new EscPos()
+
+    const esc = new EscPos(printer.paperWidth === 58 ? 32 : 48)
       .align('center')
       .bold(true)
-      .line('FAST FOOD')
+      .line('FAST FOOD — SINOV CHEKI')
       .bold(false)
-      .line(`Sinov sahifasi: ${printer.name}`)
-      .line(new Date().toISOString().slice(0, 16).replace('T', ' '))
-      .feed(4)
-      .cut()
-      .build();
+      .line(`Printer: ${printer.name}`)
+      .line(
+        `Bo‘lim: ${printer.station?.name ?? (printer.kind === 'RECEIPT' ? 'Kassa' : 'Umumiy oshxona')}`,
+      )
+      .line(`IP: ${printer.host}:${printer.port}`)
+      .line(`Kenglik: ${printer.paperWidth} mm`)
+      .line(new Date().toISOString().slice(0, 16).replace('T', ' '));
+    if (printer.kind === 'RECEIPT') {
+      esc.cashDrawer(2); // kick pulse to test cash drawer
+    }
+    const payload = esc.feed(4).cut().build();
+
     const job = await db.printJob.create({
       data: {
         tenantId: auth.tenantId,
