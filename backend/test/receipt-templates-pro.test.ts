@@ -105,3 +105,4 @@ describe('Receipt Ticket Formatting', () => {
     expect(text).toContain('*'.repeat(30));
   });
 });
+

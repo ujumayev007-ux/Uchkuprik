@@ -107,3 +107,4 @@ describe('Professional Printer Management', () => {
     expect(checkCollision({ id: 'p1', host: '192.168.1.200', port: 9100 })).toBeUndefined();
   });
 });
+

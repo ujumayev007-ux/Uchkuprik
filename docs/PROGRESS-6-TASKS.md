@@ -70,7 +70,8 @@ Hammasi bajarildi.
 |---|--------|-------|--------|
 | 1 | Kassa Bozorlik (Cashier Market Purchase) | Bajarildi | `9ffcb16` |
 | 2 | Professional Printer boshqaruvi (ESC/POS, LAN discovery, Ping) | Bajarildi | `04a0b6e` |
-| 3 | Professional Chek Dizayneri (6 ta andoza, QR/shtrixkod, Fiskal) | Bajarildi | (joriy) |
+| 3 | Professional Chek Dizayneri (6 ta andoza, QR/shtrixkod, Fiskal) | Bajarildi | `36bafd8` |
+| 4 | Kassa kompyuterini doimiy LAN server qilish (Permanent Cashier Host) | Bajarildi | (joriy) |
 
 ### 1-vazifa: Kassa Bozorlik
 - Kassa oynasida (POS) `🛒 Bozorlik` tezkor tugmasi va `/bozorlik` marshruti qo‘shildi.
@@ -95,4 +96,14 @@ Hammasi bajarildi.
 - Fiskal OFD maʼlumotlari, Yetkazib berish maʼlumotlari va ijtimoiy tarmoqlar integratsiyasi.
 - Jonli ko‘rinish (Live preview) va printerga sinov chop etish.
 - Testlar: `test/receipt-templates-pro.test.ts` (6/6 test o‘tdi).
+
+### 4-vazifa: Kassa kompyuterini doimiy LAN server qilish (Permanent Cashier Host)
+- Kassa kompyuterida Server dasturi (`FastFood-Admin-Setup-1.14.10.exe`) fon rejimida oyna ochmasdan (`--hidden`), Windows bilan birga avtomatik ishga tushadi. Tray belgisi orqali boshqariladi.
+- Admin kompyuterida yengil Admin mijozi (`FastFood-Admin-Setup-1.6.1.exe`) ishlatiladi. Admin kompyuteri o‘chsa ham restoran, kassa, oshxona va ofitsiantlar ishlashda davom etadi.
+- Kassa kompyuterida esa kassir `FastFood-Kassa-Setup-1.6.1.exe` orqali kassa POS oynasidan foydalanadi.
+- Oshxona, Ofitsiant va TV qurilmalari Kassa serveriga LAN (UDP beacon) orqali avtomatik ulanadi.
+- Ikki server bir vaqtda bitta bazani ishlatmasligi uchun `moved.json` bloki mavjud.
+- Ko‘chirish va ortga qaytarish (Rollback) jarayoni sinovdan o‘tdi (`test/server-migration.test.ts`, 2/2 test o‘tdi).
+- Yangi o‘rnatuvchilar yig‘ildi va `Desktop\FastFood-TAYYOR` papkasiga joylashtirildi.
+
 
