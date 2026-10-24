@@ -6,6 +6,7 @@ import { AppError, errors, parse } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
 import { audit } from '../audit/audit.js';
 import { isLocalClient } from '../control/network.js';
+import { ownerApprovalRequired } from './approval.js';
 import {
   canAccessBranch,
   cookieNames,
@@ -109,8 +110,8 @@ export function devicesRouter(services: Services) {
     });
     if (!branch || !canAccessBranch(auth, branch.id)) throw errors.forbidden();
     const token = randomToken();
-    // The restaurant Admin registers a new terminal within license limits; active immediately.
-    const status = 'ACTIVE';
+    // The restaurant Admin may only request a new terminal; the Owner activates it.
+    const status = ownerApprovalRequired(services) ? 'PENDING' : 'ACTIVE';
     const device = await db.$transaction(async (tx) => {
       await assertWithinLimit(tx, auth.tenantId, 'devices');
       const created = await tx.device.create({
@@ -229,27 +230,6 @@ export function devicesRouter(services: Services) {
     });
     setCookie(res, services, names.device, token, DEVICE_COOKIE_MS);
     res.status(201).json({ id: device.id, status: device.status });
-  });
-
-  router.post('/devices/:id/approve', ...manage, async (req, res) => {
-    const auth = getAuth(res);
-    const id = parse(z.uuid(), req.params.id);
-    await db.$transaction(async (tx) => {
-      await assertWithinLimit(tx, auth.tenantId, 'devices');
-      const result = await tx.device.updateMany({
-        where: { id, tenantId: auth.tenantId, status: 'PENDING' },
-        data: { status: 'ACTIVE' },
-      });
-      if (result.count === 0) throw errors.notFound();
-      await audit(tx, req, {
-        tenantId: auth.tenantId,
-        actorUserId: auth.userId,
-        action: 'device.approve',
-        entityType: 'device',
-        entityId: id,
-      });
-    });
-    res.json({ ok: true });
   });
 
   router.post('/devices/:id/revoke', ...manage, async (req, res) => {

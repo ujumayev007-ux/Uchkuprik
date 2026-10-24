@@ -227,8 +227,7 @@ export const uz = {
     revokeConfirm:
       'Qurilma bekor qilinadi va undagi barcha seanslar yakunlanadi. Davom etasizmi?',
     revoked: 'Bekor qilingan',
-    pending: 'Tasdiqlanishi kutilmoqda',
-    approve: 'Tasdiqlash',
+    pending: 'Owner tasdig‘ini kutmoqda',
     lastSeen: 'Oxirgi faollik',
   },
   audit: {

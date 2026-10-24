@@ -789,7 +789,6 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       'GET /devices',
       'POST /devices/register',
-      'POST /devices/:id/approve',
       'POST /devices/:id/revoke',
     ],
   }),
