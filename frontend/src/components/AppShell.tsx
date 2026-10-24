@@ -103,6 +103,14 @@ export const navItems: NavItem[] = [
     visible: (me) => can(me, 'pos.access') || can(me, 'purchasing.manage'),
   },
   {
+    to: '/tv-ekran',
+    label: t.nav.tvScreen,
+    icon: '📺',
+    visible: (me) =>
+      me.ordering?.tv.enabled !== false &&
+      (can(me, 'pos.access') || can(me, 'settings.manage')),
+  },
+  {
     to: '/chiqimlar',
     label: 'Chiqimlar',
     icon: '💸',
@@ -566,11 +574,11 @@ export function AppShell() {
   const online = useRealtime(
     me?.tenantKind === 'BUSINESS' ? me.activeBranchId : null,
   );
+  const adminVisibility = useAdminMenuVisibility(me?.tenantKind === 'BUSINESS');
   if (!me) return null;
   // Kassa, Oshxona and Ofitsiant open their own page only, even by a typed address.
   if (location.pathname !== '/' && !shellAllows(location.pathname))
     return <Navigate to="/" replace />;
-  const adminVisibility = useAdminMenuVisibility(me?.tenantKind === 'BUSINESS');
   const adminHidden = adminVisibility.data ?? [];
 
   // Menus the vendor switched off for this install (via the licence).
@@ -582,22 +590,23 @@ export function AppShell() {
     shellKind() === 'cashier' ||
     (isFrontLine(me) && can(me, 'pos.access'));
 
-  const cashierAllowedPaths = [
-    '/kassa',
-    '/buyurtmalar',
-    '/printerlar',
-    '/bozorlik',
-    '/chiqimlar',
+  // The Kassa menu: these five sections only, in this order. Permissions and the menus
+  // the vendor switched off still apply.
+  const cashierMenu: [string, string][] = [
+    ['/kassa', t.nav.pos],
+    ['/buyurtmalar', t.nav.orderHistory],
+    ['/printerlar', t.nav.printerSettings],
+    ['/tv-ekran', t.nav.tvScreen],
+    ['/bozorlik', t.market.title],
   ];
 
   const items = isCashierApp
-    ? navItems
-        .filter((item) => cashierAllowedPaths.includes(item.to))
-        .map((item) => {
-          if (item.to === '/buyurtmalar') return { ...item, label: 'Buyurtmalar tarixi' };
-          if (item.to === '/printerlar') return { ...item, label: 'Printer sozlamalari' };
-          return item;
-        })
+    ? cashierMenu.flatMap(([to, label]) => {
+        const item = navItems.find((entry) => entry.to === to);
+        return item && item.visible(me) && !hidden.includes(to)
+          ? [{ ...item, label }]
+          : [];
+      })
     : navItems.filter(
         (item) =>
           item.visible(me) &&

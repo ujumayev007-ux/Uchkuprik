@@ -36,6 +36,7 @@ import { FloorPage } from './pages/FloorPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { MarketTab } from './pages/MarketTab';
 import { ChiqimlarPage } from './pages/ChiqimlarPage';
+import { TvSwitchPage } from './pages/TvSwitchPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
 import { PaymentsPage } from './pages/PaymentsPage';
@@ -458,6 +459,16 @@ const router = createBrowserRouter([
             }
           >
             <ChiqimlarPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/tv-ekran',
+        element: (
+          <Guard
+            allow={(me) => can(me, 'pos.access') || can(me, 'settings.manage')}
+          >
+            <TvSwitchPage />
           </Guard>
         ),
       },

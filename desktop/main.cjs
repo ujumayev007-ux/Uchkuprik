@@ -516,8 +516,23 @@ function startServer(keys) {
       },
     },
   );
-  api.on('exit', (code) => log(`server exited ${code}`));
+  const startedAt = Date.now();
+  api.on('exit', (code) => {
+    log(`server exited ${code}`);
+    // Crashed while the app keeps running (not quitting, moving or updating): start it
+    // again, waiting longer after quick repeated crashes (2 s doubling up to 60 s).
+    if (stopping || quitting) return;
+    restartDelay =
+      Date.now() - startedAt > 120_000
+        ? 2_000
+        : Math.min(restartDelay * 2, 60_000);
+    log(`server restart in ${restartDelay / 1000} s`);
+    setTimeout(() => {
+      if (!stopping && !quitting) startServer(keys);
+    }, restartDelay);
+  });
 }
+let restartDelay = 1_000;
 
 /**
  * Daily logical backup with a restore check: the backend dumps every table, restores

@@ -1038,6 +1038,8 @@ export const featureCatalog: FeatureDef[] = [
     group: 'Ko‘rinish va ekranlar',
     label: 'Mijozlar ekrani (TV)',
     menuPath: '/navbat',
+    // Kassa «TV ekrani»: pause / resume the branch's queue TVs.
+    routes: ['GET /queue/tv', 'PUT /queue/tv'],
     params: [
       {
         key: 'layout',

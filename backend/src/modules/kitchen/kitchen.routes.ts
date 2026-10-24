@@ -804,10 +804,55 @@ export function kitchenRouter(services: Services) {
     res.json(await queueOf(device.tenantId, device.branch, tv));
   });
 
+  // Kassa «TV ekrani»: the cashier pauses or resumes the queue TVs of the branch. This
+  // only switches the screens off further; the central tv.display switch still decides.
+  router.get('/queue/tv', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (!can(auth, 'pos.access', 'settings.manage')) throw errors.forbidden();
+    const { branchId } = parse(
+      z.object({ branchId: z.uuid().optional() }),
+      req.query,
+    );
+    const branch = await resolveBranch(db, auth, branchId);
+    res.json({
+      enabled: auth.ordering.tv.enabled,
+      paused: branch.tvPaused,
+      branch: { id: branch.id, name: branch.name },
+    });
+  });
+
+  router.put('/queue/tv', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (!can(auth, 'pos.access', 'settings.manage')) throw errors.forbidden();
+    if (!auth.ordering.tv.enabled)
+      throw new AppError(403, 'FEATURE_DISABLED', 'featureDisabled');
+    const input = parse(
+      z.object({ paused: z.boolean(), branchId: z.uuid().optional() }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      const branch = await resolveBranch(tx, auth, input.branchId);
+      if (branch.tvPaused === input.paused) return;
+      await tx.branch.update({
+        where: { id: branch.id },
+        data: { tvPaused: input.paused },
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        branchId: branch.id,
+        action: input.paused ? 'queue.tv.pause' : 'queue.tv.resume',
+        entityType: 'branch',
+        entityId: branch.id,
+      });
+    });
+    res.json({ ok: true, paused: input.paused });
+  });
+
   /** Today's open orders of a branch as the queue screen shows them. */
   async function queueOf(
     tenantId: string,
-    branch: { id: string; name: string; timezone: string },
+    branch: { id: string; name: string; timezone: string; tvPaused: boolean },
     display: AuthContext['ordering']['tv'],
   ) {
     const orders = await db.order.findMany({
@@ -823,6 +868,8 @@ export function kitchenRouter(services: Services) {
     });
     return {
       branch: { name: branch.name },
+      // Kassa switched the TVs off: they show a pause screen and keep polling.
+      paused: branch.tvPaused,
       // Layout, visible statuses and voice settings chosen centrally.
       display,
       preparing: orders

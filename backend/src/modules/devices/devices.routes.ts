@@ -151,10 +151,8 @@ export function devicesRouter(services: Services) {
    * can show the live queue immediately. Admin can revoke/manage the TV device at any time.
    */
   router.post('/devices/display/register', async (req, res) => {
-    if (
-      services.selfHosted &&
-      !isLocalClient(req.socket.remoteAddress)
-    )
+    // Restaurant install only (a hosted server has many restaurants), own network only.
+    if (!services.selfHosted || !isLocalClient(req.socket.remoteAddress))
       throw errors.forbidden();
     const input = parse(
       z.object({ branchId: z.uuid().optional() }),

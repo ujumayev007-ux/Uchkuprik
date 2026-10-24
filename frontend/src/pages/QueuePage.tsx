@@ -15,6 +15,8 @@ import { speak } from '../lib/voice';
 
 type Queue = {
   branch: { name: string };
+  // Kassa «TV ekrani» switched the screens off for now.
+  paused?: boolean;
   display?: Ordering['tv'];
   preparing: number[];
   ready: { id?: string; number: number; readyAt: string | null }[];
@@ -153,7 +155,8 @@ export function QueuePage() {
     if (fresh.length === 0) return;
     for (const item of fresh) map.set(item.key, Date.now());
     saveAnnounced(map);
-    if (!display.voice.enabled) return;
+    // Paused: orders that become ready meanwhile are not announced after resuming.
+    if (!display.voice.enabled || queue.data.paused) return;
     for (const item of fresh)
       speak(readyAnnouncement(item.number, display.voice.phrase), {
         repeat: display.voice.repeat,
@@ -209,6 +212,13 @@ export function QueuePage() {
     return (
       <div className="queue-screen">
         <h1>{t.ordering.tv.disabled}</h1>
+      </div>
+    );
+  if (queue.data?.paused)
+    return (
+      <div className="queue-screen">
+        <h1>{t.ordering.tv.paused}</h1>
+        <p>{t.ordering.tv.pausedHint}</p>
       </div>
     );
 
