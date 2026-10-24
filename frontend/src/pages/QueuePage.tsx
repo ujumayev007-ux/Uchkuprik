@@ -58,7 +58,7 @@ function saveAnnounced(map: Map<string, number>) {
 export function QueuePage() {
   const { data: me } = useMe();
   // The Queue TV application needs no sign-in: its registered device reads the queue.
-  const device = !me && shellKind() === 'tv';
+  const device = !me || shellKind() === 'tv';
   const online = useRealtime(me?.activeBranchId);
   const queue = useQuery({
     queryKey: ['queue', device ? 'display' : me?.activeBranchId],

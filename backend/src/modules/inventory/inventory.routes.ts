@@ -282,6 +282,217 @@ export function inventoryRouter(services: Services) {
     res.json({ ok: true });
   });
 
+  // Direct stock receipt onto an existing inventory item ("Kirim qo‘shish")
+  router.post('/inventory/items/:id/receipt', requireAuth(), async (req, res) => {
+    const auth = getAuth(res);
+    if (
+      !auth.permissions.has('inventory.manage') &&
+      !auth.permissions.has('purchasing.manage')
+    )
+      throw errors.forbidden();
+
+    const id = parse(z.uuid(), req.params.id);
+    const input = parse(
+      z.object({
+        warehouseId: z.uuid().optional(),
+        branchId: z.uuid().optional(),
+        quantity: z.number().positive().max(100_000_000),
+        unitName: z.string().trim().min(1).max(30).optional(),
+        unitPrice: z.number().min(0).max(10_000_000_000),
+        totalAmount: z.number().min(0).max(10_000_000_000).optional(),
+        paymentMethod: z.enum(['CASH', 'CARD', 'DEBT']).default('CASH'),
+        supplierId: z.uuid().optional(),
+        supplierName: z.string().trim().max(120).optional(),
+        note: z.string().trim().max(300).optional(),
+      }),
+      req.body,
+    );
+
+    const result = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM stock_items WHERE id = ${id}::uuid AND "tenantId" = ${auth.tenantId}::uuid FOR UPDATE`;
+      const stockItem = await tx.stockItem.findFirst({
+        where: { id, tenantId: auth.tenantId, isActive: true },
+        include: { units: true },
+      });
+      if (!stockItem) throw errors.notFound();
+
+      const branch = await resolveBranch(tx, auth, input.branchId);
+      const warehouse = input.warehouseId
+        ? await tx.warehouse.findFirstOrThrow({
+            where: { id: input.warehouseId, tenantId: auth.tenantId, branchId: branch.id },
+          })
+        : await defaultWarehouse(tx, auth.tenantId, branch.id);
+
+      const unitLabel = baseUnitLabels[stockItem.baseUnit];
+      const unitName = input.unitName || unitLabel;
+      let factor = new Decimal(1);
+      if (unitName === unitLabel) {
+        factor = new Decimal(1);
+      } else if (
+        (stockItem.baseUnit === 'G' && (unitName.toLowerCase() === 'kg' || unitName.toLowerCase() === 'kilogram')) ||
+        (stockItem.baseUnit === 'ML' && (unitName.toLowerCase() === 'l' || unitName.toLowerCase() === 'litr'))
+      ) {
+        factor = new Decimal(1000);
+      } else {
+        const u = stockItem.units.find((candidate: { name: string; factor: Prisma.Decimal }) => candidate.name.toLowerCase() === unitName.toLowerCase());
+        if (u) {
+          factor = new Decimal(u.factor);
+        } else {
+          throw new AppError(400, 'UNKNOWN_UNIT', 'unknownUnit');
+        }
+      }
+
+      const baseQuantity = new Decimal(input.quantity).times(factor);
+      const total = input.totalAmount ?? Math.round(input.quantity * input.unitPrice);
+      const unitCost = baseQuantity.isZero() ? new Decimal(0) : new Decimal(total).dividedBy(baseQuantity);
+
+      let supplierId = input.supplierId ?? null;
+      if (!supplierId && input.supplierName?.trim()) {
+        const norm = input.supplierName.trim();
+        const existingSupplier = await tx.supplier.findFirst({
+          where: { tenantId: auth.tenantId, name: { equals: norm, mode: 'insensitive' } },
+        });
+        if (existingSupplier) {
+          supplierId = existingSupplier.id;
+        } else {
+          const createdSupplier = await tx.supplier.create({
+            data: { tenantId: auth.tenantId, name: norm },
+          });
+          supplierId = createdSupplier.id;
+        }
+      }
+      if (!supplierId) {
+        let defSupplier = await tx.supplier.findFirst({
+          where: { tenantId: auth.tenantId, name: 'Bozorlik' },
+        });
+        if (!defSupplier) {
+          defSupplier = await tx.supplier.create({
+            data: { tenantId: auth.tenantId, name: 'Bozorlik' },
+          });
+        }
+        supplierId = defSupplier.id;
+      }
+
+      const purchase = await tx.purchase.create({
+        data: {
+          tenantId: auth.tenantId,
+          warehouseId: warehouse.id,
+          supplierId,
+          status: 'RECEIVED',
+          total,
+          note: input.note ?? null,
+          receivedAt: services.now?.() ?? new Date(),
+          receivedById: auth.userId,
+          createdById: auth.userId,
+          lines: {
+            create: [
+              {
+                stockItemId: stockItem.id,
+                unitName,
+                factor: factor.toNumber(),
+                quantity: new Decimal(input.quantity),
+                baseQuantity,
+                unitPrice: input.unitPrice,
+                lineTotal: total,
+              },
+            ],
+          },
+        },
+      });
+
+      await postMovement(tx, {
+        tenantId: auth.tenantId,
+        warehouseId: warehouse.id,
+        stockItemId: stockItem.id,
+        type: 'RECEIPT',
+        quantity: baseQuantity,
+        unitCost,
+        referenceType: 'purchase',
+        referenceId: purchase.id,
+        actorId: auth.userId,
+        allowNegative: true,
+      });
+
+      if (input.paymentMethod === 'CASH') {
+        const shift = await tx.cashShift.findFirst({
+          where: { tenantId: auth.tenantId, branchId: branch.id, status: 'OPEN' },
+          orderBy: { openedAt: 'desc' },
+        });
+        if (shift) {
+          await tx.cashMovement.create({
+            data: {
+              tenantId: auth.tenantId,
+              shiftId: shift.id,
+              amount: -total,
+              reason: `Kirim: ${stockItem.name}`,
+              createdById: auth.userId,
+            },
+          });
+        }
+        await tx.expense.create({
+          data: {
+            tenantId: auth.tenantId,
+            branchId: branch.id,
+            category: 'Xomashyo xaridi',
+            amount: total,
+            date: services.now?.() ?? new Date(),
+            note: `Kirim: ${stockItem.name} (${input.quantity} ${unitName})`,
+            fromCash: true,
+            createdById: auth.userId,
+          },
+        });
+      } else if (input.paymentMethod === 'CARD') {
+        await tx.expense.create({
+          data: {
+            tenantId: auth.tenantId,
+            branchId: branch.id,
+            category: 'Xomashyo xaridi',
+            amount: total,
+            date: services.now?.() ?? new Date(),
+            note: `Kirim (Karta): ${stockItem.name} (${input.quantity} ${unitName})`,
+            fromCash: false,
+            createdById: auth.userId,
+          },
+        });
+      }
+
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: branch.id,
+        actorUserId: auth.userId,
+        action: 'inventory.receipt',
+        entityType: 'stock_item',
+        entityId: stockItem.id,
+        data: {
+          purchaseId: purchase.id,
+          quantity: input.quantity,
+          unitName,
+          baseQuantity: baseQuantity.toString(),
+          unitPrice: input.unitPrice,
+          total,
+          paymentMethod: input.paymentMethod,
+        },
+      });
+
+      const updatedBalance = await tx.stockBalance.findUnique({
+        where: {
+          warehouseId_stockItemId: {
+            warehouseId: warehouse.id,
+            stockItemId: stockItem.id,
+          },
+        },
+      });
+
+      return {
+        purchaseId: purchase.id,
+        newQuantity: updatedBalance?.quantity.toString() ?? '0',
+        newAvgCost: updatedBalance?.avgCost.toString() ?? '0',
+      };
+    });
+
+    res.status(201).json(result);
+  });
+
   // --- Ledger -------------------------------------------------------------
 
   router.get('/inventory/movements', ...view, async (req, res) => {

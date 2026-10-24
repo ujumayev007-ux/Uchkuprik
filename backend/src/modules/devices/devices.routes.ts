@@ -6,7 +6,6 @@ import { AppError, errors, parse } from '../../http/errors.js';
 import { randomToken, sha256 } from '../../lib/crypto.js';
 import { audit } from '../audit/audit.js';
 import { isLocalClient } from '../control/network.js';
-import { ownerApprovalRequired } from './approval.js';
 import {
   canAccessBranch,
   cookieNames,
@@ -110,8 +109,8 @@ export function devicesRouter(services: Services) {
     });
     if (!branch || !canAccessBranch(auth, branch.id)) throw errors.forbidden();
     const token = randomToken();
-    // The restaurant Admin may only request a new terminal; the Owner activates it.
-    const status = ownerApprovalRequired(services) ? 'PENDING' : 'ACTIVE';
+    // The restaurant Admin registers a new terminal within license limits; active immediately.
+    const status = 'ACTIVE';
     const device = await db.$transaction(async (tx) => {
       await assertWithinLimit(tx, auth.tenantId, 'devices');
       const created = await tx.device.create({
@@ -148,13 +147,12 @@ export function devicesRouter(services: Services) {
 
   /**
    * Queue TV application, first start: the screen registers itself with no password or
-   * PIN. Only on a restaurant install (self-hosted), only from the restaurant's own
-   * network, and always as a PENDING display: it shows nothing until the Owner approves
-   * it (signed central command). A TV that already holds a device cookie re-uses it.
+   * PIN. From the restaurant's local network, it registers as an ACTIVE display so it
+   * can show the live queue immediately. Admin can revoke/manage the TV device at any time.
    */
   router.post('/devices/display/register', async (req, res) => {
     if (
-      !ownerApprovalRequired(services) ||
+      services.selfHosted &&
       !isLocalClient(req.socket.remoteAddress)
     )
       throw errors.forbidden();
@@ -194,7 +192,7 @@ export function devicesRouter(services: Services) {
     // Several branches: the TV shows them once and the person setting it up taps one.
     if (!branch)
       throw new AppError(409, 'BRANCH_REQUIRED', 'conflict', { branches });
-    // Unapproved self-registered screens are capped, so the Owner's list can not be flooded.
+    // Unapproved self-registered screens are capped, so the device list can not be flooded.
     const waiting = await db.device.count({
       where: { tenantId, panel: 'DISPLAY', status: 'PENDING' },
     });
@@ -216,7 +214,7 @@ export function devicesRouter(services: Services) {
           panel: 'DISPLAY',
           tokenHash: sha256(token),
           registeredById: owner.id,
-          status: 'PENDING',
+          status: 'ACTIVE',
           userAgent: req.get('user-agent')?.slice(0, 200) ?? null,
           lastIp: req.ip ?? null,
         },
@@ -227,12 +225,33 @@ export function devicesRouter(services: Services) {
         action: 'device.register',
         entityType: 'device',
         entityId: created.id,
-        data: { status: 'PENDING', panel: 'DISPLAY', self: true },
+        data: { status: 'ACTIVE', panel: 'DISPLAY', self: true },
       });
       return created;
     });
     setCookie(res, services, names.device, token, DEVICE_COOKIE_MS);
     res.status(201).json({ id: device.id, status: device.status });
+  });
+
+  router.post('/devices/:id/approve', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    await db.$transaction(async (tx) => {
+      await assertWithinLimit(tx, auth.tenantId, 'devices');
+      const result = await tx.device.updateMany({
+        where: { id, tenantId: auth.tenantId, status: 'PENDING' },
+        data: { status: 'ACTIVE' },
+      });
+      if (result.count === 0) throw errors.notFound();
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'device.approve',
+        entityType: 'device',
+        entityId: id,
+      });
+    });
+    res.json({ ok: true });
   });
 
   router.post('/devices/:id/revoke', ...manage, async (req, res) => {

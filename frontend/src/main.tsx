@@ -35,6 +35,7 @@ import { FinancePage } from './pages/FinancePage';
 import { FloorPage } from './pages/FloorPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { MarketTab } from './pages/MarketTab';
+import { ChiqimlarPage } from './pages/ChiqimlarPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { MenuPage } from './pages/MenuPage';
 import { PaymentsPage } from './pages/PaymentsPage';
@@ -438,9 +439,25 @@ const router = createBrowserRouter([
         element: (
           <Guard
             feature="kitchen_printing"
-            allow={(me) => can(me, 'settings.manage')}
+            allow={(me) =>
+              can(me, 'settings.manage') || can(me, 'pos.access')
+            }
           >
             <PrintersPage />
+          </Guard>
+        ),
+      },
+      {
+        path: '/chiqimlar',
+        element: (
+          <Guard
+            allow={(me) =>
+              can(me, 'pos.access') ||
+              can(me, 'finance.manage') ||
+              can(me, 'finance.view')
+            }
+          >
+            <ChiqimlarPage />
           </Guard>
         ),
       },

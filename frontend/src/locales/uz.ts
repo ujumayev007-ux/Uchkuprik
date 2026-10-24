@@ -224,7 +224,8 @@ export const uz = {
     revokeConfirm:
       'Qurilma bekor qilinadi va undagi barcha seanslar yakunlanadi. Davom etasizmi?',
     revoked: 'Bekor qilingan',
-    pending: 'Owner tasdig‘ini kutmoqda',
+    pending: 'Tasdiqlanishi kutilmoqda',
+    approve: 'Tasdiqlash',
     lastSeen: 'Oxirgi faollik',
   },
   audit: {
@@ -751,7 +752,7 @@ export const uz = {
     selfRegistering: 'Ekran serverga ulanmoqda…',
     pickBranch: 'Bu ekran qaysi filialda turadi?',
     selfPendingHint:
-      'Ekran ro‘yxatdan o‘tdi. Parol yoki PIN kerak emas: Owner tasdiqlashi bilan navbat o‘zi ko‘rinadi.',
+      'Ekran ro‘yxatdan o‘tdi. Parol yoki PIN kerak emas: navbat ekrani ochilmoqda…',
   },
   printers: {
     title: 'Printerlar',

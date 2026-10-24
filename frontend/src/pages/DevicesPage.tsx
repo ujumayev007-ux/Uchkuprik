@@ -181,6 +181,28 @@ export function DevicesPage() {
                     )}
                   </td>
                   <td className="right">
+                    {device.status === 'PENDING' && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={async () => {
+                          try {
+                            await post(`/devices/${device.id}/approve`);
+                            toast(t.common.saved);
+                            await refresh();
+                          } catch (caught) {
+                            toast(
+                              caught instanceof Error
+                                ? caught.message
+                                : t.common.errorTitle,
+                              'error',
+                            );
+                          }
+                        }}
+                      >
+                        {t.devices.approve ?? 'Tasdiqlash'}
+                      </Button>
+                    )}{' '}
                     {device.status === 'ACTIVE' && (
                       <Button
                         size="sm"

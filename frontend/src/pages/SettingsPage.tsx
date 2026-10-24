@@ -17,6 +17,7 @@ import { api, patch } from '../lib/api';
 import { OrderSettingsCard } from './OrderSettingsCard';
 import { LoyaltyRulesCard } from './LoyaltyRulesCard';
 import { FiscalCard } from './FiscalCard';
+import { MenuVisibilityCard } from './MenuVisibilityCard';
 
 type Settings = {
   name: string;
@@ -275,6 +276,7 @@ export function SettingsPage() {
       <OrderSettingsCard editable={editable} />
       <LoyaltyRulesCard editable={editable} />
       {editable && <FiscalCard />}
+      <MenuVisibilityCard editable={editable} />
     </>
   );
 }

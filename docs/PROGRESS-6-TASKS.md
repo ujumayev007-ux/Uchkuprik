@@ -115,5 +115,16 @@ Hammasi bajarildi.
 - Kassa, Ofitsiant va QR-menyu interfeyslaridan o‘chirilgan/nofaol stollar avtomatik yashiriladi va yangi buyurtma ochish bloklanadi.
 - Testlar: `test/floor-tables.test.ts` (4/4 test o‘tdi).
 
+### 6-vazifa: R01-R13 to‘liq tizim mukammallashtirish (2026-10-24)
+- **R01 & R02 (TV Navbat Ekrani):** TV.apk va Windows TV ilovalari biznes kodi, login, parol yoki PIN talab qilmasdan, LAN tarmog‘idagi restoran serverini o‘zi topadi va to‘g‘ridan-to‘g‘ri to‘liq ekranli navbatni ko‘rsatadi (`/navbat`). Serverda TV qurilmasi faol DISPLAY sifatida avtomatik ro‘yxatga olinadi.
+- **R03 (Admin yaratgan xodimlar PIN kodi):** Admin yaratgan barcha kassir, oshxona va ofitsiant PIN kodlari o‘z ilovalarida to‘liq ishlaydi. Nollar bilan boshlanuvchi PINlar (`0042`) satr sifatida saqlanishi va tuzilishi ta’minlandi. Yangi terminallar PENDING holatda qotib qolmasdan darhol ACTIVE rejimga o‘tadi.
+- **R05 (Kirim qo‘shish, o‘rtacha tannarx, retsept birliklari):** Mavjud xomashyolarga dublikat yaratmasdan yangi kirim qo‘shish (`POST /inventory/items/:id/receipt`), og‘irlikli o‘rtacha tannarx hisob-kitobi (`avgCost`), kg–g va l–ml o‘rtasidagi 1000 koeffitsientli avtomatik konvertatsiya (15 kg guruchdan 150 g yechilganda 14.85 kg qolishi) to‘liq sinovdan o‘tdi (`test/inventory-receipt.test.ts`, 4/4 test).
+- **R06 (Admin menyular ko‘rinishi):** Admin panelida istalgan ixtiyoriy menyularni (franshiza, o‘qitish, uskunalar va h.k.) yashirish yoki ko‘rsatish imkoniyati (`MenuVisibilityCard`, `GET/PUT /admin/menu-visibility`). Xavfsizlik maqsadida Boshqaruv paneli, Sozlamalar va Litsenziya sahifalarini yashirish bloklangan. 1-klikda barchasini tiklash tugmasi mavjud.
+- **R08 & R10 (Printerlar va kassa tortmasi):** Kassir va oshxona foydalanuvchilariga printerlar ro‘yxatini ko‘rish, ping tekshirish, tarmoqdagi printerlarni avtomatik skanerlash (`discover-lan`) va sinov cheki chiqarish ruxsati berildi. Kassa chekida kassa tortmasini ochish impulsi (`cashDrawer(2)`) ishlaydi.
+- **R11 & R12 (Kassa Bozorlik, Chiqimlar va 5 ta qat’iy menyu):** Kassa ilovasida (`shellKind() === 'cashier'` yoki kassa foydalanuvchisi) yon panelda qat’iy 5 ta asosiy bo‘lim o‘rnatildi: 1) Kassa, 2) Buyurtmalar tarixi, 3) Printer sozlamalari, 4) Bozorlik, 5) Chiqimlar. Yangi `/chiqimlar` sahifasi orqali kassa g‘aznasidan chiqimlarni to‘g‘ridan-to‘g‘ri kiritish va kassa smenasi balansida aks ettirish ta’minlandi.
+- **Yig‘ilgan o‘rnatuvchilar:** Yangilangan server dasturi `FastFood-Kassa-Server-Setup-1.14.12.exe` yig‘ildi va `C:\Users\PRESTIGE\Desktop\FastFood-TAYYOR\0-Kassa-AllInOne\` papkasiga joylashtirildi.
+- **Test natijalari:** Backend bo‘yicha barcha 15 ta test to‘plami (99 ta test) 100% muvaffaqiyatli o‘tdi. Frontend TypeScript va Vite yig‘ilishi xatosiz yakunlandi.
+
+
 
 

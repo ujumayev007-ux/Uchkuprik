@@ -5,7 +5,11 @@ import type { Services } from '../../context.js';
 import { AppError, errors, parse } from '../../http/errors.js';
 import { EscPos } from '../../printing/escpos.js';
 import { audit } from '../audit/audit.js';
-import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
+import {
+  getAuth,
+  requireAuth,
+  requireAnyPermission,
+} from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
 
 export function checkPrinterPing(
@@ -74,9 +78,16 @@ const printerInput = z.object({
 export function printersRouter(services: Services) {
   const { db } = services;
   const router = Router();
-  const manage = [requireAuth(), requirePermission('settings.manage')];
+  const manage = [
+    requireAuth(),
+    requireAnyPermission('settings.manage', 'pos.access'),
+  ];
+  const terminalAccess = [
+    requireAuth(),
+    requireAnyPermission('settings.manage', 'pos.access', 'kitchen.access'),
+  ];
 
-  router.get('/printers', ...manage, async (req, res) => {
+  router.get('/printers', ...terminalAccess, async (req, res) => {
     const auth = getAuth(res);
     const { branchId } = parse(
       z.object({ branchId: z.uuid().optional() }),
@@ -228,7 +239,7 @@ export function printersRouter(services: Services) {
     res.json({ ok: true });
   });
 
-  router.post('/printers/:id/ping', ...manage, async (req, res) => {
+  router.post('/printers/:id/ping', ...terminalAccess, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
     const printer = await db.printer.findFirst({
@@ -239,7 +250,7 @@ export function printersRouter(services: Services) {
     res.json({ ...status, printerId: printer.id, host: printer.host, port: printer.port });
   });
 
-  router.post('/printers/ping-host', ...manage, async (req, res) => {
+  router.post('/printers/ping-host', ...terminalAccess, async (req, res) => {
     const input = parse(
       z.object({
         host: z.string().trim().refine(isAllowedPrinterHost),
@@ -251,7 +262,7 @@ export function printersRouter(services: Services) {
     res.json(status);
   });
 
-  router.post('/printers/discover-lan', ...manage, async (req, res) => {
+  router.post('/printers/discover-lan', ...terminalAccess, async (req, res) => {
     const input = parse(
       z.object({
         subnet: z
@@ -313,7 +324,7 @@ export function printersRouter(services: Services) {
     res.json({ stations });
   });
 
-  router.post('/printers/:id/test', ...manage, async (req, res) => {
+  router.post('/printers/:id/test', ...terminalAccess, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
     const printer = await db.printer.findFirst({

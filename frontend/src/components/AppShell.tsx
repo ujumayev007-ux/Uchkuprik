@@ -21,7 +21,7 @@ import {
   usePwa,
 } from '../lib/pwa';
 import { useRealtime } from '../lib/realtime';
-import { shellAllows } from '../lib/shell';
+import { shellAllows, shellKind } from '../lib/shell';
 import { WalkinAlerts } from './WalkinAlerts';
 import {
   LicenseLock,
@@ -101,6 +101,15 @@ export const navItems: NavItem[] = [
     label: t.market.title,
     icon: '🛒',
     visible: (me) => can(me, 'pos.access') || can(me, 'purchasing.manage'),
+  },
+  {
+    to: '/chiqimlar',
+    label: 'Chiqimlar',
+    icon: '💸',
+    visible: (me) =>
+      can(me, 'pos.access') ||
+      can(me, 'finance.manage') ||
+      can(me, 'finance.view'),
   },
   {
     to: '/oshxona',
@@ -288,7 +297,8 @@ export const navItems: NavItem[] = [
     label: t.nav.printers,
     icon: '⎙',
     visible: (me) =>
-      hasFeature(me, 'kitchen_printing') && can(me, 'settings.manage'),
+      hasFeature(me, 'kitchen_printing') &&
+      (can(me, 'settings.manage') || can(me, 'pos.access')),
   },
   {
     to: '/tolovlar',
@@ -377,6 +387,16 @@ export const navItems: NavItem[] = [
     visible: (me) => me.authMethod === 'PASSWORD',
   },
 ];
+
+export function useAdminMenuVisibility(enabled = true) {
+  return useQuery({
+    queryKey: ['admin-menu-visibility'],
+    queryFn: () =>
+      api<{ hidden: string[] }>('/admin/menu-visibility').then((d) => d.hidden),
+    enabled,
+    staleTime: 60_000,
+  });
+}
 
 export function useBranches(enabled = true) {
   return useQuery({
@@ -550,17 +570,42 @@ export function AppShell() {
   // Kassa, Oshxona and Ofitsiant open their own page only, even by a typed address.
   if (location.pathname !== '/' && !shellAllows(location.pathname))
     return <Navigate to="/" replace />;
+  const adminVisibility = useAdminMenuVisibility(me?.tenantKind === 'BUSINESS');
+  const adminHidden = adminVisibility.data ?? [];
+
   // Menus the vendor switched off for this install (via the licence).
   const hidden = license.data?.hiddenMenus ?? [];
   // The design page appears only while the Owner delegated design to the Admin.
   const delegated = branding.data?.delegated ?? false;
-  const items = navItems.filter(
-    (item) =>
-      item.visible(me) &&
-      shellAllows(item.to) &&
-      !hidden.includes(item.to) &&
-      (item.to !== '/dizayn' || delegated),
-  );
+
+  const isCashierApp =
+    shellKind() === 'cashier' ||
+    (isFrontLine(me) && can(me, 'pos.access'));
+
+  const cashierAllowedPaths = [
+    '/kassa',
+    '/buyurtmalar',
+    '/printerlar',
+    '/bozorlik',
+    '/chiqimlar',
+  ];
+
+  const items = isCashierApp
+    ? navItems
+        .filter((item) => cashierAllowedPaths.includes(item.to))
+        .map((item) => {
+          if (item.to === '/buyurtmalar') return { ...item, label: 'Buyurtmalar tarixi' };
+          if (item.to === '/printerlar') return { ...item, label: 'Printer sozlamalari' };
+          return item;
+        })
+    : navItems.filter(
+        (item) =>
+          item.visible(me) &&
+          shellAllows(item.to) &&
+          !hidden.includes(item.to) &&
+          !adminHidden.includes(item.to) &&
+          (item.to !== '/dizayn' || delegated),
+      );
   const menuDisabled = hidden.some(
     (path) =>
       location.pathname === path || location.pathname.startsWith(`${path}/`),

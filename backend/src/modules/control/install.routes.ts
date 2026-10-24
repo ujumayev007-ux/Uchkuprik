@@ -248,6 +248,67 @@ export function controlInstallRouter(services: Services) {
     res.json({ ok: true });
   });
 
+  // --- Admin Menu Visibility (R06) -------------------------------------------
+  router.get('/admin/menu-visibility', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    const row = await db.featureSetting.findUnique({
+      where: {
+        tenantId_featureKey_roleKey: {
+          tenantId: auth.tenantId,
+          featureKey: 'admin.menu_visibility',
+          roleKey: '*',
+        },
+      },
+    });
+    const params = (row?.params as { hidden?: string[] }) ?? {};
+    res.json({ hidden: Array.isArray(params.hidden) ? params.hidden : [] });
+  });
+
+  router.put('/admin/menu-visibility', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(
+      z.object({
+        hidden: z.array(z.string().trim().max(100)).max(50),
+      }),
+      req.body,
+    );
+    // Never allow hiding essential core menus: settings, dashboard, license
+    const essential = new Set(['/', '/sozlamalar', '/litsenziya']);
+    const sanitized = input.hidden.filter((path) => !essential.has(path));
+
+    await db.featureSetting.upsert({
+      where: {
+        tenantId_featureKey_roleKey: {
+          tenantId: auth.tenantId,
+          featureKey: 'admin.menu_visibility',
+          roleKey: '*',
+        },
+      },
+      create: {
+        tenantId: auth.tenantId,
+        featureKey: 'admin.menu_visibility',
+        roleKey: '*',
+        params: { hidden: sanitized } as Prisma.InputJsonValue,
+        updatedById: auth.userId,
+      },
+      update: {
+        params: { hidden: sanitized } as Prisma.InputJsonValue,
+        updatedById: auth.userId,
+      },
+    });
+
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      actorUserId: auth.userId,
+      action: 'admin.menu_visibility.set',
+      entityType: 'setting',
+      entityId: 'menu_visibility',
+      data: { hidden: sanitized },
+    });
+
+    res.json({ ok: true, hidden: sanitized });
+  });
+
   // Server migration: point this install at the new address of the same central server.
   router.put('/control/link/server', ...sensitive, async (req, res) => {
     const auth = getAuth(res);

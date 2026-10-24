@@ -389,6 +389,18 @@ export function requirePermission(...required: Permission[]) {
   };
 }
 
+export function requireAnyPermission(...required: Permission[]) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    const auth = getAuth(res);
+    if (
+      auth.tenantKind !== 'BUSINESS' ||
+      !required.some((key) => auth.permissions.has(key))
+    )
+      throw errors.forbidden();
+    next();
+  };
+}
+
 /** Money visibility gate: cost, margin or net profit must be visible to the caller. */
 export function requireFinancial(kind: keyof FinancialVisibility) {
   return (_req: Request, res: Response, next: NextFunction) => {

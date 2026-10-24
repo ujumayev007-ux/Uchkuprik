@@ -15,6 +15,7 @@ import {
   getAuth,
   requireAuth,
   requirePermission,
+  requireAnyPermission,
   requireFinancial,
   requireRecentAuth,
   type AuthContext,
@@ -54,10 +55,18 @@ export function financeRouter(services: Services) {
   const router = Router();
   const view = [requireAuth(), requirePermission('finance.view')];
   const manage = [requireAuth(), requirePermission('finance.manage')];
+  const expenseView = [
+    requireAuth(),
+    requireAnyPermission('finance.view', 'finance.manage', 'pos.access'),
+  ];
+  const expenseManage = [
+    requireAuth(),
+    requireAnyPermission('finance.manage', 'pos.access'),
+  ];
 
   // --- Expenses -----------------------------------------------------------------
 
-  router.get('/expenses', ...view, async (req, res) => {
+  router.get('/expenses', ...expenseView, async (req, res) => {
     const auth = getAuth(res);
     const query = parse(range, req.query);
     const branch = await resolveBranch(db, auth, query.branchId);
@@ -72,7 +81,7 @@ export function financeRouter(services: Services) {
     res.json({ expenses });
   });
 
-  router.post('/expenses', ...manage, async (req, res) => {
+  router.post('/expenses', ...expenseManage, async (req, res) => {
     const auth = getAuth(res);
     const input = parse(
       z.object({
@@ -181,7 +190,7 @@ export function financeRouter(services: Services) {
   });
 
   // Receipt photo or PDF for an expense (raw body, max 2 MB).
-  router.post('/finance/attachments', ...manage, async (req, res) => {
+  router.post('/finance/attachments', ...expenseManage, async (req, res) => {
     const auth = getAuth(res);
     const data = Buffer.isBuffer(req.body) ? req.body : null;
     const type = data
@@ -207,7 +216,7 @@ export function financeRouter(services: Services) {
     res.status(201).json({ id: file.id });
   });
 
-  router.get('/finance/attachments/:id', ...view, async (req, res) => {
+  router.get('/finance/attachments/:id', ...expenseView, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
     const file = await db.evidenceFile.findFirst({

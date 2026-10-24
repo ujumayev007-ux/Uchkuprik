@@ -412,6 +412,7 @@ export const featureCatalog: FeatureDef[] = [
       'POST /inventory/transfers',
       'POST /inventory/items',
       'PATCH /inventory/items/:id',
+      'POST /inventory/items/:id/receipt',
       'POST /inventory/requests',
       'POST /inventory/requests/:id/decide',
       'POST /inventory/requests/from-alerts',
@@ -684,7 +685,12 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Restoran sozlamalari',
     permission: 'settings.manage',
     menuPath: '/sozlamalar',
-    routes: ['* /settings', '* /settings/*'],
+    routes: [
+      '* /settings',
+      '* /settings/*',
+      'GET /admin/menu-visibility',
+      'PUT /admin/menu-visibility',
+    ],
   }),
   f({
     key: 'settings.workflow',
@@ -783,6 +789,7 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       'GET /devices',
       'POST /devices/register',
+      'POST /devices/:id/approve',
       'POST /devices/:id/revoke',
     ],
   }),

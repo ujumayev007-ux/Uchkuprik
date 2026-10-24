@@ -456,6 +456,148 @@ function QuantityForm({
   );
 }
 
+function ReceiptForm({
+  item,
+  onDone,
+}: {
+  item: StockItem;
+  onDone: () => void;
+}) {
+  const [quantity, setQuantity] = useState('');
+  const standardUnit = item.baseUnit === 'G' ? 'kg' : item.baseUnit === 'ML' ? 'l' : null;
+  const unitOptions = [
+    item.unitLabel,
+    ...(standardUnit && standardUnit !== item.unitLabel ? [standardUnit] : []),
+    ...item.units.map((u) => u.name).filter((name) => name !== item.unitLabel && name !== standardUnit),
+  ];
+  const [unitName, setUnitName] = useState(unitOptions[0] ?? item.unitLabel);
+  const [unitPrice, setUnitPrice] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DEBT'>('CASH');
+  const [supplierName, setSupplierName] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const qNum = Number(quantity.replace(',', '.'));
+  const pNum = Number(unitPrice.replace(/\D/g, ''));
+  const total = qNum > 0 && pNum > 0 ? Math.round(qNum * pNum) : 0;
+  const valid = qNum > 0 && pNum > 0;
+
+  return (
+    <form
+      className="stack"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!valid) return;
+        setBusy(true);
+        setError(null);
+        try {
+          await post(`/inventory/items/${item.id}/receipt`, {
+            quantity: qNum,
+            unitName,
+            unitPrice: pNum,
+            totalAmount: total,
+            paymentMethod,
+            supplierName: supplierName.trim() || undefined,
+            note: note.trim() || undefined,
+          });
+          onDone();
+        } catch (caught) {
+          setError(caught);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div className="card" style={{ background: 'var(--color-bg-subtle, #f8f9fa)', padding: '12px 16px' }}>
+        <p className="muted small" style={{ margin: 0 }}>
+          Hozirgi qoldiq: <strong>{qty(item.quantity)} {item.unitLabel}</strong>
+          {item.avgCost !== undefined && (
+            <> · Tannarx: <strong>{Number(item.avgCost).toLocaleString('uz-UZ', { maximumFractionDigits: 2 })} so‘m / {item.unitLabel}</strong></>
+          )}
+        </p>
+      </div>
+
+      <div className="form-grid">
+        <TextField
+          label="Kirim miqdori"
+          inputMode="decimal"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          placeholder="Masalan: 5"
+          required
+          autoFocus
+        />
+        <SelectField
+          label="O‘lchov birligi"
+          value={unitName}
+          onChange={(e) => setUnitName(e.target.value)}
+          required
+        >
+          {unitOptions.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </SelectField>
+      </div>
+
+      <div className="form-grid">
+        <TextField
+          label={`Xarid narxi (1 ${unitName} uchun so‘mda)`}
+          inputMode="numeric"
+          value={unitPrice ? Number(unitPrice).toLocaleString('uz-UZ') : ''}
+          onChange={(e) => setUnitPrice(e.target.value.replace(/\D/g, ''))}
+          placeholder="Masalan: 18 000"
+          required
+        />
+        <SelectField
+          label="To‘lov turi"
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value as any)}
+        >
+          <option value="CASH">Naqd pul (kassa chiqimi)</option>
+          <option value="CARD">Karta / Bank hisobi</option>
+          <option value="DEBT">Nasiya (qarz / keyin to‘lash)</option>
+        </SelectField>
+      </div>
+
+      <div className="form-grid">
+        <TextField
+          label="Yetkazib beruvchi / Bozor (ixtiyoriy)"
+          value={supplierName}
+          onChange={(e) => setSupplierName(e.target.value)}
+          placeholder="Masalan: Chorsu bozori"
+        />
+        <TextField
+          label="Izoh (ixtiyoriy)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Qo‘shimcha ma’lumot"
+        />
+      </div>
+
+      {valid && (
+        <p className="strong" style={{ fontSize: '1.1rem', color: 'var(--color-primary, #0d6efd)' }}>
+          Jami xarid summasi: {total.toLocaleString('uz-UZ')} so‘m
+        </p>
+      )}
+
+      <FormError error={error} />
+      <div className="form-actions">
+        <Button
+          type="submit"
+          variant="primary"
+          busy={busy}
+          disabled={!valid}
+        >
+          + Kirimni saqlash
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function StockTab() {
   const { data: me } = useMe();
   const client = useQueryClient();
@@ -477,6 +619,7 @@ function StockTab() {
   });
   const [dialog, setDialog] = useState<
     | { kind: 'item'; item: StockItem | null }
+    | { kind: 'receipt'; item: StockItem }
     | { kind: 'quantity'; item: StockItem }
     | { kind: 'WASTE' | 'ADJUSTMENT' | 'STOCKTAKE' | 'TRANSFER' }
     | null
@@ -633,13 +776,22 @@ function StockTab() {
                   {manage && (
                     <td className="right nowrap">
                       {item.isActive && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDialog({ kind: 'quantity', item })}
-                        >
-                          {t.inventory.quantityEdit.button}
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => setDialog({ kind: 'receipt', item })}
+                          >
+                            + Kirim
+                          </Button>{' '}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDialog({ kind: 'quantity', item })}
+                          >
+                            {t.inventory.quantityEdit.button}
+                          </Button>
+                        </>
                       )}
                       <Button
                         size="sm"
@@ -660,29 +812,34 @@ function StockTab() {
         open={dialog !== null}
         wide
         title={
-          dialog?.kind === 'quantity'
-            ? `${t.inventory.quantityEdit.title}: ${dialog.item.name}`
-            : dialog?.kind === 'item'
-              ? dialog.item
-                ? t.inventory.editItem
-                : t.inventory.addItem
-              : dialog?.kind === 'WASTE'
-                ? t.inventory.waste
-                : dialog?.kind === 'ADJUSTMENT'
-                  ? t.inventory.adjust
-                  : dialog?.kind === 'TRANSFER'
-                    ? t.inventory.transfer
-                    : t.inventory.stocktake
+          dialog?.kind === 'receipt'
+            ? `Kirim qo‘shish: ${dialog.item.name}`
+            : dialog?.kind === 'quantity'
+              ? `${t.inventory.quantityEdit.title}: ${dialog.item.name}`
+              : dialog?.kind === 'item'
+                ? dialog.item
+                  ? t.inventory.editItem
+                  : t.inventory.addItem
+                : dialog?.kind === 'WASTE'
+                  ? t.inventory.waste
+                  : dialog?.kind === 'ADJUSTMENT'
+                    ? t.inventory.adjust
+                    : dialog?.kind === 'TRANSFER'
+                      ? t.inventory.transfer
+                      : t.inventory.stocktake
         }
         onClose={() => setDialog(null)}
       >
+        {dialog?.kind === 'receipt' && (
+          <ReceiptForm item={dialog.item} onDone={done} />
+        )}
         {dialog?.kind === 'item' && (
           <ItemForm item={dialog.item} onDone={done} />
         )}
         {dialog?.kind === 'quantity' && (
           <QuantityForm item={dialog.item} onDone={done} />
         )}
-        {dialog && dialog.kind !== 'item' && dialog.kind !== 'quantity' && (
+        {dialog && dialog.kind !== 'item' && dialog.kind !== 'quantity' && dialog.kind !== 'receipt' && (
           <MovementForm
             items={items.data.filter((item) => item.isActive)}
             mode={dialog.kind}

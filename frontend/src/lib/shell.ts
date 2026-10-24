@@ -27,7 +27,7 @@ export function shellKind(): ShellKind {
 
 /** Pages each dedicated app may open; everything else stays in the Admin application. */
 const allowedPaths: Partial<Record<ShellKind, string[]>> = {
-  cashier: ['/kassa', '/buyurtmalar', '/bozorlik'],
+  cashier: ['/kassa', '/buyurtmalar', '/printerlar', '/bozorlik', '/chiqimlar'],
   kitchen: ['/oshxona'],
   waiter: ['/ofitsiant', '/buyurtmalar'],
   // The TV application is a registered display: one PIN, then it opens by itself.

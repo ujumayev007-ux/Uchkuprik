@@ -24,10 +24,14 @@ type Line = { stockItemId: string; quantity: string; unitName: string };
 const r = t.recipe;
 
 /** Factor of a unit name to the item's base unit (g, ml or dona). */
-const factorOf = (item: StockItem | undefined, unitName: string) =>
-  !item || unitName === item.unitLabel
-    ? 1
-    : Number(item.units.find((unit) => unit.name === unitName)?.factor ?? 1);
+const factorOf = (item: StockItem | undefined, unitName: string) => {
+  if (!item) return 1;
+  if (unitName === item.unitLabel) return 1;
+  const name = unitName.toLowerCase();
+  if (item.baseUnit === 'G' && (name === 'kg' || name === 'kilogram')) return 1000;
+  if (item.baseUnit === 'ML' && (name === 'l' || name === 'litr')) return 1000;
+  return Number(item.units.find((unit) => unit.name === unitName)?.factor ?? 1);
+};
 
 const fmt = (value: number) =>
   value
@@ -165,15 +169,19 @@ export function RecipeDialog({
                   value={line.unitName}
                   onChange={(e) => update(index, { unitName: e.target.value })}
                 >
-                  {item &&
-                    [
+                  {item && (() => {
+                    const std = item.baseUnit === 'G' ? 'kg' : item.baseUnit === 'ML' ? 'l' : null;
+                    const opts = [
                       item.unitLabel,
-                      ...item.units.map((unit) => unit.name),
-                    ].map((unit) => (
+                      ...(std && std !== item.unitLabel ? [std] : []),
+                      ...item.units.map((unit) => unit.name).filter((name) => name !== item.unitLabel && name !== std),
+                    ];
+                    return opts.map((unit) => (
                       <option key={unit} value={unit}>
                         {unit}
                       </option>
-                    ))}
+                    ));
+                  })()}
                 </SelectField>
                 <div className="small muted">
                   {item && (

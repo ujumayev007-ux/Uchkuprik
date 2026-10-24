@@ -2,12 +2,11 @@ import type { Db, Tx } from '../../db.js';
 import { audit } from '../audit/audit.js';
 
 /**
- * A restaurant install (self-hosted) never activates a new terminal by itself: the
- * restaurant Admin registers it, the Owner (SUPER_OWNER) approves or rejects it from the
- * Owner console, and the decision arrives as a signed command of the central server.
+ * Local terminals registered on LAN do not require manual Owner approval.
+ * Owner licensing limits (assertWithinLimit) govern the maximum terminal count.
  */
-export const ownerApprovalRequired = (services: { selfHosted?: boolean }) =>
-  services.selfHosted === true;
+export const ownerApprovalRequired = (_services: { selfHosted?: boolean }) =>
+  false;
 
 /** Applies the Owner's decision for one pending terminal of this install. */
 export async function applyOwnerDecision(
