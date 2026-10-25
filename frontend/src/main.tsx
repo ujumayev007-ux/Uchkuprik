@@ -420,7 +420,9 @@ const router = createBrowserRouter([
       {
         path: '/kassa',
         element: (
-          <Guard allow={(me) => can(me, 'pos.access')}>
+          <Guard
+            allow={(me) => can(me, 'pos.access') || can(me, 'orders.create')}
+          >
             <PosPage />
           </Guard>
         ),

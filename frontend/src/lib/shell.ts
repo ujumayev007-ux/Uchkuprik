@@ -30,7 +30,9 @@ export function shellKind(): ShellKind {
 const allowedPaths: Partial<Record<ShellKind, string[]>> = {
   cashier: ['/kassa', '/buyurtmalar', '/printerlar', '/tv-ekran', '/bozorlik'],
   kitchen: ['/oshxona'],
-  waiter: ['/ofitsiant', '/buyurtmalar'],
+  // /kassa is the order screen the waiter opens from a table (taking payment there
+  // still needs payments.accept).
+  waiter: ['/ofitsiant', '/buyurtmalar', '/kassa'],
   // The TV application is a registered display: one PIN, then it opens by itself.
   tv: ['/navbat'],
 };

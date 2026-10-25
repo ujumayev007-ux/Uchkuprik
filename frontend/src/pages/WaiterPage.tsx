@@ -88,7 +88,9 @@ export function WaiterPage() {
     (can(me, 'orders.edit') ||
       can(me, 'orders.create') ||
       can(me, 'payments.accept'));
-  const canOrder = can(me, 'pos.access');
+  // Waiters take orders on the order screen (/kassa) with their own role's
+  // orders.create; taking payment there still needs payments.accept (server-checked).
+  const canOrder = can(me, 'pos.access') || can(me, 'orders.create');
 
   return (
     <div className="stack">
