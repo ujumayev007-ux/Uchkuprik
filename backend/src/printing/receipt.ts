@@ -17,6 +17,18 @@ export type ReceiptData = {
   };
   branch: { name: string; address?: string | null };
   cashier?: string | null;
+  // Who opened the order when it was a waiter (null otherwise).
+  waiter?: string | null;
+  // The guest as taken with the order (any part may be missing).
+  customer?: {
+    name?: string | null;
+    phone?: string | null;
+    address?: string | null;
+  } | null;
+  // Present only after a certified fiscal provider registered the receipt.
+  fiscal?: { fiscalSign?: string | null; qrUrl?: string | null } | null;
+  // 0 = the first receipt of the order; 1, 2 … = printed again ("NUSXA").
+  copy?: number;
   number: number;
   dateTime: string;
   typeLabel: string;
@@ -39,6 +51,36 @@ export type ReceiptData = {
 
 const money = (value: number) =>
   value.toLocaleString('en-US').replace(/,/g, ' ');
+
+/** "2026-10-25 14:05" in the branch's time zone (receipts never show UTC). */
+export function localDateTime(date: Date, timeZone = 'Asia/Tashkent'): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+/** The VAT contained in a price that includes it: total × p / (100 + p). */
+export const vatIncluded = (total: number, percent: number) =>
+  percent > 0 ? Math.round((total * percent) / (100 + percent)) : 0;
+
+/** Text of a Wi-Fi QR code that phones join by scanning. */
+export const wifiQrText = (name: string, password: string) => {
+  const esc = (value: string) => value.replace(/([\\;,:"])/g, '\\$1');
+  return password
+    ? `WIFI:T:WPA;S:${esc(name)};P:${esc(password)};;`
+    : `WIFI:T:nopass;S:${esc(name)};;`;
+};
 
 const SPACING_DOTS = { tight: 24, normal: 30, loose: 42 } as const;
 
@@ -123,11 +165,22 @@ export function receiptTicket(
   }
   if (settings.showPhone && data.business.phone) line(data.business.phone);
   if (data.business.header) line(data.business.header);
+  if (settings.showCopyMark && (data.copy ?? 0) > 0) {
+    doc.bold(true).size(2, 2);
+    line('NUSXA');
+    doc.size(1, 1).bold(false);
+  }
   doc.align('left');
   rule();
-  if (settings.showOrderNumber || settings.showDateTime)
+  const bigNumber = settings.largeOrderNumber && settings.showOrderNumber;
+  if (bigNumber) {
+    doc.align('center').bold(true).size(2, 2);
+    line(`N ${data.number}`);
+    doc.size(1, 1).bold(false).align('left');
+  }
+  if ((settings.showOrderNumber && !bigNumber) || settings.showDateTime)
     pair(
-      settings.showOrderNumber ? `N ${data.number}` : '',
+      settings.showOrderNumber && !bigNumber ? `N ${data.number}` : '',
       settings.showDateTime ? data.dateTime : '',
     );
   if (settings.showOrderType || (settings.showTable && data.table))
@@ -140,14 +193,18 @@ export function receiptTicket(
         .join(' - '),
     );
   if (settings.showCashier && data.cashier) line(`Kassir: ${data.cashier}`);
-  if (settings.showWaiter) line('Ofitsiant: Sardor');
-  if (settings.showDeliveryDetails) {
+  if (settings.showWaiter && data.waiter) line(`Ofitsiant: ${data.waiter}`);
+  const customer = data.customer ?? {};
+  if (settings.showCustomer && (customer.name || customer.phone))
+    line(
+      `Mijoz: ${[customer.name, customer.phone].filter(Boolean).join(', ')}`,
+    );
+  if (settings.showDeliveryDetails && customer.address) {
     rule();
     doc.bold(true);
-    line('! YETKAZIB BERISH (DOSTAVKA) !');
+    line('! YETKAZIB BERISH !');
     doc.bold(false);
-    line('Mijoz: Azizxon (+998 90 123 45 67)');
-    line('Manzil: Chilonzor 9, 12-uy');
+    line(`Manzil: ${customer.address}`);
   }
   rule();
   for (const item of data.items) {
@@ -158,6 +215,11 @@ export function receiptTicket(
       line(`   + ${item.modifiers.join(', ')}`);
     if (settings.showNotes && item.note) line(`   ! ${item.note}`);
   }
+  if (settings.showItemCount)
+    pair(
+      'Taomlar soni',
+      String(data.items.reduce((sum, item) => sum + item.quantity, 0)),
+    );
   rule();
   if (settings.showDiscount && data.discountTotal > 0)
     pair('Chegirma', `-${money(data.discountTotal)}`);
@@ -168,6 +230,11 @@ export function receiptTicket(
   pair('JAMI', money(data.total));
   if (big) doc.size(1, 1);
   doc.bold(false);
+  if (settings.showVat && settings.vatPercent > 0)
+    pair(
+      `Shu jumladan QQS ${settings.vatPercent}%`,
+      money(vatIncluded(data.total, settings.vatPercent)),
+    );
   if (settings.showPayments)
     for (const payment of data.payments) {
       pair(payment.label, money(payment.amount));
@@ -179,20 +246,36 @@ export function receiptTicket(
     pair('QOLDI', money(data.due));
     doc.bold(false);
   }
-  if (settings.showFiscalData) {
+  // Real fiscal data only: a receipt the fiscal provider has not registered shows none.
+  if (settings.showFiscalData && data.fiscal?.fiscalSign) {
     rule();
-    line('OFD FISKAL CHEK');
-    line(`STIR: ${data.business.taxId || '301234567'}`);
-    line('FPU: FT0000001');
-    line('Fiskal belgi: 123456789012');
+    doc.align('center');
+    line('FISKAL CHEK');
+    if (data.business.taxId) line(`STIR: ${data.business.taxId}`);
+    line(`Fiskal belgi: ${data.fiscal.fiscalSign}`);
+    if (data.fiscal.qrUrl) {
+      doc.qrCode(data.fiscal.qrUrl, 4);
+      lines += 6;
+    }
+    doc.align('left');
   }
   if (settings.showSocialMedia && settings.socialMedia) {
     line(`Ijtimoiy tarmoq: ${settings.socialMedia}`);
   }
-  if (settings.showQrCode && (settings.qrContent || data.business.phone)) {
+  if (settings.showWifi && settings.wifiName) {
+    rule();
     doc.align('center');
-    const content = settings.qrContent || 'https://fastfood.uz';
-    doc.qrCode(content, 4);
+    line(`Wi-Fi: ${settings.wifiName}`);
+    if (settings.wifiPassword) line(`Parol: ${settings.wifiPassword}`);
+    if (settings.wifiQr) {
+      doc.qrCode(wifiQrText(settings.wifiName, settings.wifiPassword), 4);
+      lines += 6;
+    }
+    doc.align('left');
+  }
+  if (settings.showQrCode && settings.qrContent) {
+    doc.align('center');
+    doc.qrCode(settings.qrContent, 4);
     lines += 6;
     if (settings.qrLabel) {
       line(settings.qrLabel);
@@ -234,8 +317,10 @@ export const sampleReceipt = (
   },
   branch: { name: 'Markaziy filial', address: 'Chilonzor, Bunyodkor 1' },
   cashier: 'Dilnoza',
+  waiter: 'Ofitsiant',
+  customer: { name: 'Mijoz', phone: '+998 90 000 00 00', address: null },
   number: 15,
-  dateTime: now.toISOString().slice(0, 16).replace('T', ' '),
+  dateTime: localDateTime(now),
   typeLabel: 'Zalda',
   table: 'Stol 4',
   items: [

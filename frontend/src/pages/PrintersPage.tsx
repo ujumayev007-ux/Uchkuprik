@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMe } from '../auth/session';
 import {
   Badge,
@@ -48,6 +48,18 @@ type Job = {
   createdAt: string;
 };
 
+/** The networks of the restaurant computer (where printers must be reachable from). */
+function useServerSubnets() {
+  return useQuery({
+    queryKey: ['printer-subnets'],
+    queryFn: () =>
+      api<{ subnets: string[]; addresses: string[] }>('/printers/subnets'),
+    staleTime: 60_000,
+  });
+}
+
+const FULL_IP = /^\d{1,3}(\.\d{1,3}){3}$/;
+
 function PrinterForm({
   printer,
   branchId,
@@ -80,6 +92,14 @@ function PrinterForm({
   const [pinging, setPinging] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const subnets = useServerSubnets().data?.subnets ?? [];
+  const base = subnets[0];
+  // Only the last number typed ("50"): completed with the computer's network.
+  const completeHost = (value: string) =>
+    base && /^\d{1,3}$/.test(value) ? `${base}.${value}` : value;
+  const prefix = form.host.split('.').slice(0, 3).join('.');
+  const otherNetwork =
+    FULL_IP.test(form.host) && subnets.length > 0 && !subnets.includes(prefix);
 
   // Check for duplicate IP/port collision with another active printer
   const duplicate = others.find(
@@ -90,14 +110,14 @@ function PrinterForm({
       other.isActive,
   );
 
-  const testPing = async () => {
-    if (!form.host) return;
+  const testPing = async (host = form.host) => {
+    if (!host) return;
     setPinging(true);
     setPingResult(null);
     try {
       const res = await post<{ online: boolean; latencyMs: number; error?: string }>(
         '/printers/ping-host',
-        { host: form.host, port: form.port },
+        { host, port: form.port },
       );
       setPingResult(res);
       if (res.online) {
@@ -121,6 +141,7 @@ function PrinterForm({
         setError(null);
         const body = {
           ...form,
+          host: completeHost(form.host),
           branchId,
           stationId: form.kind === 'KITCHEN' ? (form.stationId || null) : null,
           fallbackPrinterId: form.fallbackPrinterId || null,
@@ -212,14 +233,28 @@ function PrinterForm({
         <div className="stack" style={{ gap: '4px' }}>
           <TextField
             label={p.host}
-            hint={p.hostHint}
+            hint={base ? p.hostSubnetHint.replace('{subnet}', base) : p.hostHint}
             value={form.host}
             inputMode="decimal"
-            placeholder="192.168.1.100"
-            pattern="\d{1,3}(\.\d{1,3}){3}"
+            placeholder={base ? `${base}.100` : '192.168.1.100'}
+            pattern="\d{1,3}(\.\d{1,3}){3}|\d{1,3}"
             onChange={(e) => setForm({ ...form, host: e.target.value.trim() })}
+            onBlur={() => {
+              const host = completeHost(form.host);
+              if (host !== form.host) setForm({ ...form, host });
+              // Checked by itself as soon as a whole address is there.
+              if (FULL_IP.test(host)) void testPing(host);
+            }}
             required
           />
+          {otherNetwork && (
+            <p
+              className="small"
+              style={{ color: 'var(--color-danger, #dc3545)', margin: 0 }}
+            >
+              ⚠ {p.otherNetwork.replace('{subnet}', subnets.join(', '))}
+            </p>
+          )}
           {form.host && (
             <div style={{ marginTop: '4px' }}>
               <Button
@@ -227,7 +262,7 @@ function PrinterForm({
                 size="sm"
                 variant="ghost"
                 busy={pinging}
-                onClick={testPing}
+                onClick={() => void testPing()}
               >
                 ⚡ {p.ping}
               </Button>
@@ -329,7 +364,8 @@ function DiscoveryDialog({
   onPick: (info: { name: string; host: string; port: number; widthMm: number }) => void;
 }) {
   const [scanning, setScanning] = useState(false);
-  const [subnet, setSubnet] = useState('192.168.1');
+  const [subnet, setSubnet] = useState('');
+  const serverSubnets = useServerSubnets().data?.subnets;
   const [windowsPrinters, setWindowsPrinters] = useState<
     Array<{ name: string; label: string }>
   >([]);
@@ -370,12 +406,12 @@ function DiscoveryDialog({
     }
   });
 
-  const scanLan = async () => {
+  const scanLan = async (target = subnet.trim() || serverSubnets?.[0] || '') => {
     setScanning(true);
     try {
       const res = await post<{
         discovered: Array<{ host: string; port: number; latencyMs: number }>;
-      }>('/printers/discover-lan', { subnet: subnet.trim() });
+      }>('/printers/discover-lan', target ? { subnet: target } : {});
       setLanPrinters(res.discovered);
     } catch {
       setLanPrinters([]);
@@ -383,6 +419,15 @@ function DiscoveryDialog({
       setScanning(false);
     }
   };
+
+  // Opened: the computer's own network is filled in and searched at once.
+  const firstSubnet = serverSubnets?.[0];
+  useEffect(() => {
+    if (!firstSubnet) return;
+    setSubnet((current) => current || firstSubnet);
+    void scanLan(firstSubnet);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstSubnet]);
 
   return (
     <Dialog open title={p.discoveryTitle} onClose={onClose} wide>
@@ -439,10 +484,10 @@ function DiscoveryDialog({
             <TextField
               label={p.scanSubnet}
               value={subnet}
-              placeholder="192.168.1"
+              placeholder={firstSubnet ?? '192.168.1'}
               onChange={(e) => setSubnet(e.target.value.trim())}
             />
-            <Button busy={scanning} onClick={scanLan}>
+            <Button busy={scanning} onClick={() => void scanLan()}>
               🔍 {p.scanNow}
             </Button>
           </div>

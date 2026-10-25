@@ -82,6 +82,22 @@ export const receiptTemplateSchema = z.object({
   showDeliveryDetails: z.boolean().default(false),
   showSocialMedia: z.boolean().default(false),
   socialMedia: z.string().trim().max(100).default(''),
+  // Fast food: the order number in big letters, for calling the guest at the counter.
+  largeOrderNumber: z.boolean().default(false),
+  // The guest's name, phone and (for delivery) address taken with the order.
+  showCustomer: z.boolean().default(true),
+  // "Taomlar soni: N" under the items.
+  showItemCount: z.boolean().default(false),
+  // "Shu jumladan QQS 12%: N" (the VAT contained in the total).
+  showVat: z.boolean().default(false),
+  vatPercent: z.number().min(0).max(30).default(12),
+  // Guest Wi-Fi, optionally as a QR code phones join by scanning.
+  showWifi: z.boolean().default(false),
+  wifiName: z.string().trim().max(60).default(''),
+  wifiPassword: z.string().trim().max(60).default(''),
+  wifiQr: z.boolean().default(false),
+  // "NUSXA" on every receipt printed again for the same order (anti-fraud).
+  showCopyMark: z.boolean().default(true),
   presetKey: z.string().optional(),
   sectionOrder: z.array(z.string()).optional(),
 });

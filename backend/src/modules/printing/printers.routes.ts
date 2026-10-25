@@ -1,4 +1,5 @@
 import { Socket } from 'node:net';
+import os from 'node:os';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
@@ -289,6 +290,25 @@ export function printersRouter(services: Services) {
     );
     const status = await checkPrinterPing(input.host, input.port);
     res.json(status);
+  });
+
+  // The networks of the restaurant computer (where printers must be reachable from):
+  // the printer form completes a bare "50" to "<subnet>.50" and scans these by default.
+  router.get('/printers/subnets', ...terminalAccess, (_req, res) => {
+    const addresses = Object.values(os.networkInterfaces())
+      .flat()
+      .filter(
+        (item): item is os.NetworkInterfaceInfo =>
+          !!item &&
+          item.family === 'IPv4' &&
+          !item.internal &&
+          isAllowedPrinterHost(item.address),
+      )
+      .map((item) => item.address);
+    const subnets = [
+      ...new Set(addresses.map((address) => address.split('.').slice(0, 3).join('.'))),
+    ];
+    res.json({ subnets, addresses });
   });
 
   router.post('/printers/discover-lan', ...terminalAccess, async (req, res) => {

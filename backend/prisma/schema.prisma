@@ -697,6 +697,8 @@ model Order {
   telegramNotified   String?
   createdById        String?         @db.Uuid
   version            Int             @default(1)
+  // Customer receipts printed so far: from the second one on they are marked "NUSXA".
+  receiptPrints      Int             @default(0)
   placedAt           DateTime?
   completedAt        DateTime?
   cancelledAt        DateTime?

@@ -1,7 +1,73 @@
+import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { formatDateTime, formatMoney } from '../lib/format';
 import type { Order } from '../lib/orders';
 import { sheetStyle, type ReceiptLayout } from '../lib/receipt';
+
+/** A real, scannable QR code (SVG), made in the browser. */
+function QrCode({ text, size = 96 }: { text: string; size?: number }) {
+  const [svg, setSvg] = useState('');
+  useEffect(() => {
+    let alive = true;
+    void import('qrcode')
+      .then((QRCode) =>
+        QRCode.toString(text, { type: 'svg', margin: 0, width: size }),
+      )
+      .then((markup) => alive && setSvg(markup))
+      .catch(() => alive && setSvg(''));
+    return () => {
+      alive = false;
+    };
+  }, [text, size]);
+  return (
+    <div
+      style={{ width: size, height: size, margin: '0 auto' }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
+// Code 39 (digits only): 9 elements per character, 1 = wide; bars and spaces alternate.
+const CODE39: Record<string, string> = {
+  '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
+  '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
+  '8': '100100100', '9': '001100100', '*': '010010100',
+};
+
+/** A real Code 39 barcode of the order number (what scanners read). */
+function Barcode({ value }: { value: string }) {
+  const bars: { x: number; w: number }[] = [];
+  let x = 0;
+  for (const char of `*${value}*`) {
+    const pattern = CODE39[char];
+    if (!pattern) continue;
+    [...pattern].forEach((bit, i) => {
+      const w = bit === '1' ? 3 : 1;
+      if (i % 2 === 0) bars.push({ x, w });
+      x += w;
+    });
+    x += 1; // narrow gap between characters
+  }
+  return (
+    <svg
+      viewBox={`0 0 ${x} 40`}
+      preserveAspectRatio="none"
+      style={{ width: '90%', height: 40, display: 'block', margin: '0 auto' }}
+    >
+      {bars.map((bar, i) => (
+        <rect key={i} x={bar.x} y={0} width={bar.w} height={40} fill="#000" />
+      ))}
+    </svg>
+  );
+}
+
+/** Text of a Wi-Fi QR code that phones join by scanning. */
+const wifiQrText = (name: string, password: string) => {
+  const esc = (value: string) => value.replace(/([\\;,:"])/g, '\\$1');
+  return password
+    ? `WIFI:T:WPA;S:${esc(name)};P:${esc(password)};;`
+    : `WIFI:T:nopass;S:${esc(name)};;`;
+};
 
 export type SheetBusiness = {
   name: string;
@@ -16,6 +82,16 @@ export type SheetData = {
   business: SheetBusiness;
   branch: { name: string; address: string | null };
   cashier: string | null;
+  // Who opened the order when it was a waiter.
+  waiter?: string | null;
+  // 0 = the first receipt of the order; 1, 2 … = printed again ("NUSXA").
+  copy?: number;
+  // Real fiscal data, present only after a certified provider registered the receipt.
+  fiscal?: {
+    status: string;
+    fiscalSign: string | null;
+    qrUrl: string | null;
+  } | null;
   order: Order & {
     items: (Order['items'][number] & {
       components?: { name: string; quantity: number }[];
@@ -98,6 +174,13 @@ export function ReceiptSheet({
 }) {
   const { business, branch, cashier, order } = data;
   const rows = order.items.filter((item) => item.status === 'ACTIVE');
+  const bigNumber = layout.largeOrderNumber && layout.showOrderNumber;
+  const itemCount = rows.reduce((sum, item) => sum + item.quantity, 0);
+  const vat =
+    layout.showVat && layout.vatPercent > 0
+      ? Math.round((order.total * layout.vatPercent) / (100 + layout.vatPercent))
+      : 0;
+  const fiscalSign = data.fiscal?.fiscalSign ?? null;
 
   return (
     <div
@@ -139,10 +222,35 @@ export function ReceiptSheet({
         )}
       </header>
 
+      {layout.showCopyMark && (data.copy ?? 0) > 0 && (
+        <div
+          className="center"
+          style={{
+            fontSize: '1.6em',
+            fontWeight: 800,
+            letterSpacing: '4px',
+            border: '2px solid #000',
+            margin: '6px 0',
+          }}
+        >
+          NUSXA
+        </div>
+      )}
+
       <Separator style={layout.separatorStyle} />
 
+      {bigNumber && (
+        <div
+          className="center"
+          style={{ fontSize: '2.6em', fontWeight: 800, lineHeight: 1.1 }}
+        >
+          {t.orders.number}
+          {order.number}
+        </div>
+      )}
+
       <div className="receipt-meta">
-        {layout.showOrderNumber && (
+        {layout.showOrderNumber && !bigNumber && (
           <span>
             {t.receipt.order} {t.orders.number}
             {order.number}
@@ -162,12 +270,20 @@ export function ReceiptSheet({
             {t.receipt.cashier}: {cashier}
           </span>
         )}
-        {layout.showWaiter && (
-          <span>Ofitsiant: Sardor</span>
+        {layout.showWaiter && data.waiter && (
+          <span>Ofitsiant: {data.waiter}</span>
+        )}
+        {layout.showCustomer && (order.customerName || order.customerPhone) && (
+          <span>
+            Mijoz:{' '}
+            {[order.customerName, order.customerPhone]
+              .filter(Boolean)
+              .join(', ')}
+          </span>
         )}
       </div>
 
-      {layout.showDeliveryDetails && (
+      {layout.showDeliveryDetails && order.deliveryAddress && (
         <div
           style={{
             border: '1px dashed #000',
@@ -177,11 +293,13 @@ export function ReceiptSheet({
             borderRadius: '4px',
           }}
         >
-          <strong>📦 YETKAZIB BERISH (DOSTAVKA):</strong>
-          <div>Mijoz: Azizxon (+998 90 123 45 67)</div>
-          <div>Manzil: Toshkent sh., Chilonzor 9, 12-uy</div>
-          <div>Mo‘ljal: Metro bekati yaqinida</div>
-          <div style={{ marginTop: '2px', fontStyle: 'italic' }}>Eslatma: Qo‘ng‘iroq qilib chiqilsin</div>
+          <strong>📦 YETKAZIB BERISH</strong>
+          <div>Manzil: {order.deliveryAddress}</div>
+          {order.note && (
+            <div style={{ marginTop: '2px', fontStyle: 'italic' }}>
+              Eslatma: {order.note}
+            </div>
+          )}
         </div>
       )}
 
@@ -226,6 +344,13 @@ export function ReceiptSheet({
         </tbody>
       </table>
 
+      {layout.showItemCount && (
+        <div className="receipt-meta" style={{ justifyContent: 'space-between' }}>
+          <span>Taomlar soni</span>
+          <span>{itemCount}</span>
+        </div>
+      )}
+
       <Separator style={layout.separatorStyle} />
 
       <dl className="totals">
@@ -243,6 +368,12 @@ export function ReceiptSheet({
         )}
         <dt className="strong" style={{ fontSize: '1.1em' }}>{t.pos.total}</dt>
         <dd className="strong" style={{ fontSize: '1.1em' }}>{formatMoney(order.total)}</dd>
+        {vat > 0 && (
+          <>
+            <dt className="small">Shu jumladan QQS {layout.vatPercent}%</dt>
+            <dd className="small">{formatMoney(vat)}</dd>
+          </>
+        )}
         {layout.showPayments &&
           order.payments.map((payment) => (
             <div key={payment.id} className="totals-row">
@@ -264,36 +395,21 @@ export function ReceiptSheet({
         )}
       </dl>
 
-      {layout.showQrCode && (
+      {layout.showWifi && layout.wifiName && (
         <div style={{ textAlign: 'center', margin: '8px 0' }}>
-          <div
-            style={{
-              display: 'inline-block',
-              padding: '6px',
-              background: '#fff',
-              border: '1px solid #000',
-              borderRadius: '4px',
-            }}
-          >
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="#000"
-              style={{ display: 'block' }}
-            >
-              <rect x="2" y="2" width="8" height="8" rx="1" />
-              <rect x="4" y="4" width="4" height="4" fill="#fff" />
-              <rect x="14" y="2" width="8" height="8" rx="1" />
-              <rect x="16" y="4" width="4" height="4" fill="#fff" />
-              <rect x="2" y="14" width="8" height="8" rx="1" />
-              <rect x="4" y="16" width="4" height="4" fill="#fff" />
-              <rect x="14" y="14" width="3" height="3" />
-              <rect x="19" y="14" width="3" height="3" />
-              <rect x="14" y="19" width="3" height="3" />
-              <rect x="19" y="19" width="3" height="3" />
-            </svg>
-          </div>
+          <div style={{ fontWeight: 600 }}>📶 Wi-Fi: {layout.wifiName}</div>
+          {layout.wifiPassword && <div>Parol: {layout.wifiPassword}</div>}
+          {layout.wifiQr && (
+            <div style={{ marginTop: '4px' }}>
+              <QrCode text={wifiQrText(layout.wifiName, layout.wifiPassword)} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {layout.showQrCode && layout.qrContent && (
+        <div style={{ textAlign: 'center', margin: '8px 0' }}>
+          <QrCode text={layout.qrContent} />
           {layout.qrLabel && (
             <div style={{ fontSize: '0.8em', marginTop: '3px' }}>
               {layout.qrLabel}
@@ -304,21 +420,13 @@ export function ReceiptSheet({
 
       {layout.showBarcode && (
         <div style={{ textAlign: 'center', margin: '6px 0' }}>
-          <div
-            style={{
-              fontFamily: 'monospace',
-              fontSize: '1.2em',
-              letterSpacing: '2px',
-              fontWeight: 'bold',
-            }}
-          >
-            ||| | |||| | ||| || |||| | |||
-          </div>
-          <div style={{ fontSize: '0.75em' }}>*№{order.number}*</div>
+          <Barcode value={String(order.number).padStart(8, '0')} />
+          <div style={{ fontSize: '0.75em' }}>{String(order.number).padStart(8, '0')}</div>
         </div>
       )}
 
-      {layout.showFiscalData && (
+      {/* Real fiscal data only: a receipt the fiscal provider has not registered shows none. */}
+      {layout.showFiscalData && fiscalSign && (
         <div
           style={{
             borderTop: '1px dashed #000',
@@ -328,10 +436,14 @@ export function ReceiptSheet({
             fontSize: '0.8em',
           }}
         >
-          <div style={{ fontWeight: 'bold' }}>★ FISKAL CHEK (OFD) ★</div>
-          <div>Fiskal belgi: 984729104821</div>
-          <div>Terminal ID: T09481203 · STIR: {business.taxId ?? '301234567'}</div>
-          <div>OFD QR orqali chekni tekshiring</div>
+          <div style={{ fontWeight: 'bold' }}>FISKAL CHEK</div>
+          {business.taxId && <div>STIR: {business.taxId}</div>}
+          <div>Fiskal belgi: {fiscalSign}</div>
+          {data.fiscal?.qrUrl && (
+            <div style={{ marginTop: '4px' }}>
+              <QrCode text={data.fiscal.qrUrl} />
+            </div>
+          )}
         </div>
       )}
 
@@ -344,7 +456,7 @@ export function ReceiptSheet({
         )}
         {business.footer && <div>{business.footer}</div>}
         <div>{layout.thankYou || t.receipt.thanks}</div>
-        {!layout.showFiscalData && (
+        {!fiscalSign && (
           <div className="small">{t.receipt.notFiscal}</div>
         )}
       </footer>
@@ -366,11 +478,18 @@ export function sampleSheet(businessName = 'FAST FOOD'): SheetData {
     },
     branch: { name: 'Markaziy filial', address: 'Chilonzor, Bunyodkor 1' },
     cashier: 'Dilnoza',
+    // Preview only: shows where these lines appear on a real receipt.
+    waiter: 'Ofitsiant',
+    fiscal: { status: 'SAMPLE', fiscalSign: 'NAMUNA', qrUrl: null },
     order: {
       id: 'sample',
       number: 15,
       type: 'DINE_IN',
       table: { id: 't', name: 'Stol 4' },
+      customerName: 'Mijoz',
+      customerPhone: '+998 90 000 00 00',
+      deliveryAddress: 'Manzil (yetkazib berishda)',
+      note: null,
       createdAt: now,
       subtotal: 115_000,
       discountTotal: 5_000,

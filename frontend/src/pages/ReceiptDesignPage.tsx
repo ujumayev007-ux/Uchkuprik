@@ -66,6 +66,12 @@ const visibility = [
   'showSocialMedia',
   'showQrCode',
   'showBarcode',
+  'largeOrderNumber',
+  'showCustomer',
+  'showItemCount',
+  'showVat',
+  'showWifi',
+  'showCopyMark',
 ] as const;
 
 const label = (key: string): string =>
@@ -629,7 +635,7 @@ export function ReceiptDesignPage() {
                 <TextField
                   label={k.qrContent}
                   value={form.qrContent || ''}
-                  placeholder="https://t.me/azizxon_bot"
+                  placeholder="https://t.me/restoran_bot"
                   maxLength={300}
                   onChange={(event) => set('qrContent', event.target.value)}
                 />
@@ -639,6 +645,40 @@ export function ReceiptDesignPage() {
                   placeholder="Fikr bildirish yoki buyurtma uchun skanerlang"
                   maxLength={100}
                   onChange={(event) => set('qrLabel', event.target.value)}
+                />
+              </div>
+            )}
+            {form.showVat && (
+              <div className="form-grid" style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                <TextField
+                  label={k.vatPercent}
+                  type="number"
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={String(form.vatPercent ?? 12)}
+                  onChange={(event) => set('vatPercent', Math.min(30, Math.max(0, Number(event.target.value) || 0)))}
+                />
+              </div>
+            )}
+            {form.showWifi && (
+              <div className="form-grid" style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                <TextField
+                  label={k.wifiName}
+                  value={form.wifiName || ''}
+                  maxLength={60}
+                  onChange={(event) => set('wifiName', event.target.value)}
+                />
+                <TextField
+                  label={k.wifiPassword}
+                  value={form.wifiPassword || ''}
+                  maxLength={60}
+                  onChange={(event) => set('wifiPassword', event.target.value)}
+                />
+                <Checkbox
+                  label={k.wifiQr}
+                  checked={!!form.wifiQr}
+                  onChange={(value) => set('wifiQr', value)}
                 />
               </div>
             )}
@@ -655,7 +695,7 @@ export function ReceiptDesignPage() {
                 <TextField
                   label={k.socialMedia}
                   value={form.socialMedia || ''}
-                  placeholder="@azizxon_choyxona"
+                  placeholder="@restoran"
                   maxLength={100}
                   onChange={(event) => set('socialMedia', event.target.value)}
                 />

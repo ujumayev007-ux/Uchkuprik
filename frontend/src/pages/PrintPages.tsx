@@ -71,6 +71,8 @@ export function ReceiptPage() {
   const query = [
     params.get('printer') ? `printerId=${params.get('printer')}` : '',
     params.get('template') ? `templateId=${params.get('template')}` : '',
+    // This page prints itself: every opening is a printed receipt (counts the copies).
+    'print=1',
   ]
     .filter(Boolean)
     .join('&');
@@ -80,6 +82,11 @@ export function ReceiptPage() {
       api<{ layout?: unknown } & SheetData>(
         `/orders/${id}/receipt${query ? `?${query}` : ''}`,
       ),
+    // Fetched once: a refetch would count another printed copy.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });
   useAutoPrint(receipt.isSuccess);
   if (receipt.isPending) return <LoadingState />;

@@ -772,6 +772,10 @@ export const uz = {
     kinds: { RECEIPT: 'Chek printeri (Kassa)', KITCHEN: 'Oshxona / Bo‘lim printeri' },
     host: 'IP manzil',
     hostHint: 'Mahalliy tarmoqdagi manzil, masalan 192.168.1.50',
+    hostSubnetHint:
+      'Kompyuter tarmog‘i: {subnet}.x — faqat oxirgi raqamni yozsangiz ham bo‘ladi (masalan 50)',
+    otherNetwork:
+      'Bu IP kompyuter tarmog‘ida emas (kompyuter: {subnet}.x) — printer topilmasligi mumkin',
     port: 'Port',
     test: 'Sinov sahifasi',
     testQueued: 'Sinov sahifasi navbatga qo‘shildi.',
@@ -2579,6 +2583,16 @@ export const uz = {
     showSocialMedia: 'Ijtimoiy tarmoqlar',
     showQrCode: 'QR-kod chiqarish',
     showBarcode: 'Shtrixkod chiqarish',
+    largeOrderNumber: 'Buyurtma raqami katta harflarda (navbat uchun)',
+    showCustomer: 'Mijoz ismi va telefoni',
+    showItemCount: 'Taomlar soni',
+    showVat: 'QQS (shu jumladan)',
+    vatPercent: 'QQS stavkasi, %',
+    showWifi: 'Wi-Fi nomi va paroli',
+    wifiName: 'Wi-Fi nomi',
+    wifiPassword: 'Wi-Fi paroli',
+    wifiQr: 'Wi-Fi QR-kodi (skanerlab ulanish)',
+    showCopyMark: '«NUSXA» belgisi (qayta chop etilganda)',
     separatorStyle: 'Ajratuvchi chiziq uslubi',
     separators: {
       dashed: 'Uzuk-uzuk (- - - -)',

@@ -12,7 +12,7 @@ import {
 import { audit } from '../audit/audit.js';
 import { qrPaymentOf } from '../settings/settings.routes.js';
 import { resolveTemplate } from '../../printing/resolve-template.js';
-import { receiptTicket } from '../../printing/receipt.js';
+import { localDateTime, receiptTicket } from '../../printing/receipt.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import {
   getAuth,
@@ -1491,10 +1491,20 @@ export function ordersRouter(services: Services) {
   const buildReceipt = async (
     auth: AuthContext,
     id: string,
-    pick: { printerId?: string | undefined; templateId?: string | undefined },
+    pick: {
+      printerId?: string | undefined;
+      templateId?: string | undefined;
+      // A receipt really being printed (not a preview): counted for the "NUSXA" mark.
+      print?: boolean | undefined;
+    },
   ) => {
     const order = await load(auth, id);
-    const [tenant, branch, cashier] = await Promise.all([
+    const lastPayment = await db.payment.findFirst({
+      where: { tenantId: auth.tenantId, orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { createdById: true },
+    });
+    const [tenant, branch, creator, payer] = await Promise.all([
       db.tenant.findUniqueOrThrow({
         where: { id: auth.tenantId },
         include: { profile: true },
@@ -1506,10 +1516,34 @@ export function ordersRouter(services: Services) {
       order.createdById
         ? db.user.findUnique({
             where: { id: order.createdById },
+            select: {
+              displayName: true,
+              roles: { select: { role: { select: { systemKey: true } } } },
+            },
+          })
+        : null,
+      lastPayment?.createdById
+        ? db.user.findUnique({
+            where: { id: lastPayment.createdById },
             select: { displayName: true },
           })
         : null,
     ]);
+    // The cashier is who took the payment; the waiter is who opened a waiter's order.
+    const cashier = payer ?? creator;
+    const waiter = creator?.roles.some((r) => r.role.systemKey === 'waiter')
+      ? creator.displayName
+      : null;
+    // 0 = the first receipt; 1, 2 … = copies printed again ("NUSXA").
+    const copy = pick.print
+      ? (
+          await db.order.update({
+            where: { id: order.id },
+            data: { receiptPrints: { increment: 1 } },
+            select: { receiptPrints: true },
+          })
+        ).receiptPrints - 1
+      : 0;
     const data = serialize(order, { ...auth, permissions: new Set() });
     return {
       // A branch trading under a brand prints the brand name and texts.
@@ -1533,8 +1567,11 @@ export function ordersRouter(services: Services) {
         name: branch.name,
         address: branch.address,
         phone: branch.phone,
+        timezone: branch.timezone,
       },
       cashier: cashier?.displayName ?? null,
+      waiter,
+      copy,
       // Template of the printer (or the one picked), else the restaurant default.
       layout: (
         await resolveTemplate(db, auth.tenantId, {
@@ -1558,6 +1595,11 @@ export function ordersRouter(services: Services) {
   const receiptQuery = z.object({
     printerId: z.uuid().optional(),
     templateId: z.uuid().optional(),
+    // "1" when the receipt page is opened to be printed (counts the copies).
+    print: z
+      .enum(['1', '0'])
+      .optional()
+      .transform((value) => value === '1'),
   });
 
   router.get(
@@ -1625,6 +1667,7 @@ export function ordersRouter(services: Services) {
       const receipt = await buildReceipt(auth, id, {
         printerId: printer.id,
         templateId: input.templateId,
+        print: true,
       });
       const typeLabels = {
         DINE_IN: 'Zalda',
@@ -1647,11 +1690,17 @@ export function ordersRouter(services: Services) {
           business: receipt.business,
           branch: receipt.branch,
           cashier: receipt.cashier,
+          waiter: receipt.waiter,
+          customer: {
+            name: order.customerName,
+            phone: order.customerPhone,
+            address: order.deliveryAddress,
+          },
+          fiscal: receipt.fiscal,
+          copy: receipt.copy,
           number: order.number,
-          dateTime: new Date(order.createdAt)
-            .toISOString()
-            .slice(0, 16)
-            .replace('T', ' '),
+          // The branch's local time (not UTC).
+          dateTime: localDateTime(new Date(order.createdAt), receipt.branch.timezone),
           typeLabel: typeLabels[order.type],
           table: order.table?.name ?? null,
           items: order.items.map((item) => ({

@@ -4,7 +4,11 @@ import {
   receiptTemplateSchema,
   templateSettingsOf,
 } from '../src/printing/receipt-template.js';
-import { receiptTicket, sampleReceipt } from '../src/printing/receipt.js';
+import {
+  localDateTime,
+  receiptTicket,
+  sampleReceipt,
+} from '../src/printing/receipt.js';
 
 describe('Receipt Template Schema & Pro Designer', () => {
   it('validates receipt templates with default and custom settings', () => {
@@ -74,22 +78,62 @@ describe('Receipt Ticket Formatting', () => {
       socialMedia: '@azizxon',
     });
 
-    const ticketBytes = receiptTicket(sample, settings);
+    const plain = Buffer.from(receiptTicket(sample, settings)).toString('latin1');
+    // Without an address, a fiscal sign or a copy nothing is invented.
+    expect(plain).not.toContain('YETKAZIB BERISH');
+    expect(plain).not.toContain('FISKAL CHEK');
+    expect(plain).not.toContain('NUSXA');
+
+    const ticketBytes = receiptTicket(
+      {
+        ...sample,
+        customer: { name: 'Ali', phone: '+998 90 111 22 33', address: 'Yunusobod 5' },
+        fiscal: { fiscalSign: 'FS123', qrUrl: 'https://ofd.soliq.uz/check?t=1' },
+        copy: 1,
+      },
+      settings,
+    );
     const text = Buffer.from(ticketBytes).toString('latin1');
 
     // Double separator uses '='
     expect(text).toContain('='.repeat(30));
-    // Contains Delivery section
-    expect(text).toContain('YETKAZIB BERISH (DOSTAVKA)');
-    // Contains Waiter
-    expect(text).toContain('Ofitsiant: Sardor');
-    // Contains Fiscal block
-    expect(text).toContain('OFD FISKAL CHEK');
+    expect(text).toContain('YETKAZIB BERISH');
+    expect(text).toContain('Manzil: Yunusobod 5');
+    expect(text).toContain('Mijoz: Ali, +998 90 111 22 33');
+    expect(text).toContain('Ofitsiant: Ofitsiant');
+    expect(text).toContain('FISKAL CHEK');
+    expect(text).toContain('Fiskal belgi: FS123');
     expect(text).toContain('STIR: 301234567');
+    expect(text).toContain('NUSXA');
     // Contains Social media
     expect(text).toContain('Ijtimoiy tarmoq: @azizxon');
     // Contains QR label
     expect(text).toContain('Fikr bildirish uchun skanerlang');
+  });
+
+  it('prints the large number, item count, VAT and the Wi-Fi block when enabled', () => {
+    const settings = receiptTemplateSchema.parse({
+      largeOrderNumber: true,
+      showItemCount: true,
+      showVat: true,
+      vatPercent: 12,
+      showWifi: true,
+      wifiName: 'Restoran',
+      wifiPassword: 'parol123',
+      wifiQr: true,
+    });
+    const text = Buffer.from(receiptTicket(sampleReceipt(), settings)).toString('latin1');
+    expect(text).toContain('Taomlar soni');
+    // 110 000 × 12 / 112 = 11 786
+    expect(text).toContain('Shu jumladan QQS 12%');
+    expect(text).toContain('11 786');
+    expect(text).toContain('Wi-Fi: Restoran');
+    expect(text).toContain('Parol: parol123');
+    expect(text).toContain('WIFI:T:WPA;S:Restoran;P:parol123;;');
+  });
+
+  it('shows the time in the branch time zone, not UTC', () => {
+    expect(localDateTime(new Date('2026-10-25T20:30:00Z'))).toBe('2026-10-26 01:30');
   });
 
   it('formats receipt with stars separator for branded template', () => {

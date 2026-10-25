@@ -48,6 +48,16 @@ export type ReceiptLayout = {
   showDeliveryDetails: boolean;
   showSocialMedia: boolean;
   socialMedia: string;
+  largeOrderNumber: boolean;
+  showCustomer: boolean;
+  showItemCount: boolean;
+  showVat: boolean;
+  vatPercent: number;
+  showWifi: boolean;
+  wifiName: string;
+  wifiPassword: string;
+  wifiQr: boolean;
+  showCopyMark: boolean;
   presetKey?: string;
   sectionOrder?: string[];
 };
@@ -98,6 +108,16 @@ export const defaultLayout: ReceiptLayout = {
   showDeliveryDetails: false,
   showSocialMedia: false,
   socialMedia: '',
+  largeOrderNumber: false,
+  showCustomer: true,
+  showItemCount: false,
+  showVat: false,
+  vatPercent: 12,
+  showWifi: false,
+  wifiName: '',
+  wifiPassword: '',
+  wifiQr: false,
+  showCopyMark: true,
   sectionOrder: [
     'logo',
     'header',
@@ -175,7 +195,7 @@ export const receiptPresets: Record<
       showPayments: true,
       showChange: true,
       showQrCode: true,
-      qrContent: 'https://fastfood.uz/review',
+      qrContent: '',
       qrLabel: 'Fikr va takliflar uchun skanerlang',
       separatorStyle: 'double',
       thankYou: 'Tashrifingizdan mamnunmiz! Yana kuting!',
@@ -289,12 +309,12 @@ export const receiptPresets: Record<
       showOrderNumber: true,
       showDateTime: true,
       showQrCode: true,
-      qrContent: 'https://t.me/azizxon_bot',
+      qrContent: '',
       qrLabel: 'Telegram botimiz orqali buyurtma bering',
       showBarcode: true,
       showFiscalData: true,
       separatorStyle: 'stars',
-      thankYou: 'Azizxon Choyxonasi — Sizning qadrdon go‘shangiz!',
+      thankYou: 'Bizni tanlaganingiz uchun rahmat!',
     },
   },
 };
