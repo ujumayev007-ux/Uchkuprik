@@ -42,10 +42,13 @@ export function useServerDown() {
 /** True only for our own server's health answer (not a hosting interstitial page). */
 export async function pingHealth(): Promise<boolean> {
   try {
+    // AbortSignal.timeout is missing in older TV browsers (WebView before Chrome 103).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
     const response = await fetch('/api/health/live', {
       cache: 'no-store',
-      signal: AbortSignal.timeout(6000),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
     if (!response.ok) return false;
     const body = (await response.json()) as { status?: string };
     return body.status === 'ok';

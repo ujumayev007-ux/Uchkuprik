@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: { __APP_VERSION__: JSON.stringify(version) },
+    // Queue TVs and older tablets run old Android WebViews: the default (2022+ browsers)
+    // left them on the loading splash. Chrome 70-level syntax runs there too.
+    build: { target: ['es2019', 'chrome70'], cssTarget: 'chrome70' },
     server: {
       port: 5173,
       strictPort: true,
