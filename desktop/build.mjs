@@ -162,6 +162,16 @@ const native = join(
 if (!existsSync(join(native, 'bin', 'postgres.exe')))
   throw new Error('PostgreSQL binaries missing');
 cpSync(native, join(stage, 'postgres'), { recursive: true });
+// These PostgreSQL binaries need the Microsoft Visual C++ 2015-2022 runtime. A computer
+// without it could not even start initdb ("FastFood ishga tushmadi", initdb.exe: Command
+// failed, no message), so the runtime DLLs travel next to them (app-local deployment).
+const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+for (const dll of ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll']) {
+  const from = join(system32, dll);
+  if (!existsSync(from))
+    throw new Error(`${dll} missing on the build computer (install vc_redist.x64)`);
+  cpSync(from, join(stage, 'postgres', 'bin', dll));
+}
 
 const slug = version.replace(/\./g, '-');
 // Kassa edition: own app id, name and output folder (never replaces the server edition).

@@ -33,8 +33,21 @@ const foreignKeys = require('./foreign-keys.cjs');
 const RES = app.isPackaged
   ? process.resourcesPath
   : path.join(__dirname, 'stage');
-const PGBIN = path.join(RES, 'postgres', 'bin');
 const SERVER = path.join(RES, 'app-server');
+// PostgreSQL (initdb, pg_ctl) fails on paths with letters outside the Windows code page,
+// e.g. a Cyrillic user name ("C:\Users\гыук\...") on a Latin-language Windows. Such paths
+// are replaced by ASCII ones under ProgramData.
+const isAscii = (value) => /^[\x20-\x7e]*$/.test(value);
+const SAFE_ROOT = process.env.ProgramData || 'C:\\ProgramData';
+const PGBIN = (() => {
+  const bundled = path.join(RES, 'postgres');
+  if (isAscii(bundled)) return path.join(bundled, 'bin');
+  // Installed under such a path: a copy of the bundled PostgreSQL, once per version.
+  const copy = path.join(SAFE_ROOT, 'FastFood', `postgres-${app.getVersion()}`);
+  if (!fs.existsSync(path.join(copy, 'bin', 'initdb.exe')))
+    fs.cpSync(bundled, copy, { recursive: true });
+  return path.join(copy, 'bin');
+})();
 
 // A TEST build (channel.json baked by build.mjs) lives entirely apart from the
 // production install: own data folder, ports, window title and no vendor watchers,
@@ -82,12 +95,16 @@ const APP_PORT = Number(process.env.FASTFOOD_PORT) || (TEST ? 8788 : 8787);
 const PG_PORT = Number(process.env.FASTFOOD_PG_PORT) || (TEST ? 54331 : 54330);
 const VERSION = app.getVersion();
 // FASTFOOD_DATA_DIR / FASTFOOD_VENDOR_DIR point a run at other folders (support, testing).
-const DATA =
-  process.env.FASTFOOD_DATA_DIR ||
-  path.join(
-    app.getPath('appData'),
-    TEST ? 'FastFood-Test-Data' : 'FastFood-Data',
-  );
+// The data folder lives in %APPDATA%; when that path is not plain ASCII (see isAscii) a
+// new install keeps it under ProgramData instead. A database already in %APPDATA% stays.
+const DATA = (() => {
+  if (process.env.FASTFOOD_DATA_DIR) return process.env.FASTFOOD_DATA_DIR;
+  const name = TEST ? 'FastFood-Test-Data' : 'FastFood-Data';
+  const usual = path.join(app.getPath('appData'), name);
+  if (isAscii(usual) || fs.existsSync(path.join(usual, 'pgdata', 'PG_VERSION')))
+    return usual;
+  return path.join(SAFE_ROOT, name);
+})();
 const PGDATA = path.join(DATA, 'pgdata');
 const BACKUPS = path.join(DATA, 'backups');
 const LOGS = path.join(DATA, 'logs');
