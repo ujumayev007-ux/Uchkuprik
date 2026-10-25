@@ -1530,10 +1530,11 @@ export function ordersRouter(services: Services) {
         : null,
     ]);
     // The cashier is who took the payment; the waiter is who opened a waiter's order.
-    const cashier = payer ?? creator;
     const waiter = creator?.roles.some((r) => r.role.systemKey === 'waiter')
       ? creator.displayName
       : null;
+    // A waiter's unpaid order has no cashier yet (the waiter is not shown as one).
+    const cashier = payer ?? (waiter ? null : creator);
     // 0 = the first receipt; 1, 2 … = copies printed again ("NUSXA").
     const copy = pick.print
       ? (
