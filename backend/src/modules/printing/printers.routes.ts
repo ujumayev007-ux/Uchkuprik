@@ -239,6 +239,35 @@ export function printersRouter(services: Services) {
     res.json({ ok: true });
   });
 
+  // Removes a printer added by mistake or no longer used. Its print queue goes with it;
+  // printers that used it as their fallback simply lose that fallback.
+  router.delete('/printers/:id', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const existing = await db.printer.findFirst({
+      where: { id, tenantId: auth.tenantId },
+    });
+    if (!existing) throw errors.notFound();
+    await resolveBranch(db, auth, existing.branchId);
+    await db.$transaction(async (tx) => {
+      await tx.printer.updateMany({
+        where: { tenantId: auth.tenantId, fallbackPrinterId: id },
+        data: { fallbackPrinterId: null },
+      });
+      await tx.printer.delete({ where: { id } });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        branchId: existing.branchId,
+        actorUserId: auth.userId,
+        action: 'printer.delete',
+        entityType: 'printer',
+        entityId: id,
+        data: { name: existing.name, host: existing.host, port: existing.port },
+      });
+    });
+    res.status(204).end();
+  });
+
   router.post('/printers/:id/ping', ...terminalAccess, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);

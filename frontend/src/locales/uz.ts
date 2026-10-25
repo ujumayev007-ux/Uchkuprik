@@ -775,6 +775,16 @@ export const uz = {
     port: 'Port',
     test: 'Sinov sahifasi',
     testQueued: 'Sinov sahifasi navbatga qo‘shildi.',
+    remove: 'O‘chirish',
+    removeConfirm:
+      '«{name}» printeri ro‘yxatdan o‘chirilsinmi? Uning chop etish navbati ham o‘chadi.',
+    removed: 'Printer o‘chirildi.',
+    asReceipt: 'Chek printeri',
+    asKitchen: 'Oshxona printeri',
+    savedReceipt:
+      'Shu kompyuterning chek printeri sifatida saqlandi (Kassa → 🖨 Printerlar).',
+    savedKitchen:
+      'Shu kompyuterning oshxona printeri sifatida saqlandi (Kassa → 🖨 Printerlar).',
     jobs: 'Chop etish navbati',
     statuses: { PENDING: 'Kutilmoqda', SENT: 'Yuborildi', FAILED: 'Xato' },
     attempts: 'Urinishlar',

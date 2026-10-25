@@ -13,11 +13,12 @@ import {
   PageHeader,
   SelectField,
   TextField,
+  useConfirm,
   useToast,
 } from '../components/ui';
 import { terminalPrinter } from '../components/TerminalPrinter';
 import { t } from '../i18n';
-import { api, patch, post } from '../lib/api';
+import { api, del, patch, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import { useStations } from './KitchenPage';
 
@@ -336,6 +337,28 @@ function DiscoveryDialog({
     Array<{ host: string; port: number; latencyMs: number }>
   >([]);
 
+  const toast = useToast();
+  // This computer's receipt or kitchen printer (the same setting as Kassa → 🖨 Printerlar);
+  // switched on for automatic printing, which can be changed there.
+  const chooseLocal = async (deviceName: string, role: 'receipt' | 'kitchen') => {
+    const bridge = terminalPrinter();
+    if (!bridge) return;
+    try {
+      if (role === 'receipt')
+        await bridge.set({ ...(await bridge.get()), deviceName, auto: true });
+      else if (bridge.kitchenGet && bridge.kitchenSet)
+        await bridge.kitchenSet({
+          ...(await bridge.kitchenGet()),
+          deviceName,
+          auto: true,
+        });
+      toast(role === 'receipt' ? p.savedReceipt : p.savedKitchen);
+      onClose();
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : t.common.errorTitle, 'error');
+    }
+  };
+
   // Load local Windows printers
   useState(() => {
     const bridge = terminalPrinter();
@@ -386,21 +409,24 @@ function DiscoveryDialog({
                     <strong>{wp.label}</strong>
                     <div className="muted small">Windows / USB / Driver</div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      onPick({
-                        name: wp.label,
-                        host: '192.168.1.100',
-                        port: 9100,
-                        widthMm: 80,
-                      });
-                      onClose();
-                    }}
-                  >
-                    + Tanlash
-                  </Button>
+                  {/* A Windows / USB printer is this computer's own printer (printed by
+                      the application), not a network printer with an IP address. */}
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void chooseLocal(wp.name, 'receipt')}
+                    >
+                      🧾 {p.asReceipt}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void chooseLocal(wp.name, 'kitchen')}
+                    >
+                      🍳 {p.asKitchen}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -480,6 +506,7 @@ export function PrintersPage() {
   const { data: me } = useMe();
   const client = useQueryClient();
   const toast = useToast();
+  const { confirm, element: confirmDialog } = useConfirm();
   const stations = useStations();
   const branchId = me?.activeBranchId ?? '';
   const [editing, setEditing] = useState<Printer | 'new' | null>(null);
@@ -567,6 +594,7 @@ export function PrintersPage() {
 
   return (
     <>
+      {confirmDialog}
       <PageHeader
         title={p.title}
         subtitle={p.subtitle}
@@ -696,6 +724,23 @@ export function PrintersPage() {
                         onClick={() => setEditing(printer)}
                       >
                         {t.common.edit}
+                      </Button>{' '}
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={async () => {
+                          if (
+                            await confirm(
+                              p.removeConfirm.replace('{name}', printer.name),
+                            )
+                          )
+                            void action(
+                              () => del(`/printers/${printer.id}`),
+                              p.removed,
+                            );
+                        }}
+                      >
+                        {p.remove}
                       </Button>
                     </td>
                   </tr>
