@@ -134,11 +134,19 @@ function registerVendor({ ipcMain, dialog, getWindow, log, vendorDir }) {
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(20_000),
     });
+    // GitHub answers 404 (not 403) when a classic token lacks the scope for a gist write.
+    const scopes = response.headers.get('x-oauth-scopes');
+    const noGistScope =
+      url.startsWith('/gists') &&
+      scopes !== null &&
+      !scopes.split(/,\s*/).includes('gist');
     if (!response.ok)
       throw new Error(
         response.status === 401
           ? 'GitHub token noto‘g‘ri yoki muddati o‘tgan'
-          : `GitHub xatosi ${response.status}`,
+          : noGistScope && (response.status === 404 || response.status === 403)
+            ? 'GitHub tokenida «gist» ruxsati yo‘q. GitHub → Settings → Developer settings → Personal access tokens (classic) → shu tokenni oching, «gist» ni belgilab «Update token» ni bosing va qayta ulang.'
+            : `GitHub xatosi ${response.status}`,
       );
     return response.json();
   }
