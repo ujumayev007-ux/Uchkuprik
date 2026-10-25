@@ -35,6 +35,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Queue TV only (enabled by build.gradle): can be chosen as the TV's home screen,
+             so it opens by itself every time the TV is switched on. -->
+        <activity-alias
+            android:name=".TvHome"
+            android:enabled="${tvHome}"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".AlertService"
             android:exported="false"
@@ -49,6 +63,8 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- Some TV boxes announce a fast power-on instead of a full boot. -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
     </application>

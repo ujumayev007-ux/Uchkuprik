@@ -31,6 +31,8 @@ android {
         buildConfigField "String", "SHELL_KIND", isTv ? "\"tv\"" : isKitchen ? "\"kitchen\"" : "\"\""
         // LAN discovery port of the restaurant computer (desktop/lan.cjs).
         buildConfigField "int", "LAN_PORT", "47870"
+        // The queue TV may be chosen as the TV's home screen (opens at every switch-on).
+        manifestPlaceholders = [tvHome: isTv.toString()]
     }
 
     signingConfigs {

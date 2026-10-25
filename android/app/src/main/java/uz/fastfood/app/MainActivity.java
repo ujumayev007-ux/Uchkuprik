@@ -243,6 +243,9 @@ public class MainActivity extends Activity {
         LinearLayout results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
         box.addView(results);
+        // The TV keeps looking (every 5 s) until the restaurant computer answers: it may
+        // start before the Wi‑Fi / LAN or the computer is up. Stops once this screen is gone.
+        Runnable[] retry = new Runnable[1];
         Runnable runSearch = () -> {
             search.setEnabled(false);
             results.removeAllViews();
@@ -256,11 +259,20 @@ public class MainActivity extends Activity {
                     LanDiscovery.Server own = null;
                     for (LanDiscovery.Server s : found) if (s.key.equals(pairedKey)) own = s;
                     // This phone's own computer, or the only one: connect; several: the person chooses.
-                    if (own != null || found.size() == 1) {
+                    // A paired TV never switches to another computer by itself.
+                    boolean foreignOnly = BuildConfig.IS_TV && pairedKey != null && own == null;
+                    if (foreignOnly) handler.postDelayed(retry[0], 5000);
+                    if (own != null || (found.size() == 1 && !foreignOnly)) {
                         adopt(own != null ? own : found.get(0));
                         return;
                     }
                     if (found.isEmpty()) {
+                        if (BuildConfig.IS_TV) {
+                            status.setTextColor(Color.DKGRAY);
+                            status.setText("Restoran serveri qidirilmoqda… (Wi‑Fi yoki LAN)");
+                            handler.postDelayed(retry[0], 5000);
+                            return;
+                        }
                         status.setTextColor(Color.rgb(192, 57, 43));
                         status.setText("Kompyuter topilmadi. FastFood kompyuterda ochiqligini va bir Wi‑Fi’da ekaningizni tekshiring yoki manzilni kiriting.");
                         return;
@@ -274,6 +286,9 @@ public class MainActivity extends Activity {
                     }
                 });
             }).start();
+        };
+        retry[0] = () -> {
+            if (box.isAttachedToWindow()) runSearch.run();
         };
         search.setOnClickListener(v -> runSearch.run());
 
@@ -300,8 +315,9 @@ public class MainActivity extends Activity {
             }).start();
         });
         setContentView(box);
-        // First start: look for the restaurant computer by itself.
-        if (prefs().getString(KEY_SERVER, null) == null) runSearch.run();
+        // First start: look for the restaurant computer by itself. The TV always does
+        // (also after a long outage), preferring its own paired computer.
+        if (prefs().getString(KEY_SERVER, null) == null || BuildConfig.IS_TV) runSearch.run();
     }
 
     /** Makes `server` (a verified discovery answer) this app's computer and opens it. */
