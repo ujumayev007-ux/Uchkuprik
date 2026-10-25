@@ -423,8 +423,8 @@ export function requireRecentAuth(services: Services) {
   return (_req: Request, res: Response, next: NextFunction) => {
     const auth = getAuth(res);
     const now = (services.now?.() ?? new Date()).getTime();
+    // A PIN session qualifies only after the password was entered again (/auth/reauth).
     if (
-      auth.authMethod !== 'PASSWORD' ||
       !auth.reauthAt ||
       now - auth.reauthAt.getTime() > sessionPolicy.reauthWindowMs
     )

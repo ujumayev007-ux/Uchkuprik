@@ -319,8 +319,9 @@ export function authRouter(services: Services) {
     credentialLimiter,
     requireAuth(),
     async (req, res) => {
+      // Also for a PIN session (the administrator on a FastFood terminal): sensitive
+      // actions then need the person's password, exactly as after a password sign-in.
       const auth = getAuth(res);
-      if (auth.authMethod !== 'PASSWORD') throw errors.forbidden();
       const input = parse(
         z.object({
           password: z.string().min(1).max(128),

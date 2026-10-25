@@ -367,12 +367,24 @@ describe('device-bound PIN login', () => {
     const me = await terminal.get('/api/auth/me').expect(200);
     expect(me.body.authMethod).toBe('PIN');
     expect(me.body.activeBranchId).toBe(tenant.branch.id);
-    // A PIN session cannot step up to privileged operations.
+    // A PIN session steps up only with the person's password, and the role still decides:
+    // a cashier who enters the password gets no privileged operations.
+    await terminal
+      .post('/api/auth/reauth')
+      .set('Origin', ORIGIN)
+      .send({ password: 'not-the-password' })
+      .expect(401);
     await terminal
       .post('/api/auth/reauth')
       .set('Origin', ORIGIN)
       .send({ password: PASSWORD })
+      .expect(200);
+    const privileged = await terminal
+      .post('/api/users')
+      .set('Origin', ORIGIN)
+      .send({ username: 'boshqa', displayName: 'Boshqa', pin: '1234', roleIds: [] })
       .expect(403);
+    expect(privileged.body.code).not.toBe('REAUTH_REQUIRED');
 
     // Revoking the device ends its PIN sessions immediately.
     const owner = ctx.agent();
