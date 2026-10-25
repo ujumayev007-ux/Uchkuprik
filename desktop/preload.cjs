@@ -7,10 +7,10 @@ contextBridge.exposeInMainWorld('fastfoodDesktop', {
   installUpdate: () => ipcRenderer.invoke('updates:install'),
 });
 
-// Kassa edition: the page is the Kassa application with this computer's printers (the
-// same bridge as the separate Kassa application). The full-panel server exposes neither.
-if (ipcRenderer.sendSync('shell:kind') === 'cashier') {
-  contextBridge.exposeInMainWorld('fastfoodShell', { kind: 'cashier' });
+// FastFood Server edition: the page is the FastFood terminal (PIN pad, each person's own
+// panel) with this computer's printers. The full-panel server exposes neither.
+if (ipcRenderer.sendSync('shell:kind') === 'universal') {
+  contextBridge.exposeInMainWorld('fastfoodShell', { kind: 'universal' });
   contextBridge.exposeInMainWorld('fastfoodPrinter', {
     list: () => ipcRenderer.invoke('printer:list'),
     get: () => ipcRenderer.invoke('printer:get'),

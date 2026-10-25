@@ -18,9 +18,11 @@ function rememberedTenant() {
   }
 }
 
-/** The Kassa, Ofitsiant, Oshxona and TV applications go straight to the PIN keypad once this device is registered. */
+/** The Kassa, Ofitsiant, Oshxona, TV and FastFood applications go straight to the PIN keypad once this device is registered. */
 function usesPinShell() {
-  return ['cashier', 'waiter', 'kitchen', 'tv'].includes(shellKind());
+  return ['cashier', 'waiter', 'kitchen', 'tv', 'universal'].includes(
+    shellKind(),
+  );
 }
 
 export function LoginPage() {

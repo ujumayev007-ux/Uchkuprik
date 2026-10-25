@@ -179,6 +179,17 @@ function Home() {
     can(me, 'devices.manage')
   )
     return <DeviceSetup />;
+  // The FastFood application: after the PIN each person lands on their own panel; the
+  // administrator (also by PIN) on the management dashboard.
+  if (shellKind() === 'universal') {
+    if (manages(me)) return <DashboardPage />;
+    if (me?.roleKeys.includes('waiter') && can(me, 'orders.create'))
+      return <Navigate to="/ofitsiant" replace />;
+    if (can(me, 'pos.access')) return <Navigate to="/kassa" replace />;
+    if (can(me, 'kitchen.access')) return <Navigate to="/oshxona" replace />;
+    if (can(me, 'orders.create')) return <Navigate to="/ofitsiant" replace />;
+    if (can(me, 'queue.view')) return <Navigate to="/navbat" replace />;
+  }
   // The Restaurant Admin application always starts on the management dashboard.
   if (shellKind() === 'admin') return <DashboardPage />;
   // The dedicated Kassa and Ofitsiant applications open their own panel directly.

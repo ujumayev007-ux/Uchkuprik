@@ -33,6 +33,11 @@ export function DeviceSetup() {
   const active = (branches.data ?? []).filter((branch) => branch.isActive);
   const [branchId, setBranchId] = useState(me?.activeBranchId ?? '');
   const [name, setName] = useState('');
+  // The FastFood application: the administrator decides who may sign in on this computer.
+  const universal = shellKind() === 'universal';
+  const [panel, setPanel] = useState<'OTHER' | 'CASHIER' | 'KITCHEN' | 'WAITER'>(
+    'OTHER',
+  );
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const registered = useQuery({
@@ -63,7 +68,7 @@ export function DeviceSetup() {
           await post('/devices/register', {
             branchId: branchId || active[0]?.id,
             name,
-            panel: shellPanel(),
+            panel: universal ? panel : shellPanel(),
           });
           await toPinPad(client, navigate);
         } catch (caught) {
@@ -95,6 +100,19 @@ export function DeviceSetup() {
         onChange={(e) => setName(e.target.value)}
         required
       />
+      {universal && (
+        <SelectField
+          label={t.devices.panelLabel}
+          hint={t.devices.panelHint}
+          value={panel}
+          onChange={(e) => setPanel(e.target.value as typeof panel)}
+        >
+          <option value="OTHER">{t.devices.panelAll}</option>
+          <option value="CASHIER">{t.devices.panelCashier}</option>
+          <option value="KITCHEN">{t.devices.panelKitchen}</option>
+          <option value="WAITER">{t.devices.panelWaiter}</option>
+        </SelectField>
+      )}
       <FormError error={error} />
       <div className="form-actions">
         <Button type="submit" variant="primary" busy={busy}>

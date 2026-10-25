@@ -567,6 +567,8 @@ describe('LAN devices on the cashier computer (offline)', () => {
     };
     const cashierCookie = await device('CASHIER');
     const kitchenCookie = await device('KITCHEN');
+    // A FastFood terminal open to every role.
+    const anyCookie = await device('OTHER');
     // Authenticated context of a cashier / kitchen employee.
     const auth = {
       tenantId: tenant.tenant.id,
@@ -576,7 +578,7 @@ describe('LAN devices on the cashier computer (offline)', () => {
     network.down = true;
     advance(10 * 60_000);
     runtime.invalidate();
-    return { cashierCookie, kitchenCookie, auth };
+    return { cashierCookie, kitchenCookie, anyCookie, auth };
   }
 
   it('requires registered devices and keeps order creation on the Cashier panel', async () => {
@@ -630,6 +632,24 @@ describe('LAN devices on the cashier computer (offline)', () => {
         path: '/orders',
         remote: lan,
         cookie: t.cashierCookie,
+      }),
+    ).toBe('CASHIER_PANEL_ONLY');
+    // A FastFood terminal open to every role: only while its Kassa page is open.
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: '/orders',
+        remote: lan,
+        cookie: t.anyCookie,
+        panel: 'cashier',
+      }),
+    ).toBe('allowed');
+    expect(
+      await through(t, {
+        method: 'POST',
+        path: '/orders',
+        remote: lan,
+        cookie: t.anyCookie,
       }),
     ).toBe('CASHIER_PANEL_ONLY');
   });

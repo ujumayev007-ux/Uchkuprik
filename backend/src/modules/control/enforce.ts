@@ -28,6 +28,7 @@ export function isLoopback(req: Request): boolean {
 /**
  * The Cashier panel is the cashier computer's own window or a terminal registered
  * for the CASHIER panel, used by a signed-in user who holds the POS permission.
+ * A FastFood terminal open to every role (panel OTHER) counts while it shows the Kassa.
  */
 async function isCashierPanel(
   services: Services,
@@ -46,7 +47,10 @@ async function isCashierPanel(
     where: { tokenHash: sha256(token) },
     select: { status: true, panel: true },
   });
-  return device?.status === 'ACTIVE' && device.panel === 'CASHIER';
+  return (
+    device?.status === 'ACTIVE' &&
+    (device.panel === 'CASHIER' || device.panel === 'OTHER')
+  );
 }
 
 async function hasRegisteredDevice(

@@ -57,11 +57,12 @@ if (TEST)
     'userData',
     path.join(app.getPath('appData'), 'FastFood-Test-App'),
   );
-// Kassa edition (edition.json baked by build.mjs with BUILD_EDITION=cashier): the same
-// server, database and LAN host, but its window is the Kassa (staff PIN pad, sale screen,
-// this computer's receipt and kitchen printers). It keeps the server's own profile
-// (%APPDATA%FastFood, the same for every version): the key that seals secrets.enc lives
-// there, so the Kassa opens the data of a server installed earlier on this computer.
+// Server edition for the Kassa computer (FastFood Server; edition.json baked by build.mjs
+// with BUILD_EDITION=cashier): the same server, database and LAN host, but its window is
+// the FastFood terminal (staff PIN pad, then each person's own panel: Kassa, Oshxona,
+// Ofitsiant or the Admin panel; this computer's receipt and kitchen printers). It keeps
+// the server's own profile (%APPDATA%FastFood, the same for every version): the key that
+// seals secrets.enc lives there, so it opens the data of a server installed earlier here.
 const CASHIER = (() => {
   try {
     return (
@@ -72,8 +73,8 @@ const CASHIER = (() => {
     return false;
   }
 })();
-const START = CASHIER ? '/kassa' : '/';
-const NAME = CASHIER ? 'FastFood Kassa' : 'FastFood';
+const START = '/';
+const NAME = CASHIER ? 'FastFood Server' : 'FastFood';
 
 // FASTFOOD_PORT / FASTFOOD_PG_PORT let a second copy run next to the installed one
 // (support and release checks) without touching it.
@@ -384,7 +385,12 @@ async function backupIfUpgrading() {
   log(`backup ${target}`);
   fs.mkdirSync(BACKUPS, { recursive: true });
   fs.cpSync(PGDATA, target, { recursive: true });
-  const all = fs.readdirSync(BACKUPS).sort();
+  // Only these copies count (the daily backups in the same folder have their own limit,
+  // and sort after them: counting them would delete the copy just taken).
+  const all = fs
+    .readdirSync(BACKUPS)
+    .filter((name) => name.includes('-before-'))
+    .sort();
   for (const old of all.slice(0, Math.max(0, all.length - 5)))
     fs.rmSync(path.join(BACKUPS, old), { recursive: true, force: true });
 }
@@ -750,9 +756,9 @@ const ANYDESK_PATHS = [
   path.join(os.homedir(), 'Desktop', 'AnyDesk.exe'),
 ];
 
-// The page learns whether it is the Kassa (Kassa edition) or the full panel ('').
+// The page learns whether it is the FastFood terminal (server edition) or the full panel ('').
 ipcMain.on('shell:kind', (event) => {
-  event.returnValue = CASHIER ? 'cashier' : '';
+  event.returnValue = CASHIER ? 'universal' : '';
 });
 
 // Kassa edition: printer choices live in the data folder (kept by every version, backups

@@ -70,6 +70,13 @@ const KINDS = {
     start: '/navbat',
     profile: 'TV',
   },
+  // One application for every staff member: PIN pad, then each person's own panel.
+  universal: {
+    label: 'FastFood Terminal',
+    menu: 'FastFood',
+    start: '/',
+    profile: 'Terminal',
+  },
 };
 const KIND = KINDS[baked.kind] ? baked.kind : 'admin';
 const APP = KINDS[KIND];
@@ -372,7 +379,7 @@ ipcMain.on('shell:kind', (event) => {
 
 // Receipt and kitchen printers of the Kassa computer (shared with the Kassa server edition).
 require('./printers.cjs')({
-  enabled: () => KIND === 'cashier',
+  enabled: () => KIND === 'cashier' || KIND === 'universal',
   getWin: () => win,
   getUrl: () => currentUrl,
   dataDir: DATA,

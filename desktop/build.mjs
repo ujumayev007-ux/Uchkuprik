@@ -25,8 +25,8 @@ const { version } = JSON.parse(
 // BUILD_CHANNEL=test makes an isolated TEST installer: own app id, data folder,
 // ports and output folder; it never bakes the production status/report settings.
 const TEST = process.env.BUILD_CHANNEL === 'test';
-// BUILD_EDITION=cashier: the Kassa all-in-one installer (server, database and the Kassa
-// window in one application); without it, the full-panel server ("FastFood Admin").
+// BUILD_EDITION=cashier: the FastFood Server installer for the Kassa computer (server,
+// database and the FastFood terminal window: PIN pad, each person's own panel); without it, the full-panel server ("FastFood Admin").
 const CASHIER = process.env.BUILD_EDITION === 'cashier';
 if (process.env.BUILD_EDITION && !CASHIER)
   throw new Error('BUILD_EDITION must be cashier (or unset).');
@@ -166,11 +166,11 @@ cpSync(native, join(stage, 'postgres'), { recursive: true });
 const slug = version.replace(/\./g, '-');
 // Kassa edition: own app id, name and output folder (never replaces the server edition).
 const product = CASHIER ? 'FastFood Kassa' : 'FastFood';
-const fileBase = CASHIER ? 'FastFood-Kassa-Server' : 'FastFood-Admin';
+const fileBase = CASHIER ? 'FastFood-Server' : 'FastFood-Admin';
 const out = CASHIER
   ? TEST
-    ? 'release-kassa-test'
-    : 'release-kassa'
+    ? 'release-server-test'
+    : 'release-server'
   : TEST
     ? 'release-test'
     : 'release';
@@ -216,13 +216,13 @@ await build({
       // panel and runs the server silently); app id, folders and profile are unchanged.
       shortcutName: CASHIER
         ? TEST
-          ? `FastFood Kassa TEST ${version}`
-          : 'FastFood Kassa'
+          ? `FastFood Server TEST ${version}`
+          : 'FastFood Server'
         : TEST
           ? `FastFood TEST ${version}`
           : 'FastFood Admin',
       artifactName: TEST
-        ? `${CASHIER ? 'FastFood-Kassa-Server' : 'FastFood'}-TEST-Setup-${version}.exe`
+        ? `${CASHIER ? 'FastFood-Server' : 'FastFood'}-TEST-Setup-${version}.exe`
         : `${fileBase}-Setup-${version}.exe`,
       // Uninstalling a version never touches the shared data folder.
       deleteAppDataOnUninstall: false,
@@ -230,5 +230,5 @@ await build({
   },
 });
 console.log(
-  `Ready: desktop/${out}/${TEST ? `${CASHIER ? 'FastFood-Kassa-Server' : 'FastFood'}-TEST` : fileBase}-Setup-${version}.exe`,
+  `Ready: desktop/${out}/${TEST ? `${CASHIER ? 'FastFood-Server' : 'FastFood'}-TEST` : fileBase}-Setup-${version}.exe`,
 );

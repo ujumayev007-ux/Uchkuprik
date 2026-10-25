@@ -29,7 +29,8 @@ const { version } = JSON.parse(
   readFileSync(join(here, 'package.json'), 'utf8'),
 );
 const TEST = process.env.BUILD_CHANNEL === 'test';
-// PANEL_KIND chooses the application: admin (default), cashier, waiter or kitchen.
+// PANEL_KIND chooses the application: admin (default), cashier, waiter, kitchen, tv or
+// universal (FastFood Terminal: every role by PIN).
 const KINDS = {
   admin: {
     product: 'FastFood Admin',
@@ -61,10 +62,19 @@ const KINDS = {
     id: 'tv',
     file: 'FastFood-TV',
   },
+  // Every staff member signs in by PIN and opens their own panel.
+  universal: {
+    product: 'FastFood Terminal',
+    exe: 'FastFoodTerminal',
+    id: 'terminal',
+    file: 'FastFood-Terminal',
+  },
 };
 const kind = process.env.PANEL_KIND || 'admin';
 if (!KINDS[kind])
-  throw new Error('PANEL_KIND must be admin, cashier, waiter, kitchen or tv.');
+  throw new Error(
+    'PANEL_KIND must be admin, cashier, waiter, kitchen, tv or universal.',
+  );
 const APP = KINDS[kind];
 const url = (process.env.ADMIN_URL || '').trim().replace(/[/]+$/, '');
 if (url && !/^https:[/][/]/.test(url) && !TEST)

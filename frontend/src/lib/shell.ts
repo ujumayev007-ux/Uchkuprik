@@ -1,6 +1,6 @@
 /** Which desktop application hosts this page: the dedicated apps announce themselves. */
 export type ShellKind =
-  'admin' | 'cashier' | 'waiter' | 'kitchen' | 'tv' | 'pos';
+  'admin' | 'cashier' | 'waiter' | 'kitchen' | 'tv' | 'universal' | 'pos';
 
 export function shellKind(): ShellKind {
   const w = window as unknown as {
@@ -20,7 +20,8 @@ export function shellKind(): ShellKind {
     kind === 'cashier' ||
     kind === 'waiter' ||
     kind === 'kitchen' ||
-    kind === 'tv'
+    kind === 'tv' ||
+    kind === 'universal'
     ? kind
     : 'pos';
 }
@@ -34,8 +35,13 @@ const allowedPaths: Partial<Record<ShellKind, string[]>> = {
   tv: ['/navbat'],
 };
 
-/** True for the Kassa, Oshxona, Ofitsiant and TV applications (PIN sign-in, single panel). */
-export const isPanelShell = () => shellKind() in allowedPaths;
+/**
+ * True for the Kassa, Oshxona, Ofitsiant and TV applications (PIN sign-in, single panel)
+ * and for the FastFood application ("universal"): it also starts on the PIN pad, then
+ * each person opens their own panel and may use every page their role allows.
+ */
+export const isPanelShell = () =>
+  shellKind() in allowedPaths || shellKind() === 'universal';
 
 /** The terminal panel this application serves, as the server stores it on the device. */
 export function shellPanel():

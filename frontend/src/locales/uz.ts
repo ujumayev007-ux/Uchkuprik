@@ -219,6 +219,13 @@ export const uz = {
     setupHint:
       'Administrator sifatida kirdingiz. Bu ilova shu filialning ishchi qurilmasi bo‘lib saqlanadi; shundan so‘ng xodimlar faqat o‘z PIN-kodi bilan kiradi.',
     setupAction: 'Ro‘yxatdan o‘tkazib, PIN-kirishga o‘tish',
+    panelLabel: 'Bu kompyuterga kimlar kiradi',
+    panelHint:
+      'Har kim PIN-kodi bilan kirib, o‘z rolidagi oynani ochadi. Kerak bo‘lsa, kompyuterni bitta bo‘limga cheklang.',
+    panelAll: 'Hamma xodimlar (rolga qarab o‘z oynasi)',
+    panelCashier: 'Faqat Kassa',
+    panelKitchen: 'Faqat Oshxona',
+    panelWaiter: 'Faqat Ofitsiant',
     noAccessTitle: 'Bu ilovaga ruxsatingiz yo‘q',
     noAccessHint:
       'Administrator sizning rolingizga shu bo‘limni yoqishi kerak.',

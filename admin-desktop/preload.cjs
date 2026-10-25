@@ -7,12 +7,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 // sandboxed preload can not read files itself).
 const kind = ipcRenderer.sendSync('shell:kind');
 contextBridge.exposeInMainWorld('fastfoodShell', {
-  kind: ['admin', 'cashier', 'waiter', 'kitchen', 'tv'].includes(kind)
+  kind: ['admin', 'cashier', 'waiter', 'kitchen', 'tv', 'universal'].includes(kind)
     ? kind
     : 'admin',
 });
-// The Kassa application's own receipt printer (this computer only).
-if (kind === 'cashier')
+// The Kassa application's own receipt printer (this computer only); the FastFood
+// application has it too, for whoever opens the Kassa on this computer.
+if (kind === 'cashier' || kind === 'universal')
   contextBridge.exposeInMainWorld('fastfoodPrinter', {
     list: () => ipcRenderer.invoke('printer:list'),
     get: () => ipcRenderer.invoke('printer:get'),
