@@ -34,8 +34,11 @@ export function LoginPage() {
     enabled: usesPinShell(),
     retry: false,
   });
+  // The FastFood application keeps the password sign-in open on a registered computer:
+  // it is how the administrator reaches the panel (e.g. to give the staff their PINs).
   useEffect(() => {
-    if (usesPinShell() && pinDevice.data) navigate('/pin', { replace: true });
+    if (usesPinShell() && shellKind() !== 'universal' && pinDevice.data)
+      navigate('/pin', { replace: true });
   }, [pinDevice.data, navigate]);
   const [tenant, setTenant] = useState(rememberedTenant);
   const [username, setUsername] = useState('');

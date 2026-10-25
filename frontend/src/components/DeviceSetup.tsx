@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { meKey, useMe } from '../auth/session';
 import { t } from '../i18n';
@@ -25,7 +25,13 @@ async function toPinPad(
  * with the password and registers the application as this branch's terminal for its panel.
  * Afterwards only staff PIN codes are used, and the server checks each person's role.
  */
-export function DeviceSetup() {
+export function DeviceSetup({
+  afterRegistered,
+}: {
+  // Shown instead of returning to the PIN pad once this computer is registered and
+  // approved (the FastFood application: the administrator keeps working).
+  afterRegistered?: ReactNode;
+} = {}) {
   const { data: me } = useMe();
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -52,9 +58,12 @@ export function DeviceSetup() {
   const waiting =
     registered.error instanceof ApiError &&
     registered.error.code === 'DEVICE_PENDING';
+  const keepWorking = !!afterRegistered && registered.isSuccess;
   useEffect(() => {
+    if (keepWorking) return;
     if (registered.isSuccess || waiting) void toPinPad(client, navigate);
-  }, [registered.isSuccess, waiting, client, navigate]);
+  }, [keepWorking, registered.isSuccess, waiting, client, navigate]);
+  if (keepWorking) return <>{afterRegistered}</>;
   if (registered.isPending || !missing) return <LoadingState />;
   return (
     <form

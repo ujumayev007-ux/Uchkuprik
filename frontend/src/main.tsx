@@ -178,7 +178,13 @@ function Home() {
     me?.authMethod === 'PASSWORD' &&
     can(me, 'devices.manage')
   )
-    return <DeviceSetup />;
+    return (
+      <DeviceSetup
+        afterRegistered={
+          shellKind() === 'universal' ? <DashboardPage /> : undefined
+        }
+      />
+    );
   // The FastFood application: after the PIN each person lands on their own panel; the
   // administrator (also by PIN) on the management dashboard.
   if (shellKind() === 'universal') {
