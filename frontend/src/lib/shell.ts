@@ -58,9 +58,12 @@ export function shellPanel():
           : 'OTHER';
 }
 
-/** Whether this application may show the given page. Admin and the browser show everything. */
-export function shellAllows(path: string): boolean {
-  const allowed = allowedPaths[shellKind()];
+/**
+ * Whether this application may show the given page. Admin and the browser show everything.
+ * `kind` lets the FastFood application apply the panel of the person signed in.
+ */
+export function shellAllows(path: string, kind: ShellKind = shellKind()): boolean {
+  const allowed = allowedPaths[kind];
   if (!allowed) return true;
   return allowed.some((base) => path === base || path.startsWith(`${base}/`));
 }

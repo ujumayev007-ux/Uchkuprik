@@ -21,7 +21,7 @@ import {
   usePwa,
 } from '../lib/pwa';
 import { useRealtime } from '../lib/realtime';
-import { shellAllows, shellKind } from '../lib/shell';
+import { shellAllows, shellKind, type ShellKind } from '../lib/shell';
 import { WalkinAlerts } from './WalkinAlerts';
 import {
   LicenseLock,
@@ -576,8 +576,22 @@ export function AppShell() {
   );
   const adminVisibility = useAdminMenuVisibility(me?.tenantKind === 'BUSINESS');
   if (!me) return null;
+  // The FastFood application: staff (not managers) get their own panel's pages only,
+  // exactly like the dedicated Kassa / Oshxona / Ofitsiant applications.
+  const panelKind: ShellKind =
+    shellKind() === 'universal' && isFrontLine(me)
+      ? me.roleKeys.includes('waiter') && can(me, 'orders.create')
+        ? 'waiter'
+        : can(me, 'pos.access')
+          ? 'cashier'
+          : can(me, 'kitchen.access')
+            ? 'kitchen'
+            : can(me, 'orders.create')
+              ? 'waiter'
+              : 'universal'
+      : shellKind();
   // Kassa, Oshxona and Ofitsiant open their own page only, even by a typed address.
-  if (location.pathname !== '/' && !shellAllows(location.pathname))
+  if (location.pathname !== '/' && !shellAllows(location.pathname, panelKind))
     return <Navigate to="/" replace />;
   const adminHidden = adminVisibility.data ?? [];
 
@@ -587,8 +601,8 @@ export function AppShell() {
   const delegated = branding.data?.delegated ?? false;
 
   const isCashierApp =
-    shellKind() === 'cashier' ||
-    (isFrontLine(me) && can(me, 'pos.access'));
+    panelKind === 'cashier' ||
+    (panelKind !== 'waiter' && isFrontLine(me) && can(me, 'pos.access'));
 
   // The Kassa menu: these five sections only, in this order. Permissions and the menus
   // the vendor switched off still apply.
@@ -610,7 +624,7 @@ export function AppShell() {
     : navItems.filter(
         (item) =>
           item.visible(me) &&
-          shellAllows(item.to) &&
+          shellAllows(item.to, panelKind) &&
           !hidden.includes(item.to) &&
           !adminHidden.includes(item.to) &&
           (item.to !== '/dizayn' || delegated),
