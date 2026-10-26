@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useReducer, useState } from 'react';
 import { t } from '../i18n';
 import { Dialog, useToast } from './ui';
 
@@ -34,6 +34,52 @@ export function evaluate(tokens: string[]): number | null {
   return Number.isFinite(result) ? Math.round(result * 1e8) / 1e8 : null;
 }
 
+type CalcState = { tokens: string[]; result: string | null };
+
+/** One key press: digits, ".", operators, "=", "C" (clear) and "⌫" (delete). */
+export function calculate(state: CalcState, key: string): CalcState {
+  const { tokens, result } = state;
+  const last = tokens[tokens.length - 1];
+  if (key === 'C') return { tokens: [], result: null };
+  if (key === '=') {
+    const value = evaluate(tokens);
+    return { tokens, result: value === null ? t.calc.error : String(value) };
+  }
+  if (key === '⌫') {
+    if (result !== null) return { tokens, result: null };
+    if (!last) return state;
+    return {
+      tokens:
+        isOperator(last) || last.length === 1
+          ? tokens.slice(0, -1)
+          : [...tokens.slice(0, -1), last.slice(0, -1)],
+      result: null,
+    };
+  }
+  if (isOperator(key)) {
+    // An operator after a result goes on from that result.
+    if (result !== null && result !== t.calc.error)
+      return { tokens: [result, key], result: null };
+    if (!last) return state;
+    return {
+      tokens: isOperator(last)
+        ? [...tokens.slice(0, -1), key]
+        : [...tokens, key],
+      result: null,
+    };
+  }
+  // A digit or the decimal point after a result starts a new calculation.
+  const base = result !== null ? [] : tokens;
+  const current = base[base.length - 1];
+  if (current !== undefined && !isOperator(current)) {
+    if (key === '.' && current.includes('.')) return state;
+    const next = current === '0' && key !== '.' ? key : current + key;
+    if (next.replace('.', '').length > 12) return state;
+    return { tokens: [...base.slice(0, -1), next], result: null };
+  }
+  return { tokens: [...base, key === '.' ? '0.' : key], result: null };
+}
+
 async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text);
@@ -58,73 +104,33 @@ async function copyText(text: string) {
 export function CalculatorButton() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [tokens, setTokens] = useState<string[]>([]);
-  const [result, setResult] = useState<string | null>(null);
-  const last = tokens[tokens.length - 1];
-
-  const press = (key: string) => {
-    if (isOperator(key)) {
-      if (result !== null && result !== t.calc.error) {
-        setTokens([result, key]);
-        setResult(null);
-        return;
-      }
-      if (!last) return;
-      setTokens(isOperator(last) ? [...tokens.slice(0, -1), key] : [...tokens, key]);
-      return;
-    }
-    // A digit or the decimal point after a result starts a new calculation.
-    const base = result !== null ? [] : tokens;
-    setResult(null);
-    const current = base[base.length - 1];
-    if (current !== undefined && !isOperator(current)) {
-      if (key === '.' && current.includes('.')) return;
-      const next = current === '0' && key !== '.' ? key : current + key;
-      if (next.replace('.', '').length > 12) return;
-      setTokens([...base.slice(0, -1), next]);
-    } else setTokens([...base, key === '.' ? '0.' : key]);
-  };
-  const equals = () => {
-    const value = evaluate(tokens);
-    setResult(value === null ? t.calc.error : String(value));
-  };
-  const back = () => {
-    if (result !== null) {
-      setResult(null);
-      return;
-    }
-    if (!last) return;
-    setTokens(
-      isOperator(last) || last.length === 1
-        ? tokens.slice(0, -1)
-        : [...tokens.slice(0, -1), last.slice(0, -1)],
-    );
-  };
-  const clear = () => {
-    setTokens([]);
-    setResult(null);
-  };
+  // Every key works on the latest state, so quick taps are never lost.
+  const [{ tokens, result }, dispatch] = useReducer(calculate, {
+    tokens: [],
+    result: null,
+  });
+  const press = (key: string) => () => dispatch(key);
   const shown = result ?? (tokens.length ? tokens.join(' ') : '0');
 
   const keys: [string, () => void, string?][] = [
-    [t.calc.clear, clear, 'calc-key-muted'],
-    ['⌫', back, 'calc-key-muted'],
-    ['÷', () => press('÷'), 'calc-key-op'],
-    ['×', () => press('×'), 'calc-key-op'],
-    ['7', () => press('7')],
-    ['8', () => press('8')],
-    ['9', () => press('9')],
-    ['−', () => press('−'), 'calc-key-op'],
-    ['4', () => press('4')],
-    ['5', () => press('5')],
-    ['6', () => press('6')],
-    ['+', () => press('+'), 'calc-key-op'],
-    ['1', () => press('1')],
-    ['2', () => press('2')],
-    ['3', () => press('3')],
-    ['=', equals, 'calc-key-equals'],
-    ['0', () => press('0'), 'calc-key-wide'],
-    ['.', () => press('.')],
+    [t.calc.clear, press('C'), 'calc-key-muted'],
+    ['⌫', press('⌫'), 'calc-key-muted'],
+    ['÷', press('÷'), 'calc-key-op'],
+    ['×', press('×'), 'calc-key-op'],
+    ['7', press('7')],
+    ['8', press('8')],
+    ['9', press('9')],
+    ['−', press('−'), 'calc-key-op'],
+    ['4', press('4')],
+    ['5', press('5')],
+    ['6', press('6')],
+    ['+', press('+'), 'calc-key-op'],
+    ['1', press('1')],
+    ['2', press('2')],
+    ['3', press('3')],
+    ['=', press('='), 'calc-key-equals'],
+    ['0', press('0'), 'calc-key-wide'],
+    ['.', press('.')],
   ];
 
   return (

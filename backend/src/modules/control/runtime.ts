@@ -70,6 +70,20 @@ const LINK_CACHE_MS = 2_000;
  * monotonic clock, command execution and the synchronisation outbox. The central
  * server stays authoritative; this object only ever holds what the server signed.
  */
+/**
+ * When an install that is not linked yet announces itself again: soon after a failure
+ * (30 s, doubling, at most 5 min), every minute while the Owner's decision is pending,
+ * otherwise every ten minutes.
+ */
+export function registerRetryWait(
+  result: 'SKIPPED' | 'PENDING' | 'ACTIVATED' | 'ERROR',
+  failures: number,
+): number {
+  if (result === 'ERROR')
+    return Math.min(5 * 60_000, 30_000 * 2 ** Math.max(0, failures - 1));
+  return result === 'PENDING' ? 60_000 : 10 * 60_000;
+}
+
 export function createControlRuntime(
   services: Services,
   options: { transport?: Transport } = {},
@@ -289,11 +303,6 @@ export function createControlRuntime(
     invalidate();
     anchor = null;
     clockSuspect = false;
-    // Check in right away: the Owner sees the new installation online at once, not
-    // after the next one-minute heartbeat.
-    void beat()
-      .then((result) => (result === 'ok' ? sync() : undefined))
-      .catch(() => undefined);
     return { ok: true as const, customerName: String(data.customerName) };
   }
 
@@ -856,16 +865,12 @@ export function createControlRuntime(
           if (Date.now() - lastRegister >= registerWait) {
             lastRegister = Date.now();
             const result = await register().catch(() => 'ERROR' as const);
-            if (result === 'ERROR') {
-              registerFailures += 1;
-              registerWait = Math.min(
-                5 * 60_000,
-                30_000 * 2 ** (registerFailures - 1),
-              );
-            } else {
-              registerFailures = 0;
-              registerWait = result === 'PENDING' ? 60_000 : 10 * 60_000;
-            }
+            registerFailures = result === 'ERROR' ? registerFailures + 1 : 0;
+            registerWait = registerRetryWait(result, registerFailures);
+            // Licence assigned by the Owner: check in right away so the Owner sees
+            // the installation online at once (not a minute later).
+            if (result === 'ACTIVATED' && (await beat()) === 'ok')
+              await sync().catch(() => undefined);
           }
           return;
         }

@@ -92,8 +92,14 @@ export function KitchenStats({
   const late = active.filter(
     (ticket, index) => (ages[index] ?? 0) > ticket.limitMs,
   ).length;
-  const minutes = (ms: number) =>
-    text.minutes.replace('{n}', String(Math.max(0, Math.round(ms / 60_000))));
+  const minutes = (ms: number) => {
+    const total = Math.max(0, Math.round(ms / 60_000));
+    return total < 60
+      ? text.minutes.replace('{n}', String(total))
+      : text.hours
+          .replace('{h}', String(Math.floor(total / 60)))
+          .replace('{m}', String(total % 60));
+  };
   const average = ages.length
     ? ages.reduce((sum, age) => sum + age, 0) / ages.length
     : 0;

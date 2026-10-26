@@ -1665,3 +1665,13 @@ textarea {
   place-items: center;
   font-size: 2rem;
 }
+
+/* Excel import preview: each reason on its own line. */
+.import-status {
+  min-width: 180px;
+}
+.import-status .badge {
+  display: inline-block;
+  margin: 2px 4px 2px 0;
+  white-space: normal;
+}

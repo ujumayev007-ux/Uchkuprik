@@ -504,7 +504,14 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Menyuni boshqarish',
     permission: 'menu.manage',
     menuPath: '/menyu',
-    routes: ['POST /menu/*', 'PATCH /menu/*', 'PUT /menu/*', 'DELETE /menu/*'],
+    routes: [
+      'POST /menu/*',
+      'PATCH /menu/*',
+      'PUT /menu/*',
+      'DELETE /menu/*',
+      // Excel template for the menu import.
+      'GET /menu/import/template',
+    ],
     offline: 'off',
   }),
   // ---- Mijozlar ----
@@ -823,6 +830,8 @@ export const featureCatalog: FeatureDef[] = [
       'GET /devices',
       'POST /devices/register',
       'POST /devices/:id/revoke',
+      // "Terminallar": name, role, employees, switch off / on.
+      'PATCH /devices/:id',
     ],
   }),
   f({
@@ -1275,6 +1284,8 @@ const openRoutes = [
   // Design and advertising: the sign-in screen must always work; handlers check the rest.
   '* /branding',
   '* /branding/*',
+  // Menu product pictures are public like the customer menu that shows them.
+  'GET /menu/images/:id',
   // Platform administration of the cloud edition (not part of a restaurant).
   '* /platform/*',
   'GET /tenant/export',

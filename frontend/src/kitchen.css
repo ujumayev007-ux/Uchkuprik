@@ -631,6 +631,7 @@
   gap: 6px;
 }
 .preview-card {
+  color: #24272c;
   border-radius: 6px;
   background: color-mix(in srgb, #ffd23f 30%, #fff);
   border-top: 5px solid #e0b100;

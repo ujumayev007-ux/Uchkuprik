@@ -9,30 +9,34 @@ const MAX_SIDE = 1024;
 
 const isLocal = (url: string) => url.startsWith('/api/menu/images/');
 
+// Read as a data: URL: the page's security policy allows data: pictures, not blob:.
+const dataUrlOf = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
 /** Reduces a photo (phone pictures are several MB) to at most 1024 px before upload. */
 async function reduce(file: File): Promise<File> {
-  const url = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
-    const scale = Math.min(1, MAX_SIDE / Math.max(image.width, image.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(image.width * scale));
-    canvas.height = Math.max(1, Math.round(image.height * scale));
-    const context = canvas.getContext('2d');
-    if (!context) return file;
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const encode = (type: string) =>
-      new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.82));
-    // WebP where the browser can write it, JPEG otherwise (older Android WebViews).
-    let blob = await encode('image/webp');
-    if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg');
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], 'rasm', { type: blob.type });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  const image = new Image();
+  image.src = await dataUrlOf(file);
+  await image.decode();
+  const scale = Math.min(1, MAX_SIDE / Math.max(image.width, image.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return file;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const encode = (type: string) =>
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.82));
+  // WebP where the browser can write it, JPEG otherwise (older Android WebViews).
+  let blob = await encode('image/webp');
+  if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg');
+  if (!blob || blob.size >= file.size) return file;
+  return new File([blob], 'rasm', { type: blob.type });
 }
 
 /**

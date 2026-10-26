@@ -172,19 +172,30 @@ export function MenuImportDialog({
                 <thead>
                   <tr>
                     <th>{text.row}</th>
+                    <th>{text.status}</th>
                     <th>{t.menu.productName}</th>
                     <th>{t.menu.category}</th>
-                    <th>{t.menu.variantName}</th>
+                    <th>{text.variant}</th>
                     <th className="right">{t.menu.price}</th>
                     <th className="right">{t.menu.cost}</th>
                     <th>{t.menu.visibleField}</th>
-                    <th>{text.status}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.row}>
                       <td>{row.row}</td>
+                      <td className="import-status">
+                        {row.errors.length === 0 ? (
+                          <Badge tone="success">{text.ok}</Badge>
+                        ) : (
+                          row.errors.map((key) => (
+                            <Badge key={key} tone="danger">
+                              {errorText(key)}
+                            </Badge>
+                          ))
+                        )}
+                      </td>
                       <td>{row.name || '—'}</td>
                       <td>
                         {row.category || '—'}
@@ -202,17 +213,6 @@ export function MenuImportDialog({
                         {row.cost != null ? formatMoney(row.cost) : '—'}
                       </td>
                       <td>{row.isActive ? t.menu.visible : t.menu.hidden}</td>
-                      <td>
-                        {row.errors.length === 0 ? (
-                          <Badge tone="success">{text.ok}</Badge>
-                        ) : (
-                          row.errors.map((key) => (
-                            <Badge key={key} tone="danger">
-                              {errorText(key)}
-                            </Badge>
-                          ))
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>

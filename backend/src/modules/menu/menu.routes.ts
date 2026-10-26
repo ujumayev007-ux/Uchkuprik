@@ -714,7 +714,7 @@ export function menuRouter(services: Services) {
     if (!found || !PRODUCT_IMAGE_TYPES.includes(found.mime))
       throw new AppError(400, 'MEDIA_INVALID', 'mediaInvalid');
     if (bytes.length > MAX_PRODUCT_IMAGE_BYTES)
-      throw new AppError(413, 'MEDIA_TOO_LARGE', 'mediaTooLarge');
+      throw new AppError(413, 'MEDIA_TOO_LARGE', 'productImageTooLarge');
     const image = await db.$transaction(async (tx) => {
       const created = await tx.productImage.create({
         data: {

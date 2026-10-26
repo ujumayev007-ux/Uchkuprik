@@ -548,6 +548,7 @@ export const uz = {
     tooMany: 'Bir martada ko‘pi bilan 500 ta taom yuklash mumkin.',
     row: 'Qator',
     status: 'Holat',
+    variant: 'O‘lcham',
     ok: 'Tayyor',
     willCreateCategory: 'yangi kategoriya',
     summary: '{ok} ta qator tayyor, {bad} ta qatorda xato.',
@@ -2557,6 +2558,7 @@ export const uz = {
     statsOldest: 'Eng uzoq',
     statsReady: 'Tayyor',
     minutes: '{n} daq',
+    hours: '{h} s {m} d',
   },
   staffShift: {
     open: 'Smenani ochish',

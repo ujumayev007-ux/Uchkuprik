@@ -89,8 +89,9 @@ function TerminalForm({
         try {
           await patch(`/devices/${device.id}`, {
             name,
-            ...(device.panel !== 'DISPLAY' ? { panel } : {}),
-            allowedUserIds: allowed,
+            ...(device.panel !== 'DISPLAY'
+              ? { panel, allowedUserIds: allowed }
+              : {}),
           });
           onDone();
         } catch (caught) {
@@ -120,32 +121,36 @@ function TerminalForm({
           <option value="KITCHEN">{d.panelKitchen}</option>
         </SelectField>
       )}
-      <fieldset>
-        <legend>{d.employees}</legend>
-        <p className="muted small" style={{ marginTop: 0 }}>
-          {d.employeesHint}
-        </p>
-        {users.isPending ? (
-          <LoadingState />
-        ) : staff.length === 0 ? (
-          <p className="notice">{d.noPinUsers}</p>
-        ) : (
-          <div className="check-grid">
-            {staff.map((user) => (
-              <Checkbox
-                key={user.id}
-                label={user.displayName}
-                checked={allowed.includes(user.id)}
-                onChange={(on) =>
-                  setAllowed((list) =>
-                    on ? [...list, user.id] : list.filter((id) => id !== user.id),
-                  )
-                }
-              />
-            ))}
-          </div>
-        )}
-      </fieldset>
+      {device.panel !== 'DISPLAY' && (
+        <fieldset>
+          <legend>{d.employees}</legend>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            {d.employeesHint}
+          </p>
+          {users.isPending ? (
+            <LoadingState />
+          ) : staff.length === 0 ? (
+            <p className="notice">{d.noPinUsers}</p>
+          ) : (
+            <div className="check-grid">
+              {staff.map((user) => (
+                <Checkbox
+                  key={user.id}
+                  label={user.displayName}
+                  checked={allowed.includes(user.id)}
+                  onChange={(on) =>
+                    setAllowed((list) =>
+                      on
+                        ? [...list, user.id]
+                        : list.filter((id) => id !== user.id),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </fieldset>
+      )}
       <p className="muted small">{d.accessNote}</p>
       <FormError error={error} />
       <div className="form-actions">
@@ -238,7 +243,10 @@ export function DevicesPage() {
       toast(enabled ? d.enabledDone : d.disabledDone);
       await refresh();
     } catch (caught) {
-      toast(caught instanceof Error ? caught.message : t.common.errorTitle, 'error');
+      toast(
+        caught instanceof Error ? caught.message : t.common.errorTitle,
+        'error',
+      );
     }
   };
   return (
@@ -280,7 +288,7 @@ export function DevicesPage() {
                 <tr key={device.id}>
                   <td>
                     <strong>{device.name}</strong>
-                    {device.status === 'ACTIVE' && (
+                    {device.status === 'ACTIVE' && device.panel !== 'DISPLAY' && (
                       <small className="muted block">
                         {device.allowedUserIds?.length
                           ? d.employeesCount.replace(
@@ -337,13 +345,18 @@ export function DevicesPage() {
                     )}
                     {device.status === 'ACTIVE' && (
                       <>
-                        <Button size="sm" onClick={() => setConfiguring(device)}>
+                        <Button
+                          size="sm"
+                          onClick={() => setConfiguring(device)}
+                        >
                           {d.configure}
                         </Button>{' '}
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => void setEnabled(device, !!device.disabledAt)}
+                          onClick={() =>
+                            void setEnabled(device, !!device.disabledAt)
+                          }
                         >
                           {device.disabledAt ? d.enable : d.disable}
                         </Button>{' '}

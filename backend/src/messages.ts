@@ -17,6 +17,8 @@ export const messages = {
   importTooMany: 'Bir martada ko‘pi bilan 500 ta taom yuklash mumkin.',
   deviceDisabled:
     'Bu terminal administrator tomonidan vaqtincha o‘chirilgan. Administratorga murojaat qiling.',
+  productImageTooLarge:
+    'Rasm juda katta (kichraytirilgandan keyin ham 1 MB dan oshdi). Boshqa rasm tanlang.',
   pinInUse:
     'Bu PIN-kod boshqa xodimda bor. Har bir xodimga alohida PIN-kod bering.',
   accountLocked:
