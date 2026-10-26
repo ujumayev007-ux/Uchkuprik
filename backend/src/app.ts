@@ -222,6 +222,16 @@ export function createApp({
       '/api/control/media',
       express.raw({ type: () => true, limit: '21mb' }),
     );
+    // Menu import: the filled .xlsx template as a raw body.
+    app.use(
+      '/api/menu/import',
+      express.raw({ type: () => true, limit: '3mb' }),
+    );
+    // Menu product pictures (reduced by the app first), validated by their own bytes.
+    app.use(
+      '/api/menu/product-images',
+      express.raw({ type: () => true, limit: '2mb' }),
+    );
     app.use(
       '/api/branding/admin/media',
       express.raw({ type: () => true, limit: '4mb' }),

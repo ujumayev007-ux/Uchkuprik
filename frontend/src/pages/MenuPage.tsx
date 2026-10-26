@@ -24,6 +24,8 @@ import { BrandSelect } from '../lib/brands';
 import { api, del, patch, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import { RecipeDialog } from '../components/RecipeDialog';
+import { ProductImageField } from '../components/ProductImageField';
+import { MenuImportDialog } from './MenuImportDialog';
 import { useStations, type Station } from './KitchenPage';
 
 export type Variant = {
@@ -352,18 +354,16 @@ function ProductForm({
           }
         />
         <TextField
-          label={`${t.menu.imageUrl} (${t.common.optional})`}
-          type="url"
-          value={form.imageUrl}
-          onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-        />
-        <TextField
           label={`${t.menu.allergens} (${t.common.optional})`}
           hint={t.menu.allergensHint}
           value={form.allergens}
           onChange={(e) => setForm({ ...form, allergens: e.target.value })}
         />
       </div>
+      <ProductImageField
+        value={form.imageUrl}
+        onChange={(imageUrl) => setForm({ ...form, imageUrl })}
+      />
       <fieldset>
         <legend>{t.menu.variants}</legend>
         <div className="variant-list">
@@ -447,10 +447,13 @@ function ProductForm({
         </fieldset>
       )}
       <Checkbox
-        label={t.common.active}
+        label={t.menu.visibleField}
         checked={form.isActive}
         onChange={(isActive) => setForm({ ...form, isActive })}
       />
+      <p className="muted small" style={{ margin: 0 }}>
+        {t.menu.visibleHint}
+      </p>
       <FormError error={error} />
       <div className="form-actions">
         <Button type="submit" variant="primary" busy={busy}>
@@ -849,6 +852,9 @@ export function MenuPage() {
   const [tab, setTab] = useState<Tab>('products');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [visibility, setVisibility] = useState<'all' | 'visible' | 'hidden'>(
+    'all',
+  );
   const [dialog, setDialog] = useState<
     | { kind: 'category'; category: Category | null }
     | { kind: 'product'; product: Product | null }
@@ -857,6 +863,7 @@ export function MenuPage() {
   >(null);
 
   const [recipeFor, setRecipeFor] = useState<Product | null>(null);
+  const [importing, setImporting] = useState(false);
   const refresh = () => client.invalidateQueries({ queryKey: ['menu'] });
   const tree = useMemo(
     () => categoryTree(menu.data?.categories ?? []),
@@ -883,6 +890,8 @@ export function MenuPage() {
   const products = (menu.data?.products ?? []).filter(
     (product) =>
       (!descendants || descendants.has(product.categoryId)) &&
+      (visibility === 'all' ||
+        product.isActive === (visibility === 'visible')) &&
       `${product.name} ${product.sku ?? ''} ${product.barcode ?? ''}`
         .toLowerCase()
         .includes(query.trim().toLowerCase()),
@@ -891,6 +900,24 @@ export function MenuPage() {
     setDialog(null);
     toast(t.common.saved);
     await refresh();
+  };
+  // One tap: the product leaves (or comes back to) every selling menu.
+  const setVisible = async (product: Product, isActive: boolean) => {
+    try {
+      await patch(`/menu/products/${product.id}/visibility`, { isActive });
+      toast(
+        (isActive ? t.menu.shownDone : t.menu.hiddenDone).replace(
+          '{name}',
+          product.name,
+        ),
+      );
+      await refresh();
+    } catch (caught) {
+      toast(
+        caught instanceof Error ? caught.message : t.common.errorTitle,
+        'error',
+      );
+    }
   };
 
   return (
@@ -901,6 +928,16 @@ export function MenuPage() {
         actions={
           manage && (
             <>
+              <a
+                className="btn btn-ghost btn-md"
+                href="/api/menu/import/template"
+                download
+              >
+                ⬇ {t.menu.excelTemplate}
+              </a>
+              <Button onClick={() => setImporting(true)}>
+                ⬆ {t.menu.excelImport}
+              </Button>
               <Button
                 onClick={() => setDialog({ kind: 'category', category: null })}
               >
@@ -1048,6 +1085,27 @@ export function MenuPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
+              {manage && (
+                <div className="segmented" role="group" aria-label={t.menu.visibleField}>
+                  {(
+                    [
+                      ['all', t.menu.visibilityAll],
+                      ['visible', t.menu.visible],
+                      ['hidden', t.menu.hidden],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={visibility === key ? 'active' : ''}
+                      aria-pressed={visibility === key}
+                      onClick={() => setVisibility(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {products.length === 0 ? (
               <EmptyState title={t.menu.noProducts} />
@@ -1091,7 +1149,13 @@ export function MenuPage() {
                           </li>
                         ))}
                       </ul>
-                      {!product.isActive && <Badge>{t.common.inactive}</Badge>}
+                      {manage ? (
+                        <Badge tone={product.isActive ? 'success' : 'warning'}>
+                          {product.isActive ? t.menu.visible : t.menu.hidden}
+                        </Badge>
+                      ) : (
+                        !product.isActive && <Badge>{t.common.inactive}</Badge>
+                      )}
                       {manage && (
                         <div className="form-actions">
                           <Button
@@ -1107,6 +1171,17 @@ export function MenuPage() {
                             onClick={() => setRecipeFor(product)}
                           >
                             {t.inventory.recipe}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={product.isActive ? 'ghost' : 'primary'}
+                            onClick={() =>
+                              void setVisible(product, !product.isActive)
+                            }
+                          >
+                            {product.isActive
+                              ? `🙈 ${t.menu.hide}`
+                              : `👁 ${t.menu.show}`}
                           </Button>
                           <Button
                             size="sm"
@@ -1177,6 +1252,15 @@ export function MenuPage() {
           <GroupForm group={dialog.group} showCost={showCost} onDone={done} />
         )}
       </Dialog>
+      {importing && (
+        <MenuImportDialog
+          onClose={() => setImporting(false)}
+          onDone={() => {
+            setImporting(false);
+            void refresh();
+          }}
+        />
+      )}
       {recipeFor && (
         <RecipeDialog product={recipeFor} onClose={() => setRecipeFor(null)} />
       )}

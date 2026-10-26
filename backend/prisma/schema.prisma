@@ -1484,6 +1484,8 @@ model AttendanceRecord {
   clockIn       DateTime
   clockOut      DateTime?
   note          String?
+  // Terminal the shift was opened on (null: browser / older records).
+  deviceId      String?   @db.Uuid
   correctedById String?   @db.Uuid
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -3282,4 +3284,21 @@ model ControlSetting {
   updatedAt DateTime @updatedAt
 
   @@map("control_settings")
+}
+
+// Pictures uploaded for menu products (validated JPEG/PNG/WebP bytes, already reduced
+// by the uploading app). Kept in the database so they survive updates and are part of
+// every backup; served to the restaurant's apps and customer menus by id.
+model ProductImage {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  mime        String
+  sizeBytes   Int
+  sha256      String
+  data        Bytes
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("product_images")
 }

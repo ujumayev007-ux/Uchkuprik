@@ -37,6 +37,8 @@ import { StockAlerts } from './StockAlerts';
 import { useBranding } from '../lib/branding';
 import { BrandingHost } from './BrandingHost';
 import { ReauthDialog } from './ReauthDialog';
+import { CalculatorButton } from './Calculator';
+import { StaffShiftButton } from './StaffShiftButton';
 import { useTheme, useToast } from './ui';
 
 export type Branch = {
@@ -306,7 +308,11 @@ export const navItems: NavItem[] = [
     icon: '⎙',
     visible: (me) =>
       hasFeature(me, 'kitchen_printing') &&
-      (can(me, 'settings.manage') || can(me, 'pos.access')),
+      (can(me, 'settings.manage') ||
+        can(me, 'pos.access') ||
+        // Oshxona and Ofitsiant: this device's printer, status and test print.
+        can(me, 'kitchen.access') ||
+        can(me, 'orders.create')),
   },
   {
     to: '/tolovlar',
@@ -628,6 +634,10 @@ export function AppShell() {
           !hidden.includes(item.to) &&
           !adminHidden.includes(item.to) &&
           (item.to !== '/dizayn' || delegated),
+      ).map((item) =>
+        item.to === '/printerlar' && isFrontLine(me)
+          ? { ...item, label: t.nav.printerSettings }
+          : item,
       );
   const menuDisabled = hidden.some(
     (path) =>
@@ -711,6 +721,12 @@ export function AppShell() {
           </button>
           <BranchSwitcher me={me} />
           <div className="topbar-spacer" />
+          {/* Kassa, Ofitsiant and Oshxona staff open and close their own shift. */}
+          {compact && <StaffShiftButton cashier={isCashierApp} />}
+          {(panelKind === 'waiter' ||
+            (compact && me.roleKeys.includes('waiter'))) && (
+            <CalculatorButton />
+          )}
           <LiveClock />
           {me.tenantKind === 'BUSINESS' && hasFeature(me, 'inventory') && (
             <StockAlerts />

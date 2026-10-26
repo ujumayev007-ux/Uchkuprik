@@ -12,6 +12,11 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  importFile:
+    'Excel faylini o‘qib bo‘lmadi. “Excel namunasini yuklab olish” orqali olingan .xlsx faylni to‘ldirib yuklang.',
+  importTooMany: 'Bir martada ko‘pi bilan 500 ta taom yuklash mumkin.',
+  pinInUse:
+    'Bu PIN-kod boshqa xodimda bor. Har bir xodimga alohida PIN-kod bering.',
   accountLocked:
     'Juda ko‘p noto‘g‘ri urinish. Hisob vaqtincha bloklandi, keyinroq urinib ko‘ring.',
   unauthenticated: 'Iltimos, tizimga kiring.',

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useMe } from '../auth/session';
+import { can, useMe } from '../auth/session';
 import {
   Badge,
   Button,
@@ -16,7 +16,10 @@ import {
   useConfirm,
   useToast,
 } from '../components/ui';
-import { terminalPrinter } from '../components/TerminalPrinter';
+import {
+  terminalPrinter,
+  TerminalPrinterButton,
+} from '../components/TerminalPrinter';
 import { t } from '../i18n';
 import { api, del, patch, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
@@ -554,6 +557,8 @@ export function PrintersPage() {
   const { confirm, element: confirmDialog } = useConfirm();
   const stations = useStations();
   const branchId = me?.activeBranchId ?? '';
+  // Oshxona and Ofitsiant: this device's printer, status and test print only.
+  const manage = can(me, 'settings.manage') || can(me, 'pos.access');
   const [editing, setEditing] = useState<Printer | 'new' | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -576,7 +581,7 @@ export function PrintersPage() {
       api<{ jobs: Job[] }>(`/print-jobs?branchId=${branchId}`).then(
         (data) => data.jobs,
       ),
-    enabled: !!branchId,
+    enabled: !!branchId && manage,
     refetchInterval: 5_000,
   });
 
@@ -645,6 +650,9 @@ export function PrintersPage() {
         subtitle={p.subtitle}
         actions={
           <div className="toolbar">
+            <TerminalPrinterButton />
+            {manage && (
+              <>
             <Button
               variant="ghost"
               size="sm"
@@ -664,6 +672,8 @@ export function PrintersPage() {
             <Button variant="primary" onClick={() => setEditing('new')}>
               + {p.add}
             </Button>
+              </>
+            )}
           </div>
         }
       />
@@ -763,6 +773,8 @@ export function PrintersPage() {
                       >
                         {p.test}
                       </Button>{' '}
+                      {manage && (
+                        <>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -787,6 +799,8 @@ export function PrintersPage() {
                       >
                         {p.remove}
                       </Button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -796,8 +810,8 @@ export function PrintersPage() {
         </div>
       )}
 
-      <h2 className="section-title">{p.jobs}</h2>
-      {jobs.data && jobs.data.length > 0 ? (
+      {manage && <h2 className="section-title">{p.jobs}</h2>}
+      {!manage ? null : jobs.data && jobs.data.length > 0 ? (
         <div className="table-wrap">
           <table className="table">
             <thead>

@@ -1,4 +1,5 @@
 import { Router, type Request } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
 import type { Tx } from '../../db.js';
@@ -9,6 +10,14 @@ import {
   parse,
 } from '../../http/errors.js';
 import { assertBrand, categoryVisible } from '../brands/brands.routes.js';
+import { sha256Of, sniffMedia } from '../branding/media.js';
+import {
+  checkRows,
+  importTemplate,
+  MAX_IMPORT_ROWS,
+  normal,
+  readFirstSheet,
+} from './import.js';
 import { audit } from '../audit/audit.js';
 import {
   getAuth,
@@ -19,6 +28,13 @@ import {
 import { resolveBranch } from '../branches/access.js';
 
 const amount = z.number().int().min(0).max(1_000_000_000);
+
+// Pictures uploaded from the Admin (already reduced by the app) are served from here.
+const LOCAL_IMAGE = /^\/api\/menu\/images\/[0-9a-f-]{36}$/;
+const localImageId = (url: string | null | undefined) =>
+  url && LOCAL_IMAGE.test(url) ? url.slice(url.lastIndexOf('/') + 1) : null;
+const MAX_PRODUCT_IMAGE_BYTES = 1024 * 1024;
+const PRODUCT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const optionalText = (max: number) =>
   z.string().trim().max(max).nullable().optional();
 
@@ -50,12 +66,16 @@ const productInput = z.object({
     .regex(/^[0-9A-Za-z-]{4,32}$/)
     .nullable()
     .optional(),
-  // Only HTTPS images; object storage uploads arrive with the media module.
+  // An HTTPS link or a picture uploaded to this server.
   imageUrl: z
     .string()
     .trim()
-    .url()
-    .refine((value) => value.startsWith('https://'))
+    .max(1000)
+    .refine(
+      (value) =>
+        LOCAL_IMAGE.test(value) ||
+        (value.startsWith('https://') && z.url().safeParse(value).success),
+    )
     .nullable()
     .optional(),
   allergens: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
@@ -459,6 +479,17 @@ export function menuRouter(services: Services) {
         data: { ...data, version: { increment: 1 } },
       });
       productId = id;
+      // A replaced or removed uploaded picture is deleted when nothing else shows it.
+      const oldImage = localImageId(current.imageUrl);
+      if (oldImage && current.imageUrl !== data.imageUrl) {
+        const stillUsed = await tx.product.count({
+          where: { tenantId: auth.tenantId, imageUrl: current.imageUrl },
+        });
+        if (stillUsed === 0)
+          await tx.productImage.deleteMany({
+            where: { id: oldImage, tenantId: auth.tenantId },
+          });
+      }
     } else {
       const created = await tx.product.create({
         data: { tenantId: auth.tenantId, ...data },
@@ -523,6 +554,218 @@ export function menuRouter(services: Services) {
       if (isUniqueViolation(error)) throw errors.conflict();
       throw error;
     }
+    res.json({ ok: true });
+  });
+
+  // --- Excel import ---------------------------------------------------------------
+  const importMenu = (tx: Tx, tenantId: string) =>
+    Promise.all([
+      tx.menuCategory.findMany({
+        where: { tenantId },
+        select: { id: true, name: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+      tx.product.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { name: true, categoryId: true, sku: true, barcode: true },
+      }),
+    ]).then(([categories, products]) => ({ categories, products }));
+
+  router.get('/menu/import/template', ...manage, async (_req, res) => {
+    const auth = getAuth(res);
+    const menu = await importMenu(db, auth.tenantId);
+    const file = await importTemplate(menu.categories.map((c) => c.name));
+    res
+      .type(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      )
+      .setHeader(
+        'Content-Disposition',
+        'attachment; filename="taomlar-namuna.xlsx"',
+      )
+      .send(file);
+  });
+
+  // mode=preview checks every row; mode=commit saves the rows that passed (in one
+  // transaction, checked again) and never changes products already on the menu.
+  router.post('/menu/import', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const { mode } = parse(
+      z.object({ mode: z.enum(['preview', 'commit']).default('preview') }),
+      req.query,
+    );
+    const bytes = Buffer.isBuffer(req.body) ? req.body : null;
+    const sheet = bytes?.length ? readFirstSheet(bytes) : null;
+    if (!sheet) throw new AppError(400, 'IMPORT_FILE', 'importFile');
+    if (mode === 'preview') {
+      const checked = checkRows(sheet, await importMenu(db, auth.tenantId));
+      if (!checked.headerFound)
+        throw new AppError(400, 'IMPORT_FILE', 'importFile');
+      if (checked.rows.length > MAX_IMPORT_ROWS)
+        throw new AppError(400, 'IMPORT_TOO_MANY', 'importTooMany');
+      res.json({ rows: checked.rows });
+      return;
+    }
+    const result = await db.$transaction(
+      async (tx) => {
+        const menu = await importMenu(tx, auth.tenantId);
+        const checked = checkRows(sheet, menu);
+        if (!checked.headerFound)
+          throw new AppError(400, 'IMPORT_FILE', 'importFile');
+        if (checked.rows.length > MAX_IMPORT_ROWS)
+          throw new AppError(400, 'IMPORT_TOO_MANY', 'importTooMany');
+        const good = checked.rows.filter((row) => row.errors.length === 0);
+        const categoryIds = new Map(
+          menu.categories.map((c) => [normal(c.name), c.id]),
+        );
+        for (const row of good) {
+          const key = normal(row.category);
+          let categoryId = categoryIds.get(key);
+          if (!categoryId) {
+            const created = await tx.menuCategory.create({
+              data: { tenantId: auth.tenantId, name: row.category.trim() },
+            });
+            categoryId = created.id;
+            categoryIds.set(key, categoryId);
+          }
+          await writeProduct(
+            tx,
+            auth,
+            {
+              categoryId,
+              name: row.name,
+              description: row.description,
+              sku: row.sku,
+              barcode: row.barcode,
+              imageUrl: null,
+              allergens: [],
+              prepTimeMinutes: row.prepTimeMinutes,
+              isActive: row.isActive,
+              sortOrder: 0,
+              variants: [
+                {
+                  name: row.variant,
+                  price: row.price ?? 0,
+                  cost: row.cost,
+                  isActive: true,
+                },
+              ],
+              modifierGroupIds: [],
+            },
+            null,
+            req,
+          );
+        }
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'menu.import',
+          entityType: 'menu',
+          data: { created: good.length, rejected: checked.rows.length - good.length },
+        });
+        return {
+          created: good.length,
+          rejected: checked.rows.filter((row) => row.errors.length > 0),
+        };
+      },
+      { timeout: 120_000, maxWait: 10_000 },
+    );
+    res.json(result);
+  });
+
+  // Product pictures: public like the menu itself (customer and Telegram menus show
+  // them), served by an unguessable id with long caching.
+  const imageLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 3000,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+  router.get('/menu/images/:id', imageLimiter, async (req, res) => {
+    const id = z.uuid().safeParse(req.params.id);
+    const row = id.success
+      ? await db.productImage.findUnique({ where: { id: id.data } })
+      : null;
+    if (!row) {
+      res.status(404).json({ code: 'NOT_FOUND', message: 'Topilmadi' });
+      return;
+    }
+    const etag = `"${row.sha256}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end();
+      return;
+    }
+    const bytes = Buffer.from(row.data);
+    res.type(row.mime).setHeader('Content-Length', String(bytes.length));
+    res.send(bytes);
+  });
+
+  // Uploaded as the raw picture body; judged by its own bytes, never by its name.
+  router.post('/menu/product-images', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const bytes = Buffer.isBuffer(req.body) ? req.body : null;
+    if (!bytes || bytes.length === 0)
+      throw errors.validation([{ path: 'file' }]);
+    const found = sniffMedia(bytes);
+    if (!found || !PRODUCT_IMAGE_TYPES.includes(found.mime))
+      throw new AppError(400, 'MEDIA_INVALID', 'mediaInvalid');
+    if (bytes.length > MAX_PRODUCT_IMAGE_BYTES)
+      throw new AppError(413, 'MEDIA_TOO_LARGE', 'mediaTooLarge');
+    const image = await db.$transaction(async (tx) => {
+      const created = await tx.productImage.create({
+        data: {
+          tenantId: auth.tenantId,
+          mime: found.mime,
+          sizeBytes: bytes.length,
+          sha256: sha256Of(bytes),
+          data: Buffer.from(bytes),
+          createdById: auth.userId,
+        },
+        select: { id: true },
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'menu.image.upload',
+        entityType: 'product_image',
+        entityId: created.id,
+      });
+      return created;
+    });
+    res
+      .status(201)
+      .json({ id: image.id, url: `/api/menu/images/${image.id}` });
+  });
+
+  // "Ko‘rinadi / Yashirilgan": a hidden product leaves the Kassa, Ofitsiant and online
+  // menus but is kept (orders and reports that name it are unchanged).
+  router.patch('/menu/products/:id/visibility', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const { isActive } = parse(z.object({ isActive: z.boolean() }), req.body);
+    await db.$transaction(async (tx) => {
+      const current = await tx.product.findFirst({
+        where: { id, tenantId: auth.tenantId, deletedAt: null },
+        select: { isActive: true },
+      });
+      if (!current) throw errors.notFound();
+      if (current.isActive === isActive) return;
+      await tx.product.update({
+        where: { id },
+        data: { isActive, version: { increment: 1 } },
+      });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: isActive ? 'menu.product.show' : 'menu.product.hide',
+        entityType: 'product',
+        entityId: id,
+      });
+    });
     res.json({ ok: true });
   });
 

@@ -85,7 +85,13 @@ export function printersRouter(services: Services) {
   ];
   const terminalAccess = [
     requireAuth(),
-    requireAnyPermission('settings.manage', 'pos.access', 'kitchen.access'),
+    // Oshxona and Ofitsiant see the printers, check them and print a test page.
+    requireAnyPermission(
+      'settings.manage',
+      'pos.access',
+      'kitchen.access',
+      'orders.create',
+    ),
   ];
 
   router.get('/printers', ...terminalAccess, async (req, res) => {

@@ -1578,3 +1578,90 @@ textarea {
     inset: 0 auto auto 0;
   }
 }
+
+/* Waiter calculator: large touch keys. */
+.calc {
+  display: grid;
+  gap: 10px;
+  width: min(360px, 100%);
+  margin: 0 auto;
+}
+.calc-expression {
+  text-align: right;
+  color: var(--muted);
+  font-size: 1rem;
+  min-height: 1.2em;
+}
+.calc-display {
+  display: block;
+  text-align: right;
+  font-size: 2.4rem;
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  overflow-wrap: anywhere;
+}
+.calc-keys {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.calc-key {
+  min-height: 64px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.calc-key:active {
+  transform: scale(0.97);
+}
+.calc-key-muted {
+  font-size: 1rem;
+  color: var(--muted);
+}
+.calc-key-op {
+  color: var(--accent);
+}
+.calc-key-equals {
+  grid-row: span 2;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.calc-key-wide {
+  grid-column: span 2;
+}
+.calc-copy {
+  min-height: 52px;
+}
+
+/* Staff shift button in the top bar. */
+.shift-chip.on {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* Menu product picture: preview next to the upload buttons. */
+.product-image-field {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.product-image-field img,
+.product-image-field .product-placeholder {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+}
