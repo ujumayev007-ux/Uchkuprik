@@ -416,3 +416,268 @@
   font-weight: 700;
   text-align: center;
 }
+
+/* ---- Kitchen designs (Sozlamalar → Ko‘rinish va dizayn). Classic = the styles above. ---- */
+.kds-board {
+  display: block;
+}
+
+/* Qorong‘i: dark, high contrast. */
+.kds-theme-dark {
+  --surface: #1b2024;
+  --surface-2: #242b30;
+  --text: #f4f6f2;
+  --muted: #b5bdb8;
+  --line: #3a444a;
+  background: #0f1214;
+  color: var(--text);
+  padding: 14px;
+  border-radius: 18px;
+}
+:root:has(.kds-theme-dark) .shell-content {
+  background: #0f1214;
+}
+.kds-theme-dark .ticket-ok,
+.kds-theme-dark .ticket-warn,
+.kds-theme-dark .ticket-late {
+  background: color-mix(in srgb, #ffd23f 12%, var(--surface));
+}
+.kds-theme-dark .ticket.ticket-ready {
+  background: color-mix(in srgb, #18a957 20%, var(--surface));
+}
+.kds-theme-dark .ticket-number,
+.kds-theme-dark .ticket-timer {
+  color: #fff;
+}
+
+/* Ustunli: Kanban columns by status. */
+.kds-theme-columns .kds-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(290px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  align-items: start;
+  padding-bottom: 8px;
+}
+.kds-theme-columns .kds-section {
+  margin: 0;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  min-height: 60vh;
+}
+.kds-theme-columns .kds-grid {
+  grid-template-columns: 1fr;
+}
+
+/* Ixcham: more tickets on one screen. */
+.kds-theme-compact .kds-grid {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+.kds-theme-compact .ticket {
+  padding: 8px;
+  gap: 6px;
+  border-top-width: 6px;
+}
+.kds-theme-compact .ticket-number {
+  font-size: 22px;
+}
+.kds-theme-compact .ticket-timer {
+  font-size: 16px;
+}
+.kds-theme-compact .ticket-source {
+  margin: 0;
+  font-size: 12px;
+}
+.kds-theme-compact .ticket-item {
+  min-height: 40px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.kds-theme-compact .ticket-item .qty {
+  font-size: 16px;
+}
+.kds-theme-compact .ticket-actions .btn {
+  flex-basis: 90px;
+  min-height: 42px;
+  font-size: 14px;
+}
+.kds-theme-compact .kds-section {
+  margin: 8px 0 14px;
+}
+
+/* Aqlli oshxona: statistics, timers and delay bars. */
+.kds-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.kds-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.kds-stat span {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+.kds-stat strong {
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+.kds-stat.stat-new strong {
+  color: var(--danger);
+}
+.kds-stat.stat-late {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+.kds-stat.stat-ready strong {
+  color: #18a957;
+}
+.ticket-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.ticket-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #18a957;
+  transition: width 1s linear;
+}
+.ticket-progress.progress-warn span {
+  background: #e0b100;
+}
+.ticket-progress.progress-late span {
+  background: var(--danger);
+}
+.kds-theme-smart .ticket-timer {
+  font-size: 24px;
+}
+
+/* Minimal: big numbers, essentials and big buttons. */
+.kds-theme-minimal .ticket-source,
+.kds-theme-minimal .ticket-meta,
+.kds-theme-minimal .item-state,
+.kds-theme-minimal .kds-stages {
+  display: none;
+}
+.kds-theme-minimal .ticket-number {
+  font-size: 46px;
+}
+.kds-theme-minimal .ticket-timer {
+  font-size: 26px;
+}
+.kds-theme-minimal .ticket-item {
+  font-size: 20px;
+  min-height: 64px;
+}
+.kds-theme-minimal .ticket-actions .btn {
+  min-height: 66px;
+  font-size: 20px;
+}
+
+/* Design picker with small previews. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  padding: 12px;
+  border-radius: 16px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.theme-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.theme-current {
+  color: var(--accent);
+  font-size: 13px;
+}
+.theme-preview {
+  height: 110px;
+  border-radius: 12px;
+  padding: 8px;
+  background: #f3f1ea;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.preview-cards {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.preview-card {
+  border-radius: 6px;
+  background: color-mix(in srgb, #ffd23f 30%, #fff);
+  border-top: 5px solid #e0b100;
+  padding: 3px 5px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.preview-card i {
+  display: block;
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #18a957 60%, #ddd 60%);
+}
+.preview-dark {
+  background: #0f1214;
+}
+.preview-dark .preview-card {
+  background: #1b2024;
+  color: #fff;
+}
+.preview-columns .preview-cards {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(1, 1fr);
+}
+.preview-columns .preview-card:nth-child(2) {
+  border-top-color: #ce431b;
+}
+.preview-columns .preview-card:nth-child(3) {
+  border-top-color: #18a957;
+}
+.preview-compact .preview-cards {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 4px;
+}
+.preview-smart .preview-stats {
+  height: 18px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(90deg, #fff 0 22%, transparent 22% 25%);
+}
+.preview-minimal .preview-cards {
+  grid-template-columns: repeat(2, 1fr);
+}
+.preview-minimal .preview-card {
+  font-size: 26px;
+  align-items: center;
+  justify-content: center;
+}

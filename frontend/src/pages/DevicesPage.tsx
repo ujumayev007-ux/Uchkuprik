@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useMe } from '../auth/session';
+import { can, useMe } from '../auth/session';
 import { useBranches } from '../components/AppShell';
 import {
   Badge,
   Button,
+  Checkbox,
   Dialog,
   EmptyState,
   ErrorState,
@@ -19,7 +20,7 @@ import {
 import { t } from '../i18n';
 import { shellPanel } from '../lib/shell';
 import { appVersion } from '../lib/pwa';
-import { api, post } from '../lib/api';
+import { api, patch, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 
 type Device = {
@@ -31,7 +32,130 @@ type Device = {
   lastSeenAt: string | null;
   appVersion: string | null;
   createdAt: string;
+  panel?: string;
+  disabledAt?: string | null;
+  allowedUserIds?: string[];
 };
+
+type StaffUser = {
+  id: string;
+  displayName: string;
+  status: 'ACTIVE' | 'DISABLED';
+  hasPin: boolean;
+};
+
+const d = t.devices;
+const panelLabel = (panel: string | undefined) =>
+  panel === 'CASHIER'
+    ? d.panelCashier
+    : panel === 'KITCHEN'
+      ? d.panelKitchen
+      : panel === 'WAITER'
+        ? d.panelWaiter
+        : panel === 'DISPLAY'
+          ? d.panelDisplay
+          : d.panelOther;
+
+/** Name, role and the employees who may sign in on one terminal. */
+function TerminalForm({
+  device,
+  onDone,
+}: {
+  device: Device;
+  onDone: () => void;
+}) {
+  const { data: me } = useMe();
+  const users = useQuery({
+    queryKey: ['users'],
+    queryFn: () =>
+      api<{ users: StaffUser[] }>('/users').then((data) => data.users),
+    enabled: can(me, 'users.view'),
+  });
+  const [name, setName] = useState(device.name);
+  const [panel, setPanel] = useState(device.panel ?? 'OTHER');
+  const [allowed, setAllowed] = useState<string[]>(device.allowedUserIds ?? []);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const staff = (users.data ?? []).filter(
+    (user) => user.status === 'ACTIVE' && user.hasPin,
+  );
+  return (
+    <form
+      className="stack"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          await patch(`/devices/${device.id}`, {
+            name,
+            ...(device.panel !== 'DISPLAY' ? { panel } : {}),
+            allowedUserIds: allowed,
+          });
+          onDone();
+        } catch (caught) {
+          setError(caught);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <TextField
+        label={d.deviceName}
+        value={name}
+        minLength={2}
+        maxLength={80}
+        onChange={(e) => setName(e.target.value)}
+        required
+      />
+      {device.panel !== 'DISPLAY' && (
+        <SelectField
+          label={d.role}
+          value={panel}
+          onChange={(e) => setPanel(e.target.value)}
+        >
+          <option value="OTHER">{d.panelOther}</option>
+          <option value="CASHIER">{d.panelCashier}</option>
+          <option value="WAITER">{d.panelWaiter}</option>
+          <option value="KITCHEN">{d.panelKitchen}</option>
+        </SelectField>
+      )}
+      <fieldset>
+        <legend>{d.employees}</legend>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          {d.employeesHint}
+        </p>
+        {users.isPending ? (
+          <LoadingState />
+        ) : staff.length === 0 ? (
+          <p className="notice">{d.noPinUsers}</p>
+        ) : (
+          <div className="check-grid">
+            {staff.map((user) => (
+              <Checkbox
+                key={user.id}
+                label={user.displayName}
+                checked={allowed.includes(user.id)}
+                onChange={(on) =>
+                  setAllowed((list) =>
+                    on ? [...list, user.id] : list.filter((id) => id !== user.id),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+      </fieldset>
+      <p className="muted small">{d.accessNote}</p>
+      <FormError error={error} />
+      <div className="form-actions">
+        <Button type="submit" variant="primary" busy={busy}>
+          {t.common.save}
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 function RegisterForm({ onDone }: { onDone: () => void }) {
   const { data: me } = useMe();
@@ -98,17 +222,30 @@ export function DevicesPage() {
   const toast = useToast();
   const { confirm, element: confirmElement } = useConfirm();
   const [registering, setRegistering] = useState(false);
+  const [configuring, setConfiguring] = useState<Device | null>(null);
   const devices = useQuery({
     queryKey: ['devices'],
     queryFn: () =>
       api<{ devices: Device[] }>('/devices').then((data) => data.devices),
+    // Connection status stays current while the page is open.
+    refetchInterval: 30_000,
   });
   const refresh = () => client.invalidateQueries({ queryKey: ['devices'] });
+  const setEnabled = async (device: Device, enabled: boolean) => {
+    if (!enabled && !(await confirm(d.disableConfirm))) return;
+    try {
+      await patch(`/devices/${device.id}`, { enabled });
+      toast(enabled ? d.enabledDone : d.disabledDone);
+      await refresh();
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : t.common.errorTitle, 'error');
+    }
+  };
   return (
     <>
       <PageHeader
-        title={t.devices.title}
-        subtitle={t.devices.subtitle}
+        title={d.terminalsTitle}
+        subtitle={d.terminalsSubtitle}
         actions={
           <Button variant="primary" onClick={() => setRegistering(true)}>
             + {t.devices.register}
@@ -130,6 +267,7 @@ export function DevicesPage() {
             <thead>
               <tr>
                 <th>{t.common.name}</th>
+                <th>{d.role}</th>
                 <th>{t.nav.branch}</th>
                 <th>{t.common.status}</th>
                 <th>{t.devices.lastSeen}</th>
@@ -142,10 +280,23 @@ export function DevicesPage() {
                 <tr key={device.id}>
                   <td>
                     <strong>{device.name}</strong>
+                    {device.status === 'ACTIVE' && (
+                      <small className="muted block">
+                        {device.allowedUserIds?.length
+                          ? d.employeesCount.replace(
+                              '{n}',
+                              String(device.allowedUserIds.length),
+                            )
+                          : d.employeesAll}
+                      </small>
+                    )}
                   </td>
+                  <td>{panelLabel(device.panel)}</td>
                   <td>{device.branchName}</td>
                   <td>
-                    {device.status === 'ACTIVE' ? (
+                    {device.status === 'ACTIVE' && device.disabledAt ? (
+                      <Badge tone="warning">{d.disabled}</Badge>
+                    ) : device.status === 'ACTIVE' ? (
                       <Badge tone="success">{t.common.active}</Badge>
                     ) : device.status === 'PENDING' ? (
                       <Badge tone="warning">{t.devices.pending}</Badge>
@@ -180,7 +331,24 @@ export function DevicesPage() {
                       <Badge tone="warning">{t.pwa.outdated}</Badge>
                     )}
                   </td>
-                  <td className="right">
+                  <td className="right nowrap">
+                    {device.status === 'PENDING' && (
+                      <small className="muted">{d.pendingNote}</small>
+                    )}
+                    {device.status === 'ACTIVE' && (
+                      <>
+                        <Button size="sm" onClick={() => setConfiguring(device)}>
+                          {d.configure}
+                        </Button>{' '}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void setEnabled(device, !!device.disabledAt)}
+                        >
+                          {device.disabledAt ? d.enable : d.disable}
+                        </Button>{' '}
+                      </>
+                    )}
                     {device.status === 'ACTIVE' && (
                       <Button
                         size="sm"
@@ -220,6 +388,23 @@ export function DevicesPage() {
             onDone={async () => {
               toast(t.devices.registered);
               setRegistering(false);
+              await refresh();
+            }}
+          />
+        )}
+      </Dialog>
+      <Dialog
+        open={configuring !== null}
+        wide
+        title={d.configureTitle}
+        onClose={() => setConfiguring(null)}
+      >
+        {configuring && (
+          <TerminalForm
+            device={configuring}
+            onDone={async () => {
+              toast(t.common.saved);
+              setConfiguring(null);
               await refresh();
             }}
           />

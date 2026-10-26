@@ -17,6 +17,8 @@ import { api, post } from '../lib/api';
 import { chime } from '../lib/realtime';
 import { VoiceSettingsDialog } from '../components/VoiceSettingsDialog';
 import { StockRequestsTab } from './StockRequestsTab';
+import { useKitchenTheme } from '../lib/ordering';
+import { KitchenStats, KitchenThemeDialog } from './KitchenThemes';
 
 type KitchenStatus = 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
 type Ticket = {
@@ -142,6 +144,9 @@ export function KitchenPage() {
   const [refusing, setRefusing] = useState<Ticket | null>(null);
   const [reason, setReason] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const kitchenTheme = useKitchenTheme();
+  const theme = kitchenTheme.theme;
   const now = useNow();
   // Correct for device clock drift using the server time of the last response.
   const skew = tickets.data
@@ -254,6 +259,17 @@ export function KitchenPage() {
             {elapsed(ticket.placedAt, now + skew)}
           </time>
         </header>
+        {theme === 'smart' && stage !== 'READY' && stage !== 'REJECTED' && (
+          <div
+            className={`ticket-progress progress-${tone}`}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.min(100, Math.round((age / limit) * 100))}
+          >
+            <span style={{ width: `${Math.min(100, (age / limit) * 100)}%` }} />
+          </div>
+        )}
         <p className="ticket-source">
           {t.kitchen.orderTime}: {clock(ticket.placedAt)}
           {' · '}
@@ -422,9 +438,19 @@ export function KitchenPage() {
   };
 
   return (
-    <div className="kds">
+    <div className={`kds kds-theme-${theme}`}>
       <div className="kds-header">
         <h1>{t.kitchen.title}</h1>
+        {kitchenTheme.canChange && (
+          <button
+            className="icon-button"
+            aria-label={t.kitchenTheme.open}
+            title={t.kitchenTheme.open}
+            onClick={() => setThemeOpen(true)}
+          >
+            🎨
+          </button>
+        )}
         <button
           className="icon-button"
           aria-label={t.voice.title}
@@ -479,6 +505,19 @@ export function KitchenPage() {
         <EmptyState title={t.kitchen.noTickets} />
       ) : (
         <>
+          {theme === 'smart' && (
+            <KitchenStats
+              tickets={tickets.data.tickets.map((ticket) => ({
+                stage: stageOf(ticket),
+                placedAt: ticket.placedAt,
+                limitMs:
+                  Math.max(
+                    ...ticket.items.map((item) => item.prepTimeMinutes ?? 15),
+                  ) * 60_000,
+              }))}
+              now={now + skew}
+            />
+          )}
           <div className="kds-stages" aria-label={t.kitchen.stagesTitle}>
             {STAGES.map((stage) => (
               <span
@@ -495,11 +534,14 @@ export function KitchenPage() {
               </span>
             ))}
           </div>
+          <div className="kds-board">
           {STAGES.map((stage) => {
             const list = tickets.data.tickets.filter(
               (ticket) => stageOf(ticket) === stage,
             );
-            if (list.length === 0) return null;
+            // Ustunli: every working column stays on screen, even when empty.
+            const keepEmpty = theme === 'columns' && stage !== 'REJECTED';
+            if (list.length === 0 && !keepEmpty) return null;
             return (
               <section key={stage} className="kds-section">
                 <h2
@@ -513,6 +555,7 @@ export function KitchenPage() {
               </section>
             );
           })}
+          </div>
         </>
       )}
       <p className="muted small center">{t.kitchen.tapHint}</p>
@@ -567,6 +610,22 @@ export function KitchenPage() {
         </Dialog>
       )}
       {voiceOpen && <VoiceSettingsDialog onClose={() => setVoiceOpen(false)} />}
+      {themeOpen && (
+        <KitchenThemeDialog
+          theme={theme}
+          previous={kitchenTheme.previous}
+          onChange={(next) => {
+            kitchenTheme.change(next);
+            toast(
+              t.kitchenTheme.applied.replace(
+                '{name}',
+                t.kitchenTheme.names[next],
+              ),
+            );
+          }}
+          onClose={() => setThemeOpen(false)}
+        />
+      )}
     </div>
   );
 }

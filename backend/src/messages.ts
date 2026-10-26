@@ -15,6 +15,8 @@ export const messages = {
   importFile:
     'Excel faylini o‘qib bo‘lmadi. “Excel namunasini yuklab olish” orqali olingan .xlsx faylni to‘ldirib yuklang.',
   importTooMany: 'Bir martada ko‘pi bilan 500 ta taom yuklash mumkin.',
+  deviceDisabled:
+    'Bu terminal administrator tomonidan vaqtincha o‘chirilgan. Administratorga murojaat qiling.',
   pinInUse:
     'Bu PIN-kod boshqa xodimda bor. Har bir xodimga alohida PIN-kod bering.',
   accountLocked:

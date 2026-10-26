@@ -289,6 +289,11 @@ export function createControlRuntime(
     invalidate();
     anchor = null;
     clockSuspect = false;
+    // Check in right away: the Owner sees the new installation online at once, not
+    // after the next one-minute heartbeat.
+    void beat()
+      .then((result) => (result === 'ok' ? sync() : undefined))
+      .catch(() => undefined);
     return { ok: true as const, customerName: String(data.customerName) };
   }
 
@@ -838,14 +843,29 @@ export function createControlRuntime(
   function start(intervalMs: number = timing.heartbeatIntervalMs) {
     let lastSummaries = 0;
     let lastRegister = 0;
+    let registerWait = 0;
+    let registerFailures = 0;
     const tick = async () => {
       try {
         if ((await link()) === null) {
-          // Not linked yet: announce this installation (and collect an approval) now
-          // and then, never more often than every ten minutes.
-          if (Date.now() - lastRegister > 10 * 60_000) {
+          // Not linked yet: announce this installation (and collect an approval).
+          // A failed attempt (centre asleep, internet not up yet) is retried soon
+          // (30 s, doubling, at most 5 min) instead of after ten minutes; while the
+          // Owner's decision is awaited the install asks every minute, so a licence
+          // the Owner assigns is picked up at once.
+          if (Date.now() - lastRegister >= registerWait) {
             lastRegister = Date.now();
-            await register().catch(() => undefined);
+            const result = await register().catch(() => 'ERROR' as const);
+            if (result === 'ERROR') {
+              registerFailures += 1;
+              registerWait = Math.min(
+                5 * 60_000,
+                30_000 * 2 ** (registerFailures - 1),
+              );
+            } else {
+              registerFailures = 0;
+              registerWait = result === 'PENDING' ? 60_000 : 10 * 60_000;
+            }
           }
           return;
         }

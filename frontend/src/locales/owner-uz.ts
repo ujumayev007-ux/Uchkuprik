@@ -194,7 +194,7 @@ export const owner = {
       ONLINE: 'Onlayn',
       OFFLINE: 'Oflayn',
       BLOCKED: 'Bloklangan',
-      NEVER: 'Hali ulanmagan',
+      NEVER: 'Ulanmoqda (hali aloqa yo‘q)',
       PENDING: 'Tasdiq kutmoqda',
     },
     status: {

@@ -32,7 +32,14 @@ export type Ordering = {
     };
   };
   // Kitchen screen: current workflow, all active orders, or automatic.
-  kitchen: { mode: 'current' | 'all' | 'auto' };
+  kitchen: {
+    mode: 'current' | 'all' | 'auto';
+    design?: {
+      enabled: boolean;
+      defaultTheme: KitchenTheme;
+      whoCanChange: 'all' | 'admin';
+    };
+  };
   waiterAlerts: {
     enabled: boolean;
     sound: boolean;
@@ -62,7 +69,10 @@ export const defaultOrdering: Ordering = {
     showReady: true,
     voice: { enabled: true, repeat: 1, volume: 100, phrase: 'ordinal' },
   },
-  kitchen: { mode: 'current' },
+  kitchen: {
+    mode: 'current',
+    design: { enabled: true, defaultTheme: 'classic', whoCanChange: 'all' },
+  },
   waiterAlerts: {
     enabled: false,
     sound: true,
@@ -111,4 +121,62 @@ export function useOrderDisplayMode() {
     }
   };
   return { mode, change, canChange: ordering.display.canChange };
+}
+
+export const KITCHEN_THEMES = [
+  'classic',
+  'dark',
+  'columns',
+  'compact',
+  'smart',
+  'minimal',
+] as const;
+export type KitchenTheme = (typeof KITCHEN_THEMES)[number];
+
+const THEME_KEY = 'ff-kitchen-theme';
+const PREVIOUS_KEY = 'ff-kitchen-theme-previous';
+const readTheme = (key: string): KitchenTheme | null => {
+  try {
+    const value = localStorage.getItem(key);
+    return (KITCHEN_THEMES as readonly string[]).includes(value ?? '')
+      ? (value as KitchenTheme)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The kitchen screen design on this device. SUPER_OWNER decides whether designs may be
+ * changed, the default one and who may change it (Admin only, or kitchen staff too);
+ * the choice is remembered on the device together with the previous one.
+ */
+export function useKitchenTheme() {
+  const { data: me } = useMe();
+  const design = useOrdering().kitchen.design ?? defaultOrdering.kitchen.design!;
+  const [chosen, setChosen] = useState<KitchenTheme | null>(() =>
+    readTheme(THEME_KEY),
+  );
+  const [previous, setPrevious] = useState<KitchenTheme | null>(() =>
+    readTheme(PREVIOUS_KEY),
+  );
+  const permissions = me?.permissions ?? [];
+  const canChange =
+    design.enabled &&
+    (permissions.includes('settings.manage') ||
+      (design.whoCanChange === 'all' && permissions.includes('kitchen.access')));
+  const theme: KitchenTheme =
+    design.enabled && chosen ? chosen : design.defaultTheme;
+  const change = (next: KitchenTheme) => {
+    if (next === theme) return;
+    setPrevious(theme);
+    setChosen(next);
+    try {
+      localStorage.setItem(PREVIOUS_KEY, theme);
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* Storage blocked: the choice lasts for this page only. */
+    }
+  };
+  return { theme, change, previous, canChange };
 }

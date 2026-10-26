@@ -223,6 +223,10 @@ model Device {
   lastIp         String?
   createdAt      DateTime     @default(now())
   revokedAt      DateTime?
+  // Switched off for a while by the restaurant Admin (no PIN sign-in until switched on).
+  disabledAt     DateTime?
+  // Employees allowed to sign in here by PIN (empty: everyone the panel allows).
+  allowedUserIds String[]     @default([])
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   branch   Branch    @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)

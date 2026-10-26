@@ -79,6 +79,9 @@ async function findDevice(services: Services, req: Request) {
   // Registered but not yet approved by the Owner: no staff list, no PIN sign-in.
   if (device?.status === 'PENDING')
     throw new AppError(403, 'DEVICE_PENDING', 'devicePending');
+  // Switched off by the restaurant Admin for a while.
+  if (device?.status === 'ACTIVE' && device.disabledAt)
+    throw new AppError(403, 'DEVICE_DISABLED', 'deviceDisabled');
   if (
     !device ||
     device.status !== 'ACTIVE' ||
@@ -608,6 +611,21 @@ export function authRouter(services: Services) {
       : {};
   };
 
+  // Employees the Admin chose for this terminal (the restaurant owner always may sign in).
+  const allowedHere = (device: { allowedUserIds: string[] }) =>
+    device.allowedUserIds.length
+      ? {
+          AND: [
+            {
+              OR: [
+                { id: { in: device.allowedUserIds } },
+                { roles: { some: { role: { systemKey: 'owner' } } } },
+              ],
+            },
+          ],
+        }
+      : {};
+
   router.get('/pin/device', async (req, res) => {
     const device = await findDevice(services, req);
     if (!device) throw new AppError(403, 'DEVICE_REQUIRED', 'deviceRequired');
@@ -618,6 +636,7 @@ export function authRouter(services: Services) {
         deletedAt: null,
         pinHash: { not: null },
         ...panelRoles(device.panel),
+        ...allowedHere(device),
         OR: [
           { allBranches: true },
           { branches: { some: { branchId: device.branchId } } },
@@ -648,6 +667,7 @@ export function authRouter(services: Services) {
         status: 'ACTIVE',
         deletedAt: null,
         ...panelRoles(device.panel),
+        ...allowedHere(device),
         OR: [
           { allBranches: true },
           { branches: { some: { branchId: device.branchId } } },

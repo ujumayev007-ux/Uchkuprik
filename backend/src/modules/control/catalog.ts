@@ -257,6 +257,39 @@ export const featureCatalog: FeatureDef[] = [
     ],
   }),
   f({
+    key: 'kitchen.design',
+    kind: 'module',
+    group: 'Oshxona',
+    label: 'Oshxona ekrani dizayni',
+    hint: 'Yoqilgan: oshxona ekranida 6 ta dizayndan birini tanlash mumkin (kim tanlashini quyida belgilang). O‘chirilgan: faqat standart dizayn.',
+    params: [
+      {
+        key: 'defaultTheme',
+        label: 'Standart dizayn',
+        type: 'enum',
+        options: [
+          { value: 'classic', label: 'Klassik' },
+          { value: 'dark', label: 'Qorong‘i' },
+          { value: 'columns', label: 'Ustunli' },
+          { value: 'compact', label: 'Ixcham' },
+          { value: 'smart', label: 'Aqlli oshxona' },
+          { value: 'minimal', label: 'Minimal' },
+        ],
+        default: 'classic',
+      },
+      {
+        key: 'whoCanChange',
+        label: 'Kim o‘zgartira oladi',
+        type: 'enum',
+        options: [
+          { value: 'all', label: 'Admin va oshxona xodimlari' },
+          { value: 'admin', label: 'Faqat Admin' },
+        ],
+        default: 'all',
+      },
+    ],
+  }),
+  f({
     key: 'kitchen.manage',
     kind: 'module',
     group: 'Oshxona',
