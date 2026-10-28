@@ -9,7 +9,12 @@ import type {
   ControlLicense,
   Prisma,
 } from '../../generated/prisma/client.js';
-import { errors, isUniqueViolation, parse } from '../../http/errors.js';
+import {
+  AppError,
+  errors,
+  isUniqueViolation,
+  parse,
+} from '../../http/errors.js';
 import { planFeatures } from '../billing/entitlements.js';
 import { catalogByKey } from './catalog.js';
 import { compareVersions, timing } from './grant.js';
@@ -105,14 +110,31 @@ type Command =
       localId: string;
       approve: boolean;
       issuedAt: string;
+    }
+  // The install makes a new device key and registers it (PENDING until approved).
+  | { id: string; type: 'reset_identity'; issuedAt: string }
+  // The install asks its Admin before renaming the Windows computer.
+  | {
+      id: string;
+      type: 'rename_host';
+      requestId: string;
+      name: string;
+      issuedAt: string;
     };
+
+type CommandInput = Command extends infer C
+  ? C extends Command
+    ? Omit<C, 'id' | 'issuedAt'>
+    : never
+  : never;
+
+// NetBIOS rules for a Windows computer name.
+const HOSTNAME = /^(?!\d+$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$/;
 
 async function queueCommand(
   tx: Db | Tx,
   activationId: string,
-  command:
-    | Omit<Extract<Command, { type: 'terminate_sessions' }>, 'id' | 'issuedAt'>
-    | Omit<Extract<Command, { type: 'device_approval' }>, 'id' | 'issuedAt'>,
+  command: CommandInput,
   at: Date,
 ) {
   const row = await tx.controlActivation.findUniqueOrThrow({
@@ -195,6 +217,16 @@ export function deviceView(
     customerName: activation.customer?.name ?? null,
     licenseId: activation.licenseId,
     deviceName: activation.deviceName,
+    // Owner's name for the computer; the Windows name as reported, kept apart.
+    displayName: activation.displayName,
+    hostname: activation.hostname,
+    // FastFood application Device ID (the device key's fingerprint).
+    deviceId: activation.fingerprint,
+    installId: activation.installId,
+    capabilities: activation.capabilities,
+    hostRename: activation.hostRename,
+    replacedAt: activation.replacedAt,
+    archivedAt: activation.archivedAt,
     model: activation.model,
     os: activation.os,
     platform: activation.platform,
@@ -339,6 +371,7 @@ export function manageRouter(services: Services) {
       include: {
         licenses: { orderBy: { createdAt: 'desc' } },
         activations: {
+          where: { archivedAt: null },
           orderBy: { activatedAt: 'desc' },
           include: { terminals: true },
         },
@@ -770,17 +803,22 @@ export function manageRouter(services: Services) {
         customerId: z.uuid().optional(),
         presence: z.enum(['ONLINE', 'OFFLINE', 'BLOCKED', 'NEVER']).optional(),
         q: z.string().trim().max(80).optional(),
+        archived: z.enum(['true', 'false']).default('false'),
       }),
       req.query,
     );
     const at = now();
     const activations = await db.controlActivation.findMany({
       where: {
+        archivedAt: query.archived === 'true' ? { not: null } : null,
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.q
           ? {
               OR: [
                 { deviceName: { contains: query.q, mode: 'insensitive' } },
+                { displayName: { contains: query.q, mode: 'insensitive' } },
+                { hostname: { contains: query.q, mode: 'insensitive' } },
+                { fingerprint: { contains: query.q, mode: 'insensitive' } },
                 { currentUser: { contains: query.q, mode: 'insensitive' } },
                 {
                   customer: {
@@ -840,6 +878,172 @@ export function manageRouter(services: Services) {
         res.json({ ok: true });
       },
     );
+
+  const conflict = () =>
+    new AppError(409, 'DEVICE_STATE', 'deviceStateConflict');
+  const agentCan = (activation: ControlActivation, ability: string) => {
+    if (!activation.capabilities.includes(ability))
+      throw new AppError(409, 'AGENT_UNAVAILABLE', 'agentUnavailable');
+  };
+
+  // "Qurilma nomini o‘zgartirish": the Owner's own name; the Windows name stays as
+  // reported by the computer and keeps updating on every check-in.
+  router.patch('/control/devices/:id', ...sensitive, async (req, res) => {
+    const owner = getOwner(res);
+    const id = idParam(req.params.id);
+    const { displayName } = parse(
+      z.object({ displayName: z.string().trim().max(80).nullable() }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      const activation = await tx.controlActivation.findUnique({
+        where: { id },
+      });
+      if (!activation) throw errors.notFound();
+      const next = displayName || null;
+      await tx.controlActivation.update({
+        where: { id },
+        data: { displayName: next },
+      });
+      await controlAudit(tx, req, {
+        ownerId: owner.ownerId,
+        customerId: activation.customerId,
+        action: 'device.rename',
+        entityType: 'device',
+        entityId: id,
+        data: { from: activation.displayName, to: next },
+      });
+    });
+    res.json({ ok: true });
+  });
+
+  // "Device ID yangilash": the computer makes a new FastFood device key on its next
+  // check-in; the old registration is then replaced and the new one waits for the
+  // Owner's approval. Windows identifiers (MachineGuid, hardware UUID) are untouched.
+  deviceAction(
+    'reset-id',
+    'device.reset_id.request',
+    async (tx, activation, _body, at) => {
+      if (activation.status !== 'ACTIVE' && activation.status !== 'BLOCKED')
+        throw conflict();
+      agentCan(activation, 'rekey');
+      const pending = Array.isArray(activation.pendingCommands)
+        ? (activation.pendingCommands as { type?: string }[])
+        : [];
+      if (!pending.some((command) => command.type === 'reset_identity'))
+        await queueCommand(tx, activation.id, { type: 'reset_identity' }, at);
+    },
+  );
+
+  // "Eski qurilmani o‘chirish": an old (replaced or revoked) registration leaves the
+  // lists; customer data, licences and history stay.
+  deviceAction(
+    'archive',
+    'device.archive',
+    async (tx, activation, _body, at) => {
+      if (activation.status !== 'REPLACED' && activation.status !== 'REVOKED')
+        throw conflict();
+      await tx.controlActivation.update({
+        where: { id: activation.id },
+        data: { archivedAt: at, pendingCommands: [] },
+      });
+    },
+  );
+
+  // "Qayta ulash": an old registration may work again only after "Tasdiqlash".
+  deviceAction('reconnect', 'device.reconnect', async (tx, activation) => {
+    if (activation.status !== 'REPLACED' && activation.status !== 'REVOKED')
+      throw conflict();
+    const license = await tx.controlLicense.findUniqueOrThrow({
+      where: { id: activation.licenseId },
+    });
+    if (license.status === 'REVOKED') throw conflict();
+    await tx.controlActivation.update({
+      where: { id: activation.id },
+      data: { status: 'PENDING', archivedAt: null },
+    });
+  });
+
+  // "Tasdiqlash": within the licence's computer limit only.
+  deviceAction('approve', 'device.approve', async (tx, activation) => {
+    if (activation.status !== 'PENDING') throw conflict();
+    const license = await tx.controlLicense.findUniqueOrThrow({
+      where: { id: activation.licenseId },
+    });
+    if (license.status === 'REVOKED') throw conflict();
+    const used = await tx.controlActivation.count({
+      where: {
+        licenseId: license.id,
+        id: { not: activation.id },
+        status: { in: ['ACTIVE', 'BLOCKED'] },
+      },
+    });
+    if (used >= license.maxInstalls)
+      throw new AppError(409, 'ACTIVATION_LIMIT', 'activationLimit');
+    await tx.controlActivation.update({
+      where: { id: activation.id },
+      data: { status: 'ACTIVE' },
+    });
+  });
+
+  // "Rad etish": the waiting registration never works.
+  deviceAction('reject', 'device.reject', async (tx, activation) => {
+    if (activation.status !== 'PENDING') throw conflict();
+    await tx.controlActivation.update({
+      where: { id: activation.id },
+      data: { status: 'REVOKED' },
+    });
+  });
+
+  // Windows computer name: only through the installed agent, and only after the
+  // restaurant's Admin agrees on that computer (a Windows administrator prompt follows).
+  router.post(
+    '/control/devices/:id/rename-host',
+    ...sensitive,
+    async (req, res) => {
+      const owner = getOwner(res);
+      const id = idParam(req.params.id);
+      const { name } = parse(z.object({ name: z.string().trim() }), req.body);
+      if (!HOSTNAME.test(name))
+        throw new AppError(400, 'HOSTNAME_INVALID', 'hostnameInvalid');
+      const at = now();
+      const requestId = randomUUID();
+      await db.$transaction(async (tx) => {
+        const activation = await tx.controlActivation.findUnique({
+          where: { id },
+        });
+        if (!activation) throw errors.notFound();
+        if (activation.status !== 'ACTIVE') throw conflict();
+        agentCan(activation, 'rename_host');
+        await tx.controlActivation.update({
+          where: { id },
+          data: {
+            hostRename: {
+              id: requestId,
+              name,
+              status: 'REQUESTED',
+              at: at.toISOString(),
+            },
+          },
+        });
+        await queueCommand(
+          tx,
+          id,
+          { type: 'rename_host', requestId, name },
+          at,
+        );
+        await controlAudit(tx, req, {
+          ownerId: owner.ownerId,
+          customerId: activation.customerId,
+          action: 'device.hostname.rename_request',
+          entityType: 'device',
+          entityId: id,
+          data: { from: activation.hostname, to: name },
+        });
+      });
+      res.json({ ok: true, requestId });
+    },
+  );
 
   deviceAction('block', 'device.block', async (tx, activation, body, at) => {
     await tx.controlActivation.update({

@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('fastfoodDesktop', {
   openAnyDesk: () => ipcRenderer.invoke('anydesk:open'),
   checkUpdate: () => ipcRenderer.invoke('updates:check'),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
+  // Owner's Windows-name request, after the Admin agreed (Windows asks for permission).
+  renameComputer: (name) => ipcRenderer.invoke('host:rename', name),
 });
 
 // FastFood Server edition: the page is the FastFood terminal (PIN pad, each person's own

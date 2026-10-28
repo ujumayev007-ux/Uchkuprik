@@ -12,6 +12,11 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  agentUnavailable:
+    'Bu kompyuterdagi FastFood agenti bu amalni bajara olmaydi (eski versiya yoki server kompyuteri emas). Restoran serverini yangilang; hozircha faqat Owner’dagi nomni o‘zgartirish mumkin.',
+  hostnameInvalid:
+    'Windows nomi 1–15 belgi bo‘lsin: lotin harflari, raqamlar va “-” (faqat raqamdan iborat bo‘lmasin).',
+  deviceStateConflict: 'Qurilmaning hozirgi holatida bu amalni bajarib bo‘lmaydi.',
   accountLocked:
     'Juda ko‘p noto‘g‘ri urinish. Hisob vaqtincha bloklandi, keyinroq urinib ko‘ring.',
   unauthenticated: 'Iltimos, tizimga kiring.',

@@ -37,6 +37,7 @@ import { StockAlerts } from './StockAlerts';
 import { useBranding } from '../lib/branding';
 import { BrandingHost } from './BrandingHost';
 import { ReauthDialog } from './ReauthDialog';
+import { HostRenameBanner } from './HostRenameBanner';
 import { useTheme, useToast } from './ui';
 
 export type Branch = {
@@ -824,6 +825,10 @@ export function AppShell() {
           <AppUpdateBanner />
           <BillingBanner me={me} />
           <ControlBanner me={me} />
+          {/* The Owner's Windows-name request waits for the Admin here. */}
+          {me.tenantKind === 'BUSINESS' && can(me, 'settings.manage') && (
+            <HostRenameBanner />
+          )}
           <WalkinAlerts />
           {licenseBlocks(license.data) ? (
             <LicenseLock license={license.data!} />

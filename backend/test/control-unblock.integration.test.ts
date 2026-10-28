@@ -152,3 +152,84 @@ describe('unblocking a customer', () => {
     await staff.get('/api/menu').expect(200);
   });
 });
+
+describe('the installed agent for the Owner', () => {
+  const beatOk = async () => {
+    for (let i = 0; i < 20; i++) {
+      const result = await runtime.beat();
+      if (result === 'ok') return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('no heartbeat');
+  };
+  const queue = async (activationId: string, command: Record<string, unknown>) => {
+    const row = await central.db.controlActivation.findUniqueOrThrow({ where: { id: activationId } });
+    await central.db.controlActivation.update({
+      where: { id: activationId },
+      data: {
+        pendingCommands: [
+          ...(row.pendingCommands as object[]),
+          { id: crypto.randomUUID(), issuedAt: new Date().toISOString(), ...command },
+        ],
+      },
+    });
+  };
+
+  it('renews the Device ID when the Owner asks; the restaurant waits for approval', async () => {
+    const { customerId, tenant } = await linkedRestaurant();
+    await beatOk();
+    const old = await central.db.controlActivation.findFirstOrThrow({ where: { customerId } });
+    expect(old.capabilities).toContain('rekey');
+    expect(old.hostname).toBeTruthy();
+    await queue(old.id, { type: 'reset_identity' });
+    await beatOk();
+    fresh();
+    const renewed = await central.db.controlActivation.findFirstOrThrow({
+      where: { customerId, status: 'PENDING' },
+    });
+    expect((await central.db.controlActivation.findUniqueOrThrow({ where: { id: old.id } })).status).toBe('REPLACED');
+    expect(renewed.fingerprint).not.toBe(old.fingerprint);
+    expect((await install.db.controlLink.findFirstOrThrow()).activationId).toBe(renewed.id);
+    // Waiting for the Owner: the restaurant does not work yet.
+    expect(await beatAndMode()).toBe('BLOCKED');
+    await central.db.controlActivation.update({ where: { id: renewed.id }, data: { status: 'ACTIVE' } });
+    expect(await beatAndMode()).toBe('ONLINE');
+    // Restaurant data and accounts are untouched.
+    await login(install.agent(), tenant.slug, 'owner').expect(200);
+  });
+
+  it('renames Windows only after the restaurant Admin agrees', async () => {
+    const { customerId, tenant } = await linkedRestaurant();
+    install.services.hostRenameAgent = true;
+    try {
+      await beatOk();
+      const activation = await central.db.controlActivation.findFirstOrThrow({
+        where: { customerId, status: 'ACTIVE' },
+      });
+      expect(activation.capabilities).toContain('rename_host');
+      const requestId = crypto.randomUUID();
+      await central.db.controlActivation.update({
+        where: { id: activation.id },
+        data: { hostRename: { id: requestId, name: 'KASSA-9', status: 'REQUESTED' } },
+      });
+      await queue(activation.id, { type: 'rename_host', requestId, name: 'KASSA-9' });
+      await beatOk();
+      const admin = install.agent();
+      await login(admin, tenant.slug, 'owner').expect(200);
+      const shown = await admin.get('/api/control/link/host-rename').expect(200);
+      expect(shown.body).toMatchObject({ agent: true, request: { id: requestId, name: 'KASSA-9' } });
+      // (The desktop app asked Windows; here it reports success.)
+      await admin
+        .post('/api/control/link/host-rename')
+        .set('Origin', 'http://localhost:5173')
+        .send({ id: requestId, status: 'DONE' })
+        .expect(200);
+      await beatOk();
+      const after = await central.db.controlActivation.findUniqueOrThrow({ where: { id: activation.id } });
+      expect(after.hostRename).toMatchObject({ id: requestId, status: 'DONE' });
+      expect((await admin.get('/api/control/link/host-rename').expect(200)).body.request).toBeNull();
+    } finally {
+      install.services.hostRenameAgent = false;
+    }
+  });
+});

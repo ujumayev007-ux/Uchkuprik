@@ -27,6 +27,8 @@ export type Services = {
   // Identity of this desktop install (licences are bound to it) and first install time.
   installId?: string;
   installedAt?: Date;
+  // The desktop app can rename this Windows computer (Owner request + Admin consent).
+  hostRenameAgent?: boolean;
   // Vendor status document for remote licence renewals and blocking.
   licenseStatusUrl?: string;
   // SUPER_OWNER control channel (central server and/or customer install).

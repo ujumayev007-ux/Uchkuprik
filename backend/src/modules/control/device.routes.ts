@@ -268,7 +268,7 @@ export function deviceRouter(services: Services) {
   /** Verifies the device signature, freshness and counter; returns the activation. */
   async function authenticateDevice(
     req: Request,
-    type: 'heartbeat' | 'sync' | 'media',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey',
   ) {
     const body = parse(envelope, req.body);
     const at = now();
@@ -329,6 +329,18 @@ export function deviceRouter(services: Services) {
       .optional(),
     currentUser: z.string().max(80).nullable().optional(),
     deviceName: text(80).optional(),
+    // Windows computer name as it is now (updates by itself after a rename).
+    hostname: text(80).optional(),
+    // What the installed agent can do for the Owner.
+    capabilities: z.array(z.string().max(40)).max(20).optional(),
+    // Outcome of the Owner's Windows-name request on the restaurant side.
+    hostRename: z
+      .object({
+        id: z.uuid(),
+        status: z.enum(['REQUESTED', 'REJECTED', 'DONE', 'FAILED']),
+        message: z.string().max(200).nullable().optional(),
+      })
+      .optional(),
     model: text(80).nullable().optional(),
     os: text(80).nullable().optional(),
     ackCommands: z.array(z.string().max(64)).max(20).default([]),
@@ -381,6 +393,41 @@ export function deviceRouter(services: Services) {
     const remaining = pending.filter(
       (command) => !beat.ackCommands.includes(command.id),
     );
+    // The restaurant answered the Owner's Windows-name request.
+    const request = activation.hostRename as {
+      id?: string;
+      status?: string;
+    } | null;
+    const renameOutcome =
+      beat.hostRename &&
+      request?.id === beat.hostRename.id &&
+      request.status !== beat.hostRename.status
+        ? {
+            request,
+            status: beat.hostRename.status,
+            message: beat.hostRename.message ?? null,
+          }
+        : null;
+    if (renameOutcome)
+      await controlAudit(db, req, {
+        customerId: activation.customerId,
+        action: `device.hostname.rename_${renameOutcome.status.toLowerCase()}`,
+        entityType: 'device',
+        entityId: activation.id,
+        data: { message: renameOutcome.message },
+      });
+    if (
+      beat.hostname &&
+      activation.hostname &&
+      beat.hostname !== activation.hostname
+    )
+      await controlAudit(db, req, {
+        customerId: activation.customerId,
+        action: 'device.hostname.changed',
+        entityType: 'device',
+        entityId: activation.id,
+        data: { from: activation.hostname, to: beat.hostname },
+      });
     const updated = await db.$transaction(async (tx) => {
       const row = await tx.controlActivation.update({
         where: { id: activation.id },
@@ -390,6 +437,18 @@ export function deviceRouter(services: Services) {
           appVersion: beat.appVersion ?? activation.appVersion,
           currentUser: beat.currentUser ?? null,
           deviceName: beat.deviceName ?? activation.deviceName,
+          hostname: beat.hostname ?? activation.hostname,
+          capabilities: beat.capabilities ?? activation.capabilities,
+          ...(renameOutcome
+            ? {
+                hostRename: {
+                  ...renameOutcome.request,
+                  status: renameOutcome.status,
+                  message: renameOutcome.message,
+                  answeredAt: at.toISOString(),
+                } as Prisma.InputJsonValue,
+              }
+            : {}),
           model: beat.model ?? activation.model,
           os: beat.os ?? activation.os,
           branchName: beat.branches[0]?.name ?? activation.branchName,
@@ -550,6 +609,84 @@ export function deviceRouter(services: Services) {
         : null,
     });
     res.json({ response });
+  });
+
+  /**
+   * "Device ID yangilash": only after the Owner asked for it (a reset_identity command
+   * is waiting), the install proves the old key (envelope) and the new key (proof).
+   * The old registration is replaced; the new one waits for the Owner's approval.
+   */
+  router.post('/control/device/rekey', beatLimiter, async (req, res) => {
+    const { activation, body, at } = await authenticateDevice(req, 'rekey');
+    const input = parse(
+      z.object({
+        publicKey: publicKeySchema,
+        proof: z.string().min(40).max(200),
+      }),
+      body.payload,
+    );
+    const pending = Array.isArray(activation.pendingCommands)
+      ? (activation.pendingCommands as { id: string; type?: string }[])
+      : [];
+    if (
+      !pending.some((command) => command.type === 'reset_identity') ||
+      (activation.status !== 'ACTIVE' && activation.status !== 'BLOCKED')
+    )
+      throw new AppError(409, 'REKEY_NOT_REQUESTED', 'conflict');
+    if (
+      !verifyValue(
+        input.publicKey,
+        {
+          type: 'rekey',
+          activationId: activation.id,
+          publicKey: input.publicKey,
+        },
+        input.proof,
+      )
+    )
+      throw new AppError(
+        403,
+        'DEVICE_PROOF_INVALID',
+        'controlSignatureInvalid',
+      );
+    const fingerprint = fingerprintOf(input.publicKey);
+    const created = await db.$transaction(async (tx) => {
+      if (await tx.controlActivation.findUnique({ where: { fingerprint } }))
+        throw new AppError(409, 'DEVICE_KEY_USED', 'conflict');
+      await tx.controlActivation.update({
+        where: { id: activation.id },
+        data: { status: 'REPLACED', replacedAt: at, pendingCommands: [] },
+      });
+      const next = await tx.controlActivation.create({
+        data: {
+          customerId: activation.customerId,
+          licenseId: activation.licenseId,
+          installId: activation.installId,
+          deviceName: activation.deviceName,
+          displayName: activation.displayName,
+          hostname: activation.hostname,
+          model: activation.model,
+          os: activation.os,
+          platform: activation.platform,
+          appVersion: activation.appVersion,
+          branchName: activation.branchName,
+          capabilities: activation.capabilities,
+          publicKey: input.publicKey,
+          fingerprint,
+          status: 'PENDING',
+          lastIp: req.ip ?? null,
+        },
+      });
+      await controlAudit(tx, req, {
+        customerId: activation.customerId,
+        action: 'device.reset_id',
+        entityType: 'device',
+        entityId: next.id,
+        data: { replaced: activation.id },
+      });
+      return next;
+    });
+    res.json({ activationId: created.id });
   });
 
   /** One branding file for an install; the install verifies it against the signed bundle's sha256. */

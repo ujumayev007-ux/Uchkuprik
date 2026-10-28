@@ -27,6 +27,36 @@ export function controlInstallRouter(services: Services) {
   const manage = [requireAuth(), requirePermission('settings.manage')];
   const sensitive = [...manage, requireRecentAuth(services)];
 
+  // The Owner asked to rename this Windows computer; the Admin decides here.
+  router.get('/control/link/host-rename', ...manage, async (_req, res) => {
+    const request = await services.controlRuntime?.hostRenameRequest();
+    res.json({
+      request: request?.status === 'REQUESTED' ? request : null,
+      agent: services.hostRenameAgent === true,
+    });
+  });
+
+  router.post('/control/link/host-rename', ...sensitive, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(
+      z.object({
+        id: z.uuid(),
+        status: z.enum(['REJECTED', 'DONE', 'FAILED']),
+        message: z.string().trim().max(200).nullable().optional(),
+      }),
+      req.body,
+    );
+    const done = await services.controlRuntime?.answerHostRename(input);
+    if (!done) throw errors.conflict();
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      actorUserId: auth.userId,
+      action: `control.hostname.${input.status.toLowerCase()}`,
+      data: { message: input.message ?? null },
+    });
+    res.json({ ok: true });
+  });
+
   router.get('/control/link/status', requireAuth(), async (_req, res) => {
     const runtime = services.controlRuntime;
     if (!runtime) {

@@ -78,6 +78,12 @@ const schema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // The FastFood Server desktop app on Windows can rename this computer (only after
+    // the restaurant Admin agrees, with a Windows administrator prompt).
+    HOST_RENAME_AGENT: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Desktop install identity, provided by the desktop launcher.
     INSTALL_ID: z.string().max(100).optional(),
     INSTALLED_AT: z.coerce.date().optional(),
