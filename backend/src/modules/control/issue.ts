@@ -34,7 +34,9 @@ export function grantStatusOf(
   license: Pick<ControlLicense, 'status'>,
   activation: Pick<ControlActivation, 'status'>,
 ): GrantStatus {
-  if (activation.status === 'BLOCKED') return 'BLOCKED';
+  // Blocked, or a new Device ID waiting for the Owner's approval.
+  if (activation.status === 'BLOCKED' || activation.status === 'PENDING')
+    return 'BLOCKED';
   if (activation.status === 'REPLACED' || activation.status === 'REVOKED')
     return 'REVOKED';
   if (license.status === 'REVOKED') return 'REVOKED';

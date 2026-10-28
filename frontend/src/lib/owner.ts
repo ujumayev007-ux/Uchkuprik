@@ -173,11 +173,26 @@ export type DeviceRow = {
   customerId: string;
   customerName: string | null;
   deviceName: string;
+  // Owner's own name; the Windows name as reported by the computer.
+  displayName?: string | null;
+  hostname?: string | null;
+  // FastFood application Device ID (device key fingerprint).
+  deviceId?: string;
+  installId?: string;
+  capabilities?: string[];
+  hostRename?: {
+    id: string;
+    name: string;
+    status: 'REQUESTED' | 'REJECTED' | 'DONE' | 'FAILED';
+    message?: string | null;
+  } | null;
+  replacedAt?: string | null;
+  archivedAt?: string | null;
   model: string | null;
   os: string | null;
   appVersion: string | null;
   branchName: string | null;
-  status: 'ACTIVE' | 'BLOCKED' | 'REPLACED' | 'REVOKED';
+  status: 'ACTIVE' | 'BLOCKED' | 'REPLACED' | 'REVOKED' | 'PENDING';
   presence: Presence;
   activatedAt: string;
   lastHeartbeatAt: string | null;

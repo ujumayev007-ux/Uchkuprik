@@ -21,6 +21,11 @@ export const messages = {
     'Rasm juda katta (kichraytirilgandan keyin ham 1 MB dan oshdi). Boshqa rasm tanlang.',
   pinInUse:
     'Bu PIN-kod boshqa xodimda bor. Har bir xodimga alohida PIN-kod bering.',
+  agentUnavailable:
+    'Bu kompyuterdagi FastFood agenti bu amalni bajara olmaydi (eski versiya yoki server kompyuteri emas). Restoran serverini yangilang; hozircha faqat Owner’dagi nomni o‘zgartirish mumkin.',
+  hostnameInvalid:
+    'Windows nomi 1–15 belgi bo‘lsin: lotin harflari, raqamlar va “-” (faqat raqamdan iborat bo‘lmasin).',
+  deviceStateConflict: 'Qurilmaning hozirgi holatida bu amalni bajarib bo‘lmaydi.',
   accountLocked:
     'Juda ko‘p noto‘g‘ri urinish. Hisob vaqtincha bloklandi, keyinroq urinib ko‘ring.',
   unauthenticated: 'Iltimos, tizimga kiring.',

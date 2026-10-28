@@ -1060,3 +1060,153 @@ describe('registration, trial and Owner events', () => {
       .expect(200);
   });
 });
+
+describe('Owner device management', () => {
+  /** Requests signed with any device key (the new one after "Device ID yangilash"). */
+  let counter = Date.now() * 10;
+  const signed = (
+    identity: { privateKeyPem: string },
+    type: string,
+    activationId: string,
+    payload: object,
+  ) => {
+    const seq = ++counter;
+    const ts = Date.now() + ctx.clock.offsetMs;
+    return {
+      activationId,
+      seq,
+      ts,
+      payload,
+      sig: signValue(identity.privateKeyPem, { type, activationId, seq, ts, payload }),
+    };
+  };
+
+  it('names, the Windows name, a new Device ID with approval and old devices', async () => {
+    const { agent } = await signedIn();
+    const lic = await createLicensedCustomer(agent, { maxInstalls: 1 });
+    const pc = device(request.agent(ctx.app));
+    const id = (await pc.activate(lic.key).expect(201)).body.activationId as string;
+    const rows = async (archived = false) =>
+      (
+        await api(agent)
+          .get(`/control/devices?customerId=${lic.customerId}${archived ? '&archived=true' : ''}`)
+          .expect(200)
+      ).body.devices as Record<string, unknown>[];
+    const row = async (deviceId: string) => (await rows()).find((d) => d.id === deviceId)!;
+
+    // The Windows name arrives with the check-in; the Owner's name is kept apart.
+    await pc.heartbeat(id, { hostname: 'KASSA-1' }).expect(200);
+    await api(agent).patch(`/control/devices/${id}`, { displayName: 'Asosiy kassa' }).expect(200);
+    await pc.heartbeat(id, { hostname: 'KASSA-2' }).expect(200);
+    expect(await row(id)).toMatchObject({ displayName: 'Asosiy kassa', hostname: 'KASSA-2' });
+    const oldDeviceId = (await row(id)).deviceId;
+    expect(oldDeviceId).toBeTruthy();
+
+    // An old agent can do neither remote action.
+    const refused = await api(agent).post(`/control/devices/${id}/reset-id`).expect(409);
+    expect(refused.body.code).toBe('AGENT_UNAVAILABLE');
+    await api(agent).post(`/control/devices/${id}/rename-host`, { name: 'KASSA-3' }).expect(409);
+
+    // Windows name through the agent: invalid names refused; the answer comes back.
+    await pc
+      .heartbeat(id, { hostname: 'KASSA-2', capabilities: ['rekey', 'rename_host'] })
+      .expect(200);
+    await api(agent).post(`/control/devices/${id}/rename-host`, { name: 'bad name!' }).expect(400);
+    const asked = await api(agent)
+      .post(`/control/devices/${id}/rename-host`, { name: 'KASSA-3' })
+      .expect(200);
+    await pc
+      .heartbeat(id, {
+        capabilities: ['rekey', 'rename_host'],
+        hostRename: { id: asked.body.requestId, status: 'DONE' },
+      })
+      .expect(200);
+    expect((await row(id)).hostRename).toMatchObject({ name: 'KASSA-3', status: 'DONE' });
+
+    // A new Device ID only when the Owner asked for it.
+    const fresh = generateIdentity();
+    const rekey = () =>
+      api(request.agent(ctx.app)).post(
+        '/control/device/rekey',
+        signed(pc.identity, 'rekey', id, {
+          publicKey: fresh.publicKey,
+          proof: signValue(fresh.privateKeyPem, {
+            type: 'rekey',
+            activationId: id,
+            publicKey: fresh.publicKey,
+          }),
+        }),
+      );
+    await rekey().expect(409);
+    await api(agent).post(`/control/devices/${id}/reset-id`).expect(200);
+    const renewed = await rekey().expect(200);
+    const newId = renewed.body.activationId as string;
+    expect((await row(id)).status).toBe('REPLACED');
+    const waiting = await row(newId);
+    expect(waiting).toMatchObject({ status: 'PENDING', displayName: 'Asosiy kassa' });
+    expect(waiting.deviceId).not.toBe(oldDeviceId);
+    const grantOf = async () => {
+      const beat = await api(request.agent(ctx.app))
+        .post('/control/device/heartbeat', signed(fresh, 'heartbeat', newId, {}))
+        .expect(200);
+      const body = verifyDocument<{ grant: string }>(beat.body.response, [server.publicKey])!;
+      return readGrant(body.grant, [server.publicKey])!;
+    };
+    expect((await grantOf()).status).toBe('BLOCKED');
+    await api(agent).post(`/control/devices/${newId}/approve`).expect(200);
+    expect((await grantOf()).status).toBe('ACTIVE');
+
+    // Old device: never back by itself; "Qayta ulash" waits for approval (and the
+    // licence limit holds); then removed from the list without touching data.
+    await api(agent).post(`/control/devices/${id}/reconnect`).expect(200);
+    expect((await row(id)).status).toBe('PENDING');
+    const limit = await api(agent).post(`/control/devices/${id}/approve`).expect(409);
+    expect(limit.body.code).toBe('ACTIVATION_LIMIT');
+    await api(agent).post(`/control/devices/${id}/reject`).expect(200);
+    expect((await row(id)).status).toBe('REVOKED');
+    await api(agent).post(`/control/devices/${newId}/archive`).expect(409);
+    await api(agent).post(`/control/devices/${id}/archive`).expect(200);
+    expect((await rows()).map((d) => d.id)).not.toContain(id);
+    expect((await rows(true)).map((d) => d.id)).toContain(id);
+    expect(await ctx.db.controlLicense.count({ where: { id: lic.licenseId } })).toBe(1);
+
+    const actions = (
+      await ctx.db.controlAuditLog.findMany({
+        where: { customerId: lic.customerId },
+        select: { action: true },
+      })
+    ).map((entry) => entry.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'device.rename',
+        'device.hostname.changed',
+        'device.hostname.rename_request',
+        'device.hostname.rename_done',
+        'device.reset_id.request',
+        'device.reset_id',
+        'device.approve',
+        'device.reconnect',
+        'device.reject',
+        'device.archive',
+      ]),
+    );
+  });
+
+  it('a reinstall with a new key (data folder deleted) keeps one registry entry', async () => {
+    const guest = request.agent(ctx.app);
+    const first = registration(guest);
+    const sent = first.send({ installedAt: '2026-01-05T10:00:00.000Z', deviceName: 'OSHXONA-PC' });
+    expect([200, 201]).toContain((await sent.res).status);
+    const again = registration(guest);
+    const second = await again.send({
+      installedAt: '2026-01-05T10:00:00.000Z',
+      deviceName: 'OSHXONA-PC',
+    }).res;
+    expect([200, 201]).toContain(second.status);
+    expect(
+      await ctx.db.controlRegistration.count({
+        where: { label: 'OSHXONA-PC', installedAt: new Date('2026-01-05T10:00:00.000Z') },
+      }),
+    ).toBe(1);
+  });
+});

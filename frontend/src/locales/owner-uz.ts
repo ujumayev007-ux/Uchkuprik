@@ -213,6 +213,47 @@ export const owner = {
       BLOCKED: 'Bloklangan',
       REPLACED: 'Almashtirilgan',
       REVOKED: 'Bekor qilingan',
+      PENDING: 'Tasdiq kutmoqda',
+    },
+    hostname: 'Windows nomi',
+    deviceId: 'Device ID',
+    installId: 'O‘rnatish ID',
+    rename: 'Qurilma nomini o‘zgartirish',
+    renameTitle: 'Qurilma nomi (Owner’da ko‘rinadi)',
+    renameHint:
+      'Bu nom faqat Owner’da ko‘rinadi. Windows nomi alohida saqlanadi va kompyuter ulanganda o‘zi yangilanadi. Bo‘sh qoldirilsa, kompyuter yuborgan nom ko‘rinadi.',
+    renamed: 'Qurilma nomi saqlandi',
+    resetId: 'Device ID yangilash',
+    resetIdConfirm:
+      'Kompyuter keyingi aloqada yangi Device ID oladi, eski ro‘yxat “Almashtirilgan” bo‘ladi va yangisi Owner tasdig‘ini kutadi. Tasdiqlanmaguncha restoran ishlamaydi. Windows identifikatorlari o‘zgarmaydi. Davom etasizmi?',
+    resetIdSent:
+      'So‘rov yuborildi. Kompyuter ulanganda yangi Device ID bilan “Tasdiq kutmoqda” bo‘lib chiqadi.',
+    agentMissing:
+      'Bu kompyuterdagi FastFood agenti eski — restoran serverini yangilang. Hozircha faqat Owner’dagi nomni o‘zgartirish mumkin.',
+    approve: 'Tasdiqlash',
+    approved: 'Tasdiqlandi. Kompyuter keyingi aloqada ishlay boshlaydi.',
+    reject: 'Rad etish',
+    rejectConfirm: 'Bu qurilma rad etilsinmi? U ishlay olmaydi.',
+    rejected: 'Rad etildi.',
+    reconnect: 'Qayta ulash',
+    reconnectConfirm:
+      'Eski qurilma qayta ulanadi va “Tasdiq kutmoqda” bo‘ladi. Faqat “Tasdiqlash”dan keyin ishlaydi. Davom etasizmi?',
+    reconnected: 'Qurilma tasdiq kutmoqda.',
+    archive: 'Eski qurilmani o‘chirish',
+    archiveConfirm:
+      'Eski qurilma ro‘yxatdan olib tashlanadi. Mijoz ma’lumotlari, litsenziya va tarix saqlanadi. Davom etasizmi?',
+    archived: 'Eski qurilma ro‘yxatdan olib tashlandi.',
+    showArchived: 'O‘chirilgan eski qurilmalarni ko‘rsatish',
+    hostRename: 'Windows nomini o‘zgartirish',
+    hostRenameTitle: 'Windows kompyuter nomi',
+    hostRenameHint:
+      'So‘rov restoran kompyuteriga yuboriladi. Administrator u yerda rozilik berishi va Windows administrator ruxsatini tasdiqlashi kerak. Yangi nom kompyuter qayta ishga tushirilgandan keyin qo‘llanadi. Faqat lotin harflari, raqamlar va “-”, 15 belgigacha.',
+    hostRenameSent: 'So‘rov yuborildi. Restoran administratori roziligini kutmoqda.',
+    hostRenameState: {
+      REQUESTED: 'Windows nomi “{name}”: restoran roziligi kutilmoqda',
+      REJECTED: 'Windows nomi “{name}”: restoran rad etdi',
+      DONE: 'Windows nomi “{name}”: bajarildi (qayta ishga tushirilgandan keyin qo‘llanadi)',
+      FAILED: 'Windows nomi “{name}”: bajarilmadi',
     },
     block: 'Bloklash',
     unblock: 'Blokdan chiqarish',

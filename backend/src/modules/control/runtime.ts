@@ -55,6 +55,9 @@ type BeatResponse = {
     // device_approval: the terminal (local device id) and the Owner's decision.
     localId?: string;
     approve?: boolean;
+    // rename_host: the Owner's request and the asked Windows name.
+    requestId?: string;
+    name?: string;
   }[];
   update: AvailableUpdate | null;
   // Address the centre has moved to (signed with the same key as the grant).
@@ -387,6 +390,12 @@ export function createControlRuntime(
 
   async function heartbeatPayload() {
     const at = sysNow();
+    const current = await link();
+    const rename = current?.hostRenameRequest as {
+      id: string;
+      status: 'REQUESTED' | 'REJECTED' | 'DONE' | 'FAILED';
+      message?: string | null;
+    } | null;
     const [session, branches, devices, summary] = await Promise.all([
       db.session.findFirst({
         where: {
@@ -412,6 +421,22 @@ export function createControlRuntime(
     ]);
     return {
       appVersion: services.appVersion ?? '0.0.0',
+      // The Windows computer name as it is now (the Owner sees renames by themselves).
+      hostname: os.hostname().slice(0, 80) || undefined,
+      // What this agent can do for the Owner.
+      capabilities: [
+        'rekey',
+        ...(services.hostRenameAgent ? ['rename_host'] : []),
+      ],
+      ...(rename
+        ? {
+            hostRename: {
+              id: rename.id,
+              status: rename.status,
+              message: rename.message ?? null,
+            },
+          }
+        : {}),
       currentUser: session?.user.displayName ?? null,
       os: `${os.type()} ${os.release()}`.slice(0, 80),
       ackCommands: ackIds.slice(0, 20),
@@ -446,7 +471,7 @@ export function createControlRuntime(
   async function signedPost(
     row: ControlLink,
     pem: string,
-    type: 'heartbeat' | 'sync' | 'media',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey',
     path: string,
     payload: object,
   ) {
@@ -470,6 +495,95 @@ export function createControlRuntime(
       row.serverUrl,
     );
     return { seq, ...result };
+  }
+
+  /**
+   * "Device ID yangilash" asked by the Owner: a new FastFood device key is made and
+   * registered (signed by the old key and the new one). The new registration waits for
+   * the Owner's approval. Windows identifiers are never touched.
+   */
+  async function resetIdentity(oldPem: string) {
+    const row = await db.controlLink.findUnique({ where: { id: 1 } });
+    if (!row) return;
+    const fresh = generateIdentity();
+    const publicKey = exportPublicKey(publicKeyOf(fresh.privateKeyPem));
+    const proof = signValue(fresh.privateKeyPem, {
+      type: 'rekey',
+      activationId: row.activationId,
+      publicKey,
+    });
+    const result = await signedPost(
+      row,
+      oldPem,
+      'rekey',
+      '/control/device/rekey',
+      {
+        publicKey,
+        proof,
+      },
+    );
+    if (result.status !== 200 || typeof result.data.activationId !== 'string')
+      return;
+    await db.controlLink.update({
+      where: { id: 1 },
+      data: {
+        activationId: result.data.activationId,
+        deviceKeyEnc: services.secrets.encrypt(fresh.privateKeyPem),
+        serverStatus: 'BLOCKED',
+      },
+    });
+    invalidate();
+    services.logger.info('Device ID renewed; waiting for the Owner approval');
+  }
+
+  /** The Owner asks to rename this Windows computer: kept until the Admin answers. */
+  async function requestHostRename(command: {
+    requestId?: string;
+    name?: string;
+  }) {
+    if (!command.requestId || !command.name) return;
+    await db.controlLink.update({
+      where: { id: 1 },
+      data: {
+        hostRenameRequest: {
+          id: command.requestId,
+          name: command.name,
+          status: services.hostRenameAgent ? 'REQUESTED' : 'FAILED',
+          message: services.hostRenameAgent ? null : 'agent unavailable',
+        },
+      },
+    });
+    invalidate();
+    void announceConfigChange();
+  }
+
+  /** The Admin's answer on this computer (after Windows did, or refused, the rename). */
+  async function answerHostRename(input: {
+    id: string;
+    status: 'REJECTED' | 'DONE' | 'FAILED';
+    message?: string | null | undefined;
+  }) {
+    const row = await db.controlLink.findUnique({ where: { id: 1 } });
+    const current = row?.hostRenameRequest as {
+      id?: string;
+      status?: string;
+    } | null;
+    if (!row || current?.id !== input.id || current.status !== 'REQUESTED')
+      return false;
+    await db.controlLink.update({
+      where: { id: 1 },
+      data: {
+        hostRenameRequest: {
+          ...(current as object),
+          status: input.status,
+          message: input.message ?? null,
+        },
+      },
+    });
+    invalidate();
+    // Report it now (the Owner sees the outcome without waiting a minute).
+    void beat().catch(() => undefined);
+    return true;
   }
 
   /** One check-in with the centre. Network failures are recorded, never thrown. */
@@ -746,6 +860,10 @@ export function createControlRuntime(
       for (const command of doc.commands) {
         if (command.type === 'terminate_sessions')
           await terminateSessions(command).catch(() => undefined);
+        if (command.type === 'reset_identity')
+          await resetIdentity(pem).catch(() => undefined);
+        if (command.type === 'rename_host')
+          await requestHostRename(command).catch(() => undefined);
         if (command.type === 'device_approval')
           await applyOwnerDecision(db, command, sysNow()).catch(
             () => undefined,
@@ -907,6 +1025,13 @@ export function createControlRuntime(
     activate,
     register,
     beat,
+    answerHostRename,
+    hostRenameRequest: async () =>
+      ((await link())?.hostRenameRequest ?? null) as {
+        id: string;
+        name: string;
+        status: string;
+      } | null,
     sync,
     status,
     updateInfo,

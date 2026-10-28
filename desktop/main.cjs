@@ -527,6 +527,8 @@ function startServer(keys) {
         APP_ORIGIN: `http://localhost:${APP_PORT}`,
         ALLOW_SAME_HOST_ORIGIN: 'true',
         SELF_HOSTED: 'true',
+        // This app can rename this Windows computer (Owner request + Admin consent).
+        HOST_RENAME_AGENT: process.platform === 'win32' ? 'true' : 'false',
         INSTALL_ID: keys.installId,
         INSTALLED_AT: keys.installedAt,
         ...licenseStatusUrl(),
@@ -827,6 +829,33 @@ registerPrinters({
     });
   },
   log,
+});
+
+/**
+ * Windows computer name, asked by the Owner and agreed to by the restaurant Admin on
+ * this computer: Windows shows its own administrator prompt (the person may decline).
+ * The new name applies after the next restart. Nothing else is changed.
+ */
+ipcMain.handle('host:rename', async (_event, name) => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not-windows' };
+  const value = String(name ?? '');
+  if (!/^(?!\d+$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$/.test(value))
+    return { ok: false, error: 'invalid-name' };
+  const script = `Rename-Computer -NewName '${value}' -Force -ErrorAction Stop`;
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  try {
+    await run('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `$p = Start-Process -FilePath powershell -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-EncodedCommand','${encoded}'; exit $p.ExitCode`,
+    ]);
+    log(`computer renamed to ${value} (after restart)`);
+    return { ok: true };
+  } catch (error) {
+    log(`computer rename failed: ${error.message}`);
+    return { ok: false, error: String(error.message).slice(0, 160) };
+  }
 });
 
 ipcMain.handle('anydesk:open', async () => {

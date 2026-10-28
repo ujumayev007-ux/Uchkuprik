@@ -2571,6 +2571,17 @@ export const uz = {
     cashierHint:
       'Kassa smenasi (naqd pul, kassa hisoboti) alohida — “Kassa smenasi” bo‘limida yopiladi.',
   },
+  hostRename: {
+    title: 'Owner kompyuter nomini o‘zgartirishni so‘radi',
+    text: 'Yangi Windows nomi: “{name}”. Rozilik bersangiz Windows administrator ruxsati so‘raladi; yangi nom kompyuter qayta ishga tushirilgandan keyin qo‘llanadi.',
+    approve: 'Roziman',
+    reject: 'Rad etish',
+    onlyServer:
+      'Bu so‘rovni faqat server (kassa) kompyuterining o‘zida tasdiqlash mumkin.',
+    done: 'Kompyuter nomi o‘zgartirildi. Qayta ishga tushirilgandan keyin qo‘llanadi.',
+    failed: 'Kompyuter nomini o‘zgartirib bo‘lmadi (ruxsat berilmadi yoki xato).',
+    rejected: 'So‘rov rad etildi.',
+  },
   combos: {
     tab: 'Setlar',
     add: 'Yangi set',

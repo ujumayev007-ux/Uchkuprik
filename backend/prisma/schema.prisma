@@ -2757,6 +2757,8 @@ enum ControlActivationStatus {
   BLOCKED
   REPLACED
   REVOKED
+  // A new Device ID (or a reconnected old one) waiting for the Owner's approval.
+  PENDING
 }
 
 // One activated installation (the cashier computer). Bound to the customer and to a
@@ -2787,6 +2789,16 @@ model ControlActivation {
   stats           Json?
   replacedAt      DateTime?
   blockedReason   String?
+  // Name the Owner gives the computer (shown instead of the reported one).
+  displayName     String?
+  // Windows computer name as last reported by the install.
+  hostname        String?
+  // What the installed agent can do remotely (e.g. "rekey", "rename_host").
+  capabilities    String[]                @default([])
+  // Old registration removed from the Owner's lists (data kept).
+  archivedAt      DateTime?
+  // Last Windows computer-name change asked by the Owner and its outcome.
+  hostRename      Json?
   updatedAt       DateTime                @updatedAt
 
   customer  ControlCustomer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -2959,6 +2971,9 @@ model ControlLink {
   // Sealed (APP_SECRET_KEY) device private key when the launcher gave none.
   deviceKeyEnc   String?
   lastError      String?
+  // Windows computer-name change asked by the Owner, waiting for this restaurant's
+  // Admin to agree (or its outcome until reported).
+  hostRenameRequest Json?
   updatedAt      DateTime  @updatedAt
 
   @@map("control_link")

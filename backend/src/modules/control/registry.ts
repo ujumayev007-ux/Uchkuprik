@@ -187,6 +187,34 @@ export function registryRouter(services: Services) {
       let registration = await tx.controlRegistration.findUnique({
         where: { fingerprint },
       });
+      // FastFood reinstalled on the same computer (new key): the earlier
+      // announcement is reused, so the Owner sees one entry (a rejected one stays
+      // rejected; no second trial).
+      if (!registration) {
+        const earlier = await tx.controlRegistration.findFirst({
+          where: {
+            status: { in: ['PENDING', 'REJECTED'] },
+            OR: [
+              { installId: input.installId },
+              // Data folder deleted: a new install ID, but the same computer name and
+              // the first-install date that survives on this computer.
+              ...(installedAt
+                ? [{ label: input.deviceName, installedAt }]
+                : []),
+            ],
+          },
+          orderBy: { lastSeenAt: 'desc' },
+        });
+        if (earlier)
+          registration = await tx.controlRegistration.update({
+            where: { id: earlier.id },
+            data: {
+              fingerprint,
+              publicKey: input.publicKey,
+              installId: input.installId,
+            },
+          });
+      }
       let isNew = false;
       if (registration) {
         registration = await tx.controlRegistration.update({
