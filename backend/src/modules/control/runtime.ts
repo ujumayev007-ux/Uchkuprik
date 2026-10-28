@@ -715,8 +715,13 @@ export function createControlRuntime(
       // The centre announced a new address: verify it first, then switch.
       if (doc.relocate && trimUrl(doc.relocate) !== row.serverUrl)
         void relocate(doc.relocate);
-      // New decisions from the Owner reach connected screens and Android devices.
-      if (row.policyVersion !== grant.policy.version)
+      // New decisions from the Owner reach connected screens and Android devices:
+      // policy changes, and blocking / unblocking (the screens drop or show the
+      // "blocked" notice at once instead of after a reload).
+      if (
+        row.policyVersion !== grant.policy.version ||
+        row.serverStatus !== grant.status
+      )
         void announceConfigChange();
       if (doc.branding)
         brandingWork = applyBranding(row, pem, doc.branding).catch(

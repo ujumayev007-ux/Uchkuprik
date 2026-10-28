@@ -188,12 +188,17 @@ export type DeviceRow = {
   terminals: TerminalRow[];
 };
 
+// Why a restaurant is blocked: the customer stopped, a licence suspended, a computer blocked.
+export type BlockReason = 'CUSTOMER' | 'LICENSE' | 'DEVICE';
+
 export type CustomerSummary = {
   id: string;
   name: string;
   contactName: string | null;
   phone: string | null;
   status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+  blocked?: boolean;
+  blockReasons?: BlockReason[];
   license: LicenseRow | null;
   devices: Record<Presence, number>;
   branchCount: number;
@@ -207,6 +212,7 @@ export type CustomerDetail = {
   phone: string | null;
   note: string | null;
   status: CustomerSummary['status'];
+  blockReasons?: BlockReason[];
   hosted?: boolean;
   createdAt: string;
   licenses: LicenseRow[];

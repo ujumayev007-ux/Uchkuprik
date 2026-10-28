@@ -363,6 +363,59 @@ describe('licence lifecycle and activation', () => {
     );
   });
 
+  it('"Blokdan chiqarish" lifts every block at once and keeps the licence end date', async () => {
+    const { agent } = await signedIn();
+    const lic = await createLicensedCustomer(agent);
+    const pc = device(request.agent(ctx.app));
+    const activated = await pc.activate(lic.key).expect(201);
+    const id = activated.body.activationId as string;
+    const grantOf = async () => {
+      const beat = await pc.heartbeat(id).expect(200);
+      const body = verifyDocument<{ grant: string }>(beat.body.response, [
+        server.publicKey,
+      ])!;
+      return readGrant(body.grant, [server.publicKey])!;
+    };
+    const ends = (await grantOf()).licenseExpiresAt;
+    // Blocked three ways: customer stopped, licence suspended, computer blocked.
+    await api(agent)
+      .post(`/control/customers/${lic.customerId}/status`, { status: 'SUSPENDED' })
+      .expect(200);
+    await api(agent).post(`/control/licenses/${lic.licenseId}/suspend`).expect(200);
+    await api(agent).post(`/control/devices/${id}/block`).expect(200);
+    expect((await grantOf()).status).not.toBe('ACTIVE');
+    const listed = await api(agent).get('/control/customers').expect(200);
+    const row = listed.body.customers.find(
+      (item: { id: string }) => item.id === lic.customerId,
+    );
+    expect(row.blocked).toBe(true);
+    expect(row.blockReasons).toEqual(['CUSTOMER', 'LICENSE', 'DEVICE']);
+
+    const unblocked = await api(agent)
+      .post(`/control/customers/${lic.customerId}/unblock`)
+      .expect(200);
+    expect(unblocked.body).toMatchObject({ customer: true, licenses: 1, devices: 1 });
+    // The device receives it with its next check-in; the end date is unchanged.
+    const grant = await grantOf();
+    expect(grant.status).toBe('ACTIVE');
+    expect(grant.licenseExpiresAt).toBe(ends);
+    const detail = await api(agent).get(`/control/customers/${lic.customerId}`).expect(200);
+    expect(detail.body.status).toBe('ACTIVE');
+    expect(detail.body.blockReasons).toEqual([]);
+    // Unblocking again changes nothing; a revoked licence is never brought back.
+    await api(agent)
+      .post(`/control/customers/${lic.customerId}/unblock`)
+      .expect(200)
+      .expect((res) => expect(res.body).toMatchObject({ customer: false, licenses: 0, devices: 0 }));
+    await api(agent).post(`/control/licenses/${lic.licenseId}/revoke`).expect(200);
+    await api(agent).post(`/control/customers/${lic.customerId}/unblock`).expect(200);
+    expect((await grantOf()).status).toBe('REVOKED');
+    const events = await ctx.db.controlAuditLog.findMany({
+      where: { customerId: lic.customerId, action: 'customer.unblock' },
+    });
+    expect(events.length).toBe(3);
+  });
+
   it('a restaurant terminal is activated only by the Owner (signed command, audited)', async () => {
     const { agent } = await signedIn();
     const lic = await createLicensedCustomer(agent, { maxInstalls: 1 });

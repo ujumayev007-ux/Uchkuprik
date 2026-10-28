@@ -58,6 +58,27 @@ function addMonths(from: Date, months: number): Date {
 
 export type Presence = 'ONLINE' | 'OFFLINE' | 'BLOCKED' | 'NEVER';
 
+export type BlockReason = 'CUSTOMER' | 'LICENSE' | 'DEVICE';
+
+/**
+ * Why a customer's restaurant is blocked right now: the customer itself was stopped,
+ * a licence was suspended, or a computer was blocked. (Replaced or revoked computers
+ * and revoked licences are not blocks: they are not undone by unblocking.)
+ */
+export function blockReasons(input: {
+  status: string;
+  licenses: { status: string }[];
+  activations: { status: string }[];
+}): BlockReason[] {
+  const reasons: BlockReason[] = [];
+  if (input.status !== 'ACTIVE') reasons.push('CUSTOMER');
+  if (input.licenses.some((license) => license.status === 'SUSPENDED'))
+    reasons.push('LICENSE');
+  if (input.activations.some((activation) => activation.status === 'BLOCKED'))
+    reasons.push('DEVICE');
+  return reasons;
+}
+
 export function presenceOf(
   activation: Pick<ControlActivation, 'status' | 'lastHeartbeatAt'>,
   at: Date,
@@ -265,12 +286,15 @@ export function manageRouter(services: Services) {
         const presence = { ONLINE: 0, OFFLINE: 0, BLOCKED: 0, NEVER: 0 };
         for (const activation of customer.activations)
           presence[presenceOf(activation, at)]++;
+        const reasons = blockReasons(customer);
         return {
           id: customer.id,
           name: customer.name,
           contactName: customer.contactName,
           phone: customer.phone,
           status: customer.status,
+          blocked: reasons.length > 0,
+          blockReasons: reasons,
           license: license ? licenseView(license, at) : null,
           devices: presence,
           branchCount: customer.branches.length,
@@ -331,6 +355,7 @@ export function manageRouter(services: Services) {
       phone: customer.phone,
       note: customer.note,
       status: customer.status,
+      blockReasons: blockReasons(customer),
       // The restaurant runs on this server: the Owner may browse its data.
       hosted: customer.tenantId !== null,
       createdAt: customer.createdAt,
@@ -405,6 +430,56 @@ export function manageRouter(services: Services) {
         });
       });
       res.json({ ok: true });
+    },
+  );
+
+  /**
+   * "Blokdan chiqarish": undoes every block of the customer at once — the customer
+   * status, suspended licences and blocked computers — in the central database. The
+   * restaurant receives it with its next check-in (about a minute). Licence end dates,
+   * revoked licences, replaced computers and all restaurant data stay as they are.
+   */
+  router.post(
+    '/control/customers/:id/unblock',
+    ...sensitive,
+    async (req, res) => {
+      const owner = getOwner(res);
+      const id = idParam(req.params.id);
+      const result = await db.$transaction(async (tx) => {
+        const customer = await tx.controlCustomer.findUnique({
+          where: { id },
+          select: { status: true },
+        });
+        if (!customer) throw errors.notFound();
+        if (customer.status !== 'ACTIVE')
+          await tx.controlCustomer.update({
+            where: { id },
+            data: { status: 'ACTIVE' },
+          });
+        const licenses = await tx.controlLicense.updateMany({
+          where: { customerId: id, status: 'SUSPENDED' },
+          data: { status: 'ACTIVE' },
+        });
+        const devices = await tx.controlActivation.updateMany({
+          where: { customerId: id, status: 'BLOCKED' },
+          data: { status: 'ACTIVE', blockedReason: null },
+        });
+        const changed = {
+          customer: customer.status !== 'ACTIVE',
+          licenses: licenses.count,
+          devices: devices.count,
+        };
+        await controlAudit(tx, req, {
+          ownerId: owner.ownerId,
+          customerId: id,
+          action: 'customer.unblock',
+          entityType: 'customer',
+          entityId: id,
+          data: changed,
+        });
+        return changed;
+      });
+      res.json({ ok: true, ...result });
     },
   );
 

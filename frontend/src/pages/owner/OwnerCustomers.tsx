@@ -400,7 +400,32 @@ function CustomerDetailView({
         <Badge tone={customer.status === 'ACTIVE' ? 'success' : 'danger'}>
           {c.status[customer.status]}
         </Badge>
-        {customer.status === 'ACTIVE' ? (
+        {(customer.blockReasons?.length ?? 0) > 0 && (
+          <Badge tone="danger">
+            {c.blocked}:{' '}
+            {customer
+              .blockReasons!.map((reason) => c.blockReason[reason])
+              .join(', ')}
+          </Badge>
+        )}
+        {(customer.blockReasons?.length ?? 0) > 0 ? (
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={busy}
+            onClick={async () => {
+              if (
+                await confirm(c.unblockConfirm.replace('{name}', customer.name))
+              )
+                void run(async () => {
+                  await ownerPost(`/customers/${id}/unblock`);
+                  reload();
+                }, c.unblocked);
+            }}
+          >
+            {c.unblock}
+          </Button>
+        ) : customer.status === 'ACTIVE' ? (
           <Button
             size="sm"
             variant="danger"
@@ -483,6 +508,7 @@ function CustomerDetailView({
 export function CustomersTab({ catalog }: { catalog: FeatureDef[] }) {
   const client = useQueryClient();
   const { run, busy } = useRun();
+  const { confirm, element: confirmElement } = useConfirm();
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [form, setForm] = useState({ name: '', contactName: '', phone: '' });
@@ -549,6 +575,36 @@ export function CustomersTab({ catalog }: { catalog: FeatureDef[] }) {
               <Badge tone={customer.status === 'ACTIVE' ? 'success' : 'danger'}>
                 {c.status[customer.status]}
               </Badge>
+              {customer.blocked && (
+                <>
+                  <Badge tone="danger">
+                    {c.blocked}:{' '}
+                    {(customer.blockReasons ?? [])
+                      .map((reason) => c.blockReason[reason])
+                      .join(', ')}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (
+                        await confirm(
+                          c.unblockConfirm.replace('{name}', customer.name),
+                        )
+                      )
+                        void run(async () => {
+                          await ownerPost(`/customers/${customer.id}/unblock`);
+                          await client.invalidateQueries({
+                            queryKey: ['owner'],
+                          });
+                        }, c.unblocked);
+                    }}
+                  >
+                    {c.unblock}
+                  </Button>
+                </>
+              )}
               <Button
                 size="sm"
                 aria-label={customer.name}
@@ -606,6 +662,7 @@ export function CustomersTab({ catalog }: { catalog: FeatureDef[] }) {
           </Button>
         </div>
       </section>
+      {confirmElement}
     </div>
   );
 }

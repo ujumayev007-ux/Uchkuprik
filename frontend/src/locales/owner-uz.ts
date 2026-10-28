@@ -123,6 +123,17 @@ export const owner = {
     status: { ACTIVE: 'Faol', SUSPENDED: 'To‘xtatilgan', CLOSED: 'Yopilgan' },
     suspend: 'To‘xtatish',
     reactivate: 'Qayta yoqish',
+    blocked: 'Bloklangan',
+    unblock: 'Blokdan chiqarish',
+    unblockConfirm:
+      '{name}: blokdan chiqarilsinmi? Mijoz, to‘xtatilgan litsenziyalar va bloklangan kompyuterlar qayta yoqiladi. Litsenziya muddati va restoran ma’lumotlari o‘zgarmaydi.',
+    unblocked:
+      'Blokdan chiqarildi. Restoran keyingi aloqada (taxminan 1 daqiqa ichida) qayta ishlaydi.',
+    blockReason: {
+      CUSTOMER: 'mijoz to‘xtatilgan',
+      LICENSE: 'litsenziya to‘xtatilgan',
+      DEVICE: 'kompyuter bloklangan',
+    },
     branches: 'Filiallar',
     noBranches: 'Filiallar qurilma ulangach ko‘rinadi.',
     noLicense: 'Litsenziyasiz',
