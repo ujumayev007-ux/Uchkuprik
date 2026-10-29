@@ -105,7 +105,7 @@ export function remoteRouter(services: Services) {
     const owner = getOwner(res);
     const customerId = idParam(req.params.id);
     const input = parse(
-      z.object({ kind: z.enum(OP_KINDS as [string, ...string[]]), payload: z.unknown() }),
+      z.object({ kind: z.enum(OP_KINDS as [string, ...string[]]), payload: z.unknown().optional() }),
       req.body,
     );
     if (needsReauth(input.kind)) await checkReauth(req, res);

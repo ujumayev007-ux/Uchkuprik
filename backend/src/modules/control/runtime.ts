@@ -1143,6 +1143,7 @@ export function createControlRuntime(
     activate,
     register,
     beat,
+    runOwnerOps,
     answerHostRename,
     hostRenameRequest: async () =>
       ((await link())?.hostRenameRequest ?? null) as {

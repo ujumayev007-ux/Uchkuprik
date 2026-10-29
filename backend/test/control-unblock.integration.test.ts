@@ -253,3 +253,49 @@ describe('workflow from the Owner', () => {
     expect(activation.capabilities).toContain('workflow');
   });
 });
+
+describe('Owner remote operations on a restaurant computer', () => {
+  const beatOk = async () => {
+    for (let i = 0; i < 20; i++) {
+      if ((await runtime.beat()) === 'ok') return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('no heartbeat');
+  };
+  it('runs each operation exactly once and reports signed results', async () => {
+    const { customerId, tenant } = await linkedRestaurant();
+    await runtime.beat();
+    const category = await install.db.menuCategory.create({ data: { tenantId: tenant.tenant.id, name: 'Taomlar' } });
+    const product = await install.db.product.create({
+      data: { tenantId: tenant.tenant.id, categoryId: category.id, name: 'Somsa' },
+    });
+    // The install and the centre share one test database: the restaurant's tenant is
+    // the oldest business tenant, as the install picks it.
+    const restaurant = await install.db.tenant.findFirstOrThrow({
+      where: { kind: 'BUSINESS' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const snapshot = await central.db.controlRemoteOp.create({ data: { customerId, kind: 'snapshot.staff' } });
+    const write =
+      restaurant.id === tenant.tenant.id
+        ? await central.db.controlRemoteOp.create({
+            data: { customerId, kind: 'menu.product.visibility', payload: { productId: product.id, isActive: false } },
+          })
+        : null;
+    await beatOk();
+    await runtime.runOwnerOps();
+    const done = await central.db.controlRemoteOp.findUniqueOrThrow({ where: { id: snapshot.id } });
+    expect(done.status).toBe('DONE');
+    expect(JSON.stringify(done.result)).not.toContain('pinHash');
+    expect(JSON.stringify(done.result)).toContain('hasPin');
+    // Delivered again (e.g. the answer was lost): not executed twice.
+    await central.db.controlRemoteOp.update({ where: { id: snapshot.id }, data: { status: 'SENT' } });
+    await beatOk();
+    await runtime.runOwnerOps();
+    expect(await install.db.remoteOpReceipt.count({ where: { id: snapshot.id } })).toBe(1);
+    if (write) {
+      expect((await central.db.controlRemoteOp.findUniqueOrThrow({ where: { id: write.id } })).status).toBe('DONE');
+      expect((await install.db.product.findUniqueOrThrow({ where: { id: product.id } })).isActive).toBe(false);
+    }
+  });
+});

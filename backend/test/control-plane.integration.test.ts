@@ -1247,3 +1247,42 @@ describe('Owner workflows (Ish rejimlari)', () => {
     expect(actions).toEqual(expect.arrayContaining(['workflow.activate', 'workflow.rollback']));
   });
 });
+
+describe('Owner → Restoran boshqaruvi (hosted restaurant)', () => {
+  it('reads snapshots without secrets and makes audited changes at once', async () => {
+    const { agent } = await signedIn();
+    const tenant = await createTenant(ctx);
+    const tenantId = tenant.tenant.id;
+    const customer = await ctx.db.controlCustomer.create({ data: { name: unique('Mijoz'), tenantId } });
+    const category = await ctx.db.menuCategory.create({ data: { tenantId, name: 'Ichimliklar' } });
+    const product = await ctx.db.product.create({ data: { tenantId, categoryId: category.id, name: 'Choy' } });
+    const variant = await ctx.db.productVariant.create({
+      data: { tenantId, productId: product.id, name: 'Choynak', price: 5_000 },
+    });
+    const ops = `/control/customers/${customer.id}/remote/ops`;
+    const menu = await api(agent).post(ops, { kind: 'snapshot.menu' }).expect(201);
+    expect(menu.body.status).toBe('DONE');
+    await api(agent).post(ops, { kind: 'menu.variant.price', payload: { variantId: variant.id, price: 6_000 } }).expect(201);
+    expect((await ctx.db.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).price).toBe(6_000);
+    await api(agent).post(ops, { kind: 'menu.product.visibility', payload: { productId: product.id, isActive: false } }).expect(201);
+    expect((await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } })).isActive).toBe(false);
+    const staff = await api(agent).post(ops, { kind: 'snapshot.staff' }).expect(201);
+    expect(staff.body.status).toBe('DONE');
+    const view = await api(agent).get(`/control/customers/${customer.id}/remote`).expect(200);
+    expect(view.body.snapshots['snapshot.menu'].result.products[0].name).toBe('Choy');
+    expect(JSON.stringify(view.body)).not.toMatch(/pinHash|passwordHash|qrToken/);
+    // Another restaurant's product can not be changed through this customer.
+    const other = await createTenant(ctx);
+    const otherCategory = await ctx.db.menuCategory.create({ data: { tenantId: other.tenant.id, name: 'X' } });
+    const otherProduct = await ctx.db.product.create({
+      data: { tenantId: other.tenant.id, categoryId: otherCategory.id, name: 'Begona' },
+    });
+    const refused = await api(agent)
+      .post(ops, { kind: 'menu.product.visibility', payload: { productId: otherProduct.id, isActive: false } })
+      .expect(201);
+    expect(refused.body.status).toBe('FAILED');
+    expect((await ctx.db.product.findUniqueOrThrow({ where: { id: otherProduct.id } })).isActive).toBe(true);
+    const audits = await ctx.db.auditLog.findMany({ where: { tenantId, action: 'menu.variant.price' } });
+    expect(audits).toHaveLength(1);
+  });
+});
