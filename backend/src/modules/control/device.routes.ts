@@ -353,6 +353,32 @@ export function deviceRouter(services: Services) {
           })
           .optional(),
         tv: z.number().int().min(0).optional(),
+        // Owner → Monitoring.
+        printing: z
+          .object({
+            failed24h: z.number().int().min(0),
+            unknown24h: z.number().int().min(0),
+            pending: z.number().int().min(0),
+          })
+          .optional(),
+        panels: z
+          .object(
+            Object.fromEntries(
+              ['kitchen', 'tv', 'pos', 'waiter'].map((panel) => [
+                panel,
+                z.object({ total: z.number().int().min(0), online: z.number().int().min(0) }).optional(),
+              ]),
+            ),
+          )
+          .optional(),
+        backup: z
+          .object({
+            lastAt: z.string().max(40).nullable(),
+            ok: z.boolean().nullable(),
+            lastName: z.string().max(100).nullable(),
+            count: z.number().int().min(0),
+          })
+          .optional(),
       })
       .optional(),
     // Outcome of the Owner's Windows-name request on the restaurant side.

@@ -10,6 +10,7 @@ import { createDatabase } from './database.js';
 import type { Services } from './context.js';
 import { createPrisma } from './db.js';
 import { createSecretBox } from './lib/crypto.js';
+import { backupStore } from './lib/backup-store.js';
 import { createEventBus } from './realtime/bus.js';
 import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
@@ -112,6 +113,18 @@ async function main(): Promise<void> {
     },
   } as Services;
   services.appVersion = appVersion();
+  if (config.BACKUP_DIR)
+    services.backups = backupStore({
+      dir: config.BACKUP_DIR,
+      dataDir: config.FASTFOOD_DATA_DIR ?? null,
+      databaseUrl: config.DATABASE_URL,
+      canSwap: config.RESTORE_SWAP,
+    });
+  // The launcher starts the server again (and swaps a prepared database in first).
+  services.requestRestart = () => {
+    logger.warn('Restarting for a database swap');
+    setTimeout(() => process.exit(0), 1_500).unref();
+  };
   // Control channel: installs report to the central server; the cloud edition reads
   // customer policies straight from its own tables.
   if (config.SELF_HOSTED && !config.CONTROL_PLANE) {

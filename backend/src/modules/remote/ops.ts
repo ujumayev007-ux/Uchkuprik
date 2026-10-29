@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Db } from '../../db.js';
+import type { BackupStore } from '../../lib/backup-store.js';
 import { AppError } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
 import { orderSettingsOf, orderSettingsSchema } from '../orders/settings.js';
@@ -23,6 +24,8 @@ import type { Prisma } from '../../generated/prisma/client.js';
  */
 
 const uuid = z.uuid();
+const backupName = z.string().regex(/^[0-9A-Za-z.-]{10,80}$/);
+
 export const OP_PAYLOADS = {
   'snapshot.menu': z.object({}),
   'snapshot.staff': z.object({}),
@@ -64,7 +67,18 @@ export const OP_PAYLOADS = {
     stockItemId: uuid,
     minStock: z.number().min(0).max(1_000_000_000),
   }),
+  // Ma'lumotlarni tiklash: backups of a restaurant computer.
+  'snapshot.backups': z.object({}),
+  'backup.create': z.object({}),
+  'backup.verify': z.object({ name: backupName }),
+  'backup.restore': z.object({ name: backupName, confirm: z.literal('TIKLASH') }),
+  'backup.rollback': z.object({
+    database: z.string().regex(/^fastfood_before_[0-9]{8,20}$/),
+    confirm: z.literal('TIKLASH'),
+  }),
 } as const;
+/** Operations after which the restaurant server restarts (database swap). */
+export const RESTART_OPS = ['backup.restore', 'backup.rollback'];
 export type OpKind = keyof typeof OP_PAYLOADS;
 export const OP_KINDS = Object.keys(OP_PAYLOADS) as OpKind[];
 export const isSnapshot = (kind: string) => kind.startsWith('snapshot.');
@@ -83,7 +97,13 @@ export async function executeOp(
   tenantId: string,
   kind: string,
   rawPayload: unknown,
+  // Only the restaurant computer has backups (hosted restaurants: Render's own).
+  local: { backups?: BackupStore | undefined } = {},
 ): Promise<unknown> {
+  const backups = () => {
+    if (!local.backups) throw new AppError(409, 'BACKUP_UNAVAILABLE', 'backupUnavailable');
+    return local.backups;
+  };
   if (!(kind in OP_PAYLOADS)) throw new AppError(400, 'OP_UNKNOWN', 'validation');
   const owned = { tenantId };
   const ownerAudit = (action: string, entityType: string, entityId: string, data?: object) =>
@@ -463,6 +483,41 @@ export async function executeOp(
         minStock: payload.minStock,
       });
       return { ok: true };
+    }
+    case 'snapshot.backups': {
+      OP_PAYLOADS['snapshot.backups'].parse(rawPayload ?? {});
+      if (!local.backups)
+        return { available: false, canRestore: false, backups: [], kept: [], status: null };
+      const [list, kept, status] = await Promise.all([
+        local.backups.list(),
+        local.backups.keptDatabases().catch(() => []),
+        local.backups.status(),
+      ]);
+      return { available: true, canRestore: local.backups.canRestore, backups: list, kept, status };
+    }
+    case 'backup.create': {
+      OP_PAYLOADS['backup.create'].parse(rawPayload ?? {});
+      const created = await backups().create('manual');
+      await ownerAudit('backup.create', 'backup', created.name);
+      return created;
+    }
+    case 'backup.verify': {
+      const payload = OP_PAYLOADS['backup.verify'].parse(rawPayload);
+      const result = await backups().verify(payload.name);
+      await ownerAudit('backup.verify', 'backup', payload.name, { ok: result.ok });
+      return result;
+    }
+    case 'backup.restore': {
+      const payload = OP_PAYLOADS['backup.restore'].parse(rawPayload);
+      const prepared = await backups().prepareRestore(payload.name);
+      await ownerAudit('backup.restore', 'backup', payload.name, prepared);
+      return { ...prepared, restarting: true };
+    }
+    case 'backup.rollback': {
+      const payload = OP_PAYLOADS['backup.rollback'].parse(rawPayload);
+      const prepared = await backups().prepareRollback(payload.database);
+      await ownerAudit('backup.rollback', 'backup', payload.database);
+      return { ...prepared, restarting: true };
     }
   }
 }

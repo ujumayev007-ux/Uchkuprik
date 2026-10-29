@@ -12,6 +12,14 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  backupUnavailable:
+    'Zaxira nusxalar shu kompyuterdagi FastFood Server ilovasida ishlaydi (yangi versiya kerak).',
+  backupInvalid: 'Bu fayl FastFood zaxira nusxasi emas yoki shikastlangan.',
+  backupVerifyFailed:
+    'Zaxira nusxa tekshiruvdan o‘tmadi (tiklab ko‘rilganda maʼlumotlar mos kelmadi).',
+  backupFailed: 'Zaxira nusxa olinmadi. Server jurnalini tekshiring.',
+  backupPassword: 'Parol noto‘g‘ri yoki fayl shikastlangan.',
+  backupConfirm: 'Tasdiqlash uchun TIKLASH so‘zini yozing.',
   printMayDuplicate:
     'Bu chek allaqachon chop etilgan bo‘lishi mumkin. Qayta yuborsangiz, ikkinchi chek chiqishi mumkin — tasdiqlang.',
   printRuleOff: 'Bu chek turini chop etish o‘chirilgan (Chop etish qoidalari).',

@@ -84,6 +84,14 @@ const schema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Backup folder and data folder of the desktop app; RESTORE_SWAP: its launcher
+    // swaps in a restored database on restart (a restore is never applied in place).
+    BACKUP_DIR: z.string().max(500).optional(),
+    FASTFOOD_DATA_DIR: z.string().max(500).optional(),
+    RESTORE_SWAP: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Desktop install identity, provided by the desktop launcher.
     INSTALL_ID: z.string().max(100).optional(),
     INSTALLED_AT: z.coerce.date().optional(),

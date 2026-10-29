@@ -30,7 +30,7 @@ import type { BrandingBundle } from '../branding/bundle.js';
 import { sha256Of, sniffMedia } from '../branding/media.js';
 import { loadAdminData, unlinkedView, type ControlView } from './view.js';
 import { storeWorkflow } from '../workflow/restaurant.js';
-import { executeOp } from '../remote/ops.js';
+import { executeOp, RESTART_OPS } from '../remote/ops.js';
 import { AppError } from '../../http/errors.js';
 
 type Transport = typeof fetch;
@@ -432,6 +432,39 @@ export function createControlRuntime(
         kitchen: holders('kitchen.access'),
       },
       tv,
+      ...(await monitoringFacts()),
+    };
+  }
+
+  /** Owner → Monitoring: print queue, panels seen recently and the last backup. */
+  async function monitoringFacts() {
+    const at = sysNow();
+    const day = new Date(at.getTime() - 24 * 3_600_000);
+    const recent = new Date(at.getTime() - 10 * 60_000);
+    const [failed24h, unknown24h, pending, panels, backup] = await Promise.all([
+      db.printJob.count({ where: { status: 'FAILED', createdAt: { gte: day } } }),
+      db.printJob.count({ where: { status: 'UNKNOWN', createdAt: { gte: day } } }),
+      db.printJob.count({ where: { status: { in: ['PENDING', 'PRINTING'] } } }),
+      db.device.findMany({
+        where: { status: 'ACTIVE', panel: { in: ['KITCHEN', 'DISPLAY', 'POS', 'WAITER'] } },
+        select: { panel: true, lastSeenAt: true },
+        take: 200,
+      }),
+      services.backups?.status().catch(() => null) ?? null,
+    ]);
+    const seen = (panel: string) => ({
+      total: panels.filter((row) => row.panel === panel).length,
+      online: panels.filter((row) => row.panel === panel && row.lastSeenAt && row.lastSeenAt >= recent).length,
+    });
+    return {
+      printing: { failed24h, unknown24h, pending },
+      panels: {
+        kitchen: seen('KITCHEN'),
+        tv: seen('DISPLAY'),
+        pos: seen('POS'),
+        waiter: seen('WAITER'),
+      },
+      ...(backup ? { backup } : {}),
     };
   }
 
@@ -660,7 +693,9 @@ export function createControlRuntime(
         let result: unknown = null;
         let error: string | null = null;
         try {
-          result = await executeOp(db, tenant.id, op.kind, op.payload);
+          result = await executeOp(db, tenant.id, op.kind, op.payload, {
+            backups: services.backups,
+          });
         } catch (caught) {
           ok = false;
           error = caught instanceof AppError ? caught.code : 'FAILED';
@@ -688,6 +723,12 @@ export function createControlRuntime(
       }).catch(() => null);
       if (sent?.status === 200)
         await db.remoteOpReceipt.update({ where: { id: op.id }, data: { reported: true } });
+      // A prepared restore: nothing more runs on this database; the launcher swaps it.
+      // (The receipt moves to the restored database, so the operation never runs twice.)
+      if (receipt.ok && RESTART_OPS.includes(op.kind)) {
+        services.requestRestart?.();
+        return;
+      }
     }
   }
 

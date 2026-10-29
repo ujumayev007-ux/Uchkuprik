@@ -731,6 +731,8 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       '* /settings',
       '* /settings/*',
+      '* /backups',
+      '* /backups/*',
       'GET /admin/menu-visibility',
       'PUT /admin/menu-visibility',
     ],

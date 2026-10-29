@@ -412,6 +412,85 @@ async function backupIfUpgrading() {
     fs.rmSync(path.join(BACKUPS, old), { recursive: true, force: true });
 }
 
+/**
+ * A restore prepared by the server (Owner → Ma'lumotlarni tiklash or Admin → Zaxira
+ * nusxalar): while the server is stopped the prepared database takes the name
+ * "fastfood" and the current one is kept as fastfood_before_<time> (never deleted
+ * here), so a rollback is the same swap the other way. Returns true after a swap.
+ */
+async function applyPendingRestore(password) {
+  const file = path.join(DATA, 'restore-pending.json');
+  if (!fs.existsSync(file)) return false;
+  let pending = null;
+  try {
+    pending = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    pending = null;
+  }
+  const valid =
+    pending &&
+    ((pending.action === 'restore' &&
+      /^fastfood_restore_[0-9]{8,20}$/.test(pending.database)) ||
+      (pending.action === 'rollback' &&
+        /^fastfood_before_[0-9]{8,20}$/.test(pending.database)));
+  if (!valid) {
+    fs.renameSync(file, `${file}.invalid`);
+    log('restore: unreadable request ignored');
+    return false;
+  }
+  const { Client } = require('pg');
+  const admin = new Client({
+    host: '127.0.0.1',
+    port: PG_PORT,
+    user: 'fastfood',
+    password,
+    database: 'postgres',
+  });
+  await admin.connect();
+  const kept = `fastfood_before_${new Date()
+    .toISOString()
+    .replace(/[-:.TZ]/g, '')
+    .slice(0, 17)}`;
+  try {
+    const exists = await admin.query(
+      'SELECT 1 FROM pg_database WHERE datname = $1',
+      [pending.database],
+    );
+    if (exists.rowCount === 0) throw new Error(`${pending.database} topilmadi`);
+    await admin.query(
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('fastfood', $1) AND pid <> pg_backend_pid()",
+      [pending.database],
+    );
+    await admin.query(`ALTER DATABASE fastfood RENAME TO "${kept}"`);
+    try {
+      await admin.query(`ALTER DATABASE "${pending.database}" RENAME TO fastfood`);
+    } catch (error) {
+      await admin.query(`ALTER DATABASE "${kept}" RENAME TO fastfood`);
+      throw error;
+    }
+    log(
+      `restore: ${pending.action} ${pending.database} is now in use; previous database kept as ${kept}`,
+    );
+    const historyFile = path.join(DATA, 'restore-history.json');
+    const history = safeJson.readJson(historyFile, [], () => undefined);
+    safeJson.writeJson(
+      historyFile,
+      JSON.stringify([
+        ...(Array.isArray(history) ? history : []).slice(-49),
+        { ...pending, kept, appliedAt: new Date().toISOString() },
+      ]),
+    );
+    fs.rmSync(file, { force: true });
+    return true;
+  } catch (error) {
+    log(`restore FAILED: ${error.message}`);
+    fs.renameSync(file, `${file}.failed`);
+    return false;
+  } finally {
+    await admin.end().catch(() => undefined);
+  }
+}
+
 /** Applies migrations exactly like `prisma migrate deploy` (same bookkeeping table). */
 async function migrate(password) {
   const { Client } = require('pg');
@@ -531,6 +610,10 @@ function startServer(keys) {
         HOST_RENAME_AGENT: process.platform === 'win32' ? 'true' : 'false',
         INSTALL_ID: keys.installId,
         INSTALLED_AT: keys.installedAt,
+        // Zaxira nusxalar; a prepared restore is swapped in by this launcher on restart.
+        BACKUP_DIR: BACKUPS,
+        FASTFOOD_DATA_DIR: DATA,
+        RESTORE_SWAP: 'true',
         ...licenseStatusUrl(),
         ...controlEnv(),
         SERVE_FRONTEND: 'true',
@@ -553,7 +636,14 @@ function startServer(keys) {
         : Math.min(restartDelay * 2, 60_000);
     log(`server restart in ${restartDelay / 1000} s`);
     setTimeout(() => {
-      if (!stopping && !quitting) startServer(keys);
+      if (stopping || quitting) return;
+      // A restore prepared by the server is put in place before it starts again.
+      applyPendingRestore(keys.dbPassword)
+        .then((swapped) => (swapped ? migrate(keys.dbPassword) : undefined))
+        .catch((error) => log(`restore check failed: ${error.message}`))
+        .finally(() => {
+          if (!stopping && !quitting) startServer(keys);
+        });
     }, restartDelay);
   });
 }
@@ -597,8 +687,10 @@ function scheduleBackups(keys) {
         .readdirSync(BACKUPS)
         .filter((name) => /^daily-.*.ndjson.gz$/.test(name))
         .sort();
-      for (const old of copies.slice(0, Math.max(0, copies.length - 7)))
+      for (const old of copies.slice(0, Math.max(0, copies.length - 7))) {
         fs.rmSync(path.join(BACKUPS, old), { force: true });
+        fs.rmSync(path.join(BACKUPS, `${old}.json`), { force: true });
+      }
     });
   };
   setTimeout(run, 10 * 60_000).unref();
@@ -1172,6 +1264,7 @@ async function boot() {
   await initDatabase(keys.dbPassword);
   await backupIfUpgrading();
   await startPostgres();
+  await applyPendingRestore(keys.dbPassword);
   await migrate(keys.dbPassword);
   await ensureVendorLicense(keys);
   startServer(keys);

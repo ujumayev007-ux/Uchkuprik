@@ -6,6 +6,7 @@ import type { TelegramTransport } from './modules/notifications/notify.js';
 import type { WebhookSender } from './modules/developer/webhooks.js';
 import type { ControlRuntime } from './modules/control/runtime.js';
 import type { ControlViewProvider } from './modules/control/view.js';
+import type { BackupStore } from './lib/backup-store.js';
 
 export type Services = {
   db: Db;
@@ -47,6 +48,10 @@ export type Services = {
   };
   // Connection string, used only by backup tooling.
   databaseUrl?: string;
+  // Backups of the restaurant computer (desktop app only).
+  backups?: BackupStore;
+  // Called after an answer is sent when the server must restart (database swap).
+  requestRestart?: () => void;
   // Version of the running build (compared with the policy's minimum version).
   appVersion?: string;
   // Control state per tenant (feature switches, offline mode, financial visibility).
