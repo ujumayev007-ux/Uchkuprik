@@ -39,6 +39,31 @@ import {
   syncKitchenStatus,
 } from './engine.js';
 import { completeOrder } from './complete.js';
+import {
+  approvalStatus,
+  requiredBeforeKitchen,
+  type OrderWorkflow,
+} from '../workflow/engine.js';
+import { isWaiter, orderFlow, snapshotFor } from '../workflow/restaurant.js';
+
+/** Under a workflow, the kitchen gets the order only when the money it asks for is in. */
+const assertPaidForKitchen = (
+  flow: OrderWorkflow | null,
+  total: number,
+  paid: number,
+) => {
+  if (!flow || paid >= requiredBeforeKitchen(flow, total)) return;
+  throw flow.payment === 'PREPAY'
+    ? new AppError(409, 'WORKFLOW_PAYMENT_FIRST', 'workflowPaymentFirst')
+    : new AppError(409, 'WORKFLOW_ADVANCE', 'workflowAdvance', {
+        percent: flow.advancePercent,
+      });
+};
+// The kitchen needs no confirmation in this zone: the ticket counts as accepted.
+const autoAccept = (flow: OrderWorkflow | null, status: string, at: Date) =>
+  flow && !flow.kitchenConfirm && status === 'PLACED'
+    ? { kitchenAcceptedAt: at }
+    : {};
 import { loadOrderSettings, placementStatus } from './settings.js';
 
 const amount = z.number().int().min(1).max(1_000_000_000);
@@ -433,8 +458,19 @@ export function ordersRouter(services: Services) {
             discountFixed: 0,
             serviceChargeBp,
           });
+          // The SUPER_OWNER's workflow for this zone (null: existing behaviour).
+          const flow = await snapshotFor(tx, {
+            tenantId: auth.tenantId,
+            type: input.type,
+            channel: 'POS',
+            tableId,
+            waiter: isWaiter(auth),
+          });
+          if (input.place) assertPaidForKitchen(flow, totals.total, 0);
           const placing = input.place
-            ? await placementStatus(tx, auth.tenantId, auth.permissions)
+            ? flow
+              ? approvalStatus(flow, auth.permissions)
+              : await placementStatus(tx, auth.tenantId, auth.permissions)
             : 'DRAFT';
           const order = await tx.order.create({
             data: {
@@ -446,6 +482,8 @@ export function ordersRouter(services: Services) {
               channel: 'POS',
               status: placing,
               placedAt: placing === 'PLACED' ? now() : null,
+              ...autoAccept(flow, placing, now()),
+              ...(flow ? { workflow: flow } : {}),
               tableId,
               customerName: input.customerName ?? null,
               customerPhone: input.customerPhone ?? null,
@@ -577,9 +615,19 @@ export function ordersRouter(services: Services) {
   const assertCanEditPlaced = async (
     tx: Tx,
     auth: AuthContext,
-    order: { status: string },
+    order: { status: string; workflow?: unknown; kitchenAcceptedAt?: Date | null },
   ) => {
     if (order.status === 'DRAFT' || order.status === 'PENDING') return;
+    // Under a workflow the zone decides (managers may always change).
+    const flow = orderFlow(order);
+    if (flow && !auth.permissions.has('orders.cancel')) {
+      if (
+        flow.edit === 'NONE' ||
+        (flow.edit === 'BEFORE_KITCHEN' && order.kitchenAcceptedAt)
+      )
+        throw new AppError(403, 'WORKFLOW_EDIT', 'workflowEdit');
+      return;
+    }
     if (
       auth.permissions.has('orders.cancel') ||
       auth.permissions.has('payments.accept')
@@ -591,8 +639,17 @@ export function ordersRouter(services: Services) {
 
   // Cancelling or reducing a sent item lowers the bill: managers only, unless the
   // restaurant explicitly allows staff to do it.
-  const assertCanCancelPlaced = async (tx: Tx, auth: AuthContext) => {
+  const assertCanCancelPlaced = async (
+    tx: Tx,
+    auth: AuthContext,
+    order?: { workflow?: unknown },
+  ) => {
     if (auth.permissions.has('orders.cancel')) return;
+    const flow = order ? orderFlow(order) : null;
+    if (flow) {
+      if (flow.cancel === 'STAFF') return;
+      throw errors.forbidden();
+    }
     if (!(await loadOrderSettings(tx, auth.tenantId)).staffCanCancelPlaced)
       throw errors.forbidden();
   };
@@ -677,7 +734,8 @@ export function ordersRouter(services: Services) {
           });
         } else {
           await assertCanEditPlaced(tx, auth, order);
-          if (quantity < item.quantity) await assertCanCancelPlaced(tx, auth);
+          if (quantity < item.quantity)
+            await assertCanCancelPlaced(tx, auth, order);
           if (input.reason.length < 3)
             throw errors.validation([{ path: 'reason' }]);
           if (await needsKitchenAck(tx, auth, item, input.override))
@@ -759,7 +817,7 @@ export function ordersRouter(services: Services) {
         // Items already sent to the kitchen need edit rights and a reason.
         if (order.status !== 'DRAFT') {
           await assertCanEditPlaced(tx, auth, order);
-          await assertCanCancelPlaced(tx, auth);
+          await assertCanCancelPlaced(tx, auth, order);
           if (reason.length < 3) throw errors.validation([{ path: 'reason' }]);
         }
         const item = await tx.orderItem.findFirst({
@@ -1036,6 +1094,15 @@ export function ordersRouter(services: Services) {
       await mutate(auth, id, async (tx, order) => {
         if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+        // The zone's discount rule (removing a discount is always allowed).
+        const flow = orderFlow(order);
+        if (flow && (input.percentBp > 0 || input.fixed > 0)) {
+          const manager =
+            auth.permissions.has('settings.manage') ||
+            auth.permissions.has('orders.cancel');
+          if (flow.discounts === 'NONE' || (flow.discounts === 'MANAGER' && !manager))
+            throw new AppError(403, 'WORKFLOW_DISCOUNT', 'workflowDiscount');
+        }
         await tx.order.update({
           where: { id },
           data: {
@@ -1089,15 +1156,21 @@ export function ordersRouter(services: Services) {
       if (to === 'COMPLETED')
         return completeOrder(tx, order, auth.userId, now());
       // Cashier confirmation: staff without approval rights send the order to the
-      // cashier first; it reaches the kitchen only after approval.
+      // cashier first; it reaches the kitchen only after approval. Under a workflow its
+      // zone decides (approval rule, money due before the kitchen).
+      const flow = orderFlow(order);
+      if (to === 'PLACED') assertPaidForKitchen(flow, order.total, netPaid(order));
       const status =
         to === 'PLACED'
-          ? await placementStatus(tx, auth.tenantId, auth.permissions)
+          ? flow
+            ? approvalStatus(flow, auth.permissions)
+            : await placementStatus(tx, auth.tenantId, auth.permissions)
           : to;
       await tx.order.update({
         where: { id },
         data: {
           status,
+          ...autoAccept(flow, status, now()),
           version: { increment: 1 },
           ...(to === 'PLACED' ? { placedAt: now() } : { completedAt: now() }),
         },
@@ -1301,8 +1374,16 @@ export function ordersRouter(services: Services) {
               createdById: auth.userId,
             },
           });
-          // Paying a draft sends it to the kitchen (typical fast-food counter flow).
-          const placing = order.status === 'DRAFT';
+          // Paying a draft sends it to the kitchen (typical fast-food counter flow);
+          // under a workflow only once the money its zone asks for is in.
+          const flow = orderFlow(order);
+          const paidAfter = netPaid(order) + input.amount;
+          const placing =
+            order.status === 'DRAFT' &&
+            (!flow || paidAfter >= requiredBeforeKitchen(flow, order.total));
+          const placedStatus = flow
+            ? approvalStatus(flow, auth.permissions)
+            : 'PLACED';
           if (placing) {
             const items = await tx.orderItem.count({
               where: { orderId: id, status: 'ACTIVE' },
@@ -1314,7 +1395,13 @@ export function ordersRouter(services: Services) {
             data: {
               paidTotal: { increment: input.amount },
               version: { increment: 1 },
-              ...(placing ? { status: 'PLACED', placedAt: now() } : {}),
+              ...(placing
+                ? {
+                    status: placedStatus,
+                    placedAt: now(),
+                    ...autoAccept(flow, placedStatus, now()),
+                  }
+                : {}),
             },
           });
           // Points are redeemed 1:1 against the bill, under a lock on the customer.
@@ -1337,8 +1424,17 @@ export function ordersRouter(services: Services) {
           if (placing)
             await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
               from: 'DRAFT',
-              to: 'PLACED',
+              to: placedStatus,
             });
+          // Zone closes the table on payment: a served order fully paid is done.
+          if (
+            flow?.tableClose === 'ON_PAYMENT' &&
+            paidAfter >= order.total &&
+            (order.status === 'READY' || order.status === 'SERVED')
+          ) {
+            const fresh = await tx.order.findUniqueOrThrow({ where: { id } });
+            await completeOrder(tx, fresh, auth.userId, now());
+          }
           return created;
         });
         res.status(201).json({

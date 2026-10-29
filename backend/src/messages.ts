@@ -12,6 +12,16 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  workflowSource:
+    'Ish rejimi bo‘yicha bu joyda bunday buyurtma qabul qilinmaydi (masalan, bu zonada faqat kassa buyurtma oladi).',
+  workflowPaymentFirst:
+    'Ish rejimi bo‘yicha avval to‘lov qilinadi, keyin buyurtma oshxonaga yuboriladi.',
+  workflowAdvance:
+    'Ish rejimi bo‘yicha avval avans to‘lanishi kerak, keyin buyurtma oshxonaga yuboriladi.',
+  workflowApproval: 'Ish rejimi bo‘yicha bu buyurtmani tasdiqlash huquqingiz yo‘q.',
+  workflowEdit:
+    'Ish rejimi bo‘yicha oshxonaga yuborilgan buyurtmani o‘zgartirib bo‘lmaydi. Menejerga murojaat qiling.',
+  workflowDiscount: 'Ish rejimi bo‘yicha bu buyurtmaga chegirma berib bo‘lmaydi.',
   importFile:
     'Excel faylini o‘qib bo‘lmadi. “Excel namunasini yuklab olish” orqali olingan .xlsx faylni to‘ldirib yuklang.',
   importTooMany: 'Bir martada ko‘pi bilan 500 ta taom yuklash mumkin.',
