@@ -185,6 +185,7 @@ export const featureCatalog: FeatureDef[] = [
       'POST /orders/:id/receipt/print',
       'POST /orders/:id/refunds/:refundId/print',
       'POST /orders/:id/e-receipt',
+      'POST /orders/:id/e-receipt/telegram',
       'GET /receipt-printers',
     ],
   }),

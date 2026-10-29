@@ -41,6 +41,7 @@ import { completeOrder } from './complete.js';
 import { serialize } from './serialize.js';
 import { receiptBytes, receiptData, repeated } from './receipt-data.js';
 import { printRefund } from '../../printing/auto.js';
+import { sendTelegramReceipt } from '../telegram/receipt.js';
 import { enqueueKitchenTickets } from '../../printing/queue.js';
 import {
   approvalStatus,
@@ -1688,6 +1689,31 @@ export function ordersRouter(services: Services) {
         select: { trackingToken: true },
       });
       res.json({ token: trackingToken, path: `/buyurtma/${trackingToken}` });
+    },
+  );
+
+  // Elektron chek to the guest's Telegram now (the chat of the order, or the chat
+  // whose number Telegram confirmed as the guest's own).
+  router.post(
+    '/orders/:id/e-receipt/telegram',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      await load(auth, id);
+      await sendTelegramReceipt(services, id, {
+        force: true,
+        origin: services.appOrigin ?? null,
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'order.e_receipt_telegram',
+        entityType: 'order',
+        entityId: id,
+      });
+      res.json({ ok: true });
     },
   );
 

@@ -16,6 +16,7 @@ import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startScheduleWorker } from './modules/workflow/schedule.js';
 import { autoPrintOrder } from './printing/auto.js';
+import { sendTelegramReceipt } from './modules/telegram/receipt.js';
 import { offsiteBackups, startOffsiteWorker } from './lib/backup-offsite.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { setEntitlementsOverride } from './modules/billing/entitlements.js';
@@ -131,6 +132,7 @@ async function main(): Promise<void> {
       secrets: services.secrets,
       central: () => services.controlRuntime?.uploadBackup ?? null,
     });
+  services.appOrigin = config.APP_ORIGIN;
   // The launcher starts the server again (and swaps a prepared database in first).
   services.requestRestart = () => {
     logger.warn('Restarting for a database swap');
@@ -155,6 +157,10 @@ async function main(): Promise<void> {
     await autoPrintOrder(services, orderId).catch(() =>
       logger.warn('Automatic receipt printing failed'),
     );
+    // Elektron chek in Telegram once the order is paid (when switched on).
+    await sendTelegramReceipt(services, orderId, {
+      origin: config.APP_ORIGIN,
+    }).catch(() => logger.warn('Telegram receipt failed'));
     await notifyTelegramCustomer(services, orderId).catch(() =>
       logger.warn('Telegram customer notice failed'),
     );

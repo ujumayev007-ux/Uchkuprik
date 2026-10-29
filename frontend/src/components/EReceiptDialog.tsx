@@ -84,6 +84,18 @@ export function EReceiptButton({ orderId }: { orderId: string }) {
               >
                 {e.telegram}
               </a>
+              <Button
+                onClick={async () => {
+                  try {
+                    await post(`/orders/${orderId}/e-receipt/telegram`);
+                    toast(e.botSent);
+                  } catch (caught) {
+                    toast(errorMessage(caught), 'error');
+                  }
+                }}
+              >
+                {e.botSend}
+              </Button>
             </div>
             <p className="muted small">{e.lanWarning}</p>
           </div>

@@ -35,6 +35,9 @@ export const messages = {
     'Hisobda to‘lanmagan qarz bor. Avval qarzni to‘liq to‘lang.',
   workflowSchedule:
     'Buyurtmani belgilangan vaqtga qoldirish faqat rejalashtirilgan buyurtma yoki banket ish rejimida mumkin.',
+  telegramOff: 'Restoran Telegram boti sozlanmagan yoki o‘chirilgan.',
+  telegramNoChat:
+    'Bu mijozning Telegram chati topilmadi. Mijoz botga /start yozib, o‘z raqamini yuborishi kerak.',
   printRuleOff: 'Bu chek turini chop etish o‘chirilgan (Chop etish qoidalari).',
   printInProgress: 'Chek hozir printerga yuborilmoqda. Biroz kuting.',
   workflowInvalid:

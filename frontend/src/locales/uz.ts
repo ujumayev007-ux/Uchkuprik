@@ -3107,7 +3107,13 @@ export const uz = {
     hint: 'Mijoz QR-kodni skanerlab chekni telefonida ochadi va PDF sifatida saqlay oladi.',
     copy: 'Havolani nusxalash',
     copied: 'Havola nusxalandi',
-    telegram: 'Telegram orqali yuborish',
+    telegram: 'Telegram orqali ulashish',
+    botSend: 'Mijozning Telegramiga yuborish (bot)',
+    botSent: 'Elektron chek mijozning Telegramiga yuborildi',
+    telegramTitle: 'Elektron chek Telegramda',
+    telegramEnable: 'To‘langan buyurtmaning chekini mijozga avtomatik yuborish',
+    telegramHint:
+      'Bot chekni buyurtma kelgan Telegram chatiga yoki raqami Telegram tomonidan tasdiqlangan mijozga yuboradi. Mijoz botga /start yozib, «Raqamni yuborish» tugmasini bosadi; /stop bilan to‘xtatadi. Har bir chek bir marta yuboriladi.',
     lanWarning:
       'Havola shu server manzilida ochiladi: mijoz telefoni restoran Wi-Fi tarmog‘ida bo‘lishi kerak (yoki server internetga chiqarilgan bo‘lsa).',
     savePdf: 'PDF sifatida saqlash',

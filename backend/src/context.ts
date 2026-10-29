@@ -46,6 +46,8 @@ export type Services = {
     // Device private key (PEM) from the launcher's OS secure storage.
     deviceKeyPem?: string;
   };
+  // Public address of this server (links in Telegram receipts).
+  appOrigin?: string;
   // Connection string, used only by backup tooling.
   databaseUrl?: string;
   // Backups of the restaurant computer (desktop app only).

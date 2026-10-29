@@ -708,6 +708,8 @@ model Order {
   // Telegram customer: chat to notify and the last status we told them about.
   telegramChatId     String?
   telegramNotified   String?
+  // The electronic receipt was sent by the Telegram bot (once).
+  telegramReceiptAt  DateTime?
   createdById        String?         @db.Uuid
   version            Int             @default(1)
   // Customer receipts printed so far: from the second one on they are marked "NUSXA".
@@ -1417,6 +1419,9 @@ model TelegramChat {
   chatId      String
   name        String?
   phone       String?
+  // Telegram confirmed the shared contact as this user's own number (receipts go only
+  // to such chats).
+  phoneVerified Boolean   @default(false)
   // Conversation step and cart; never contains payment data.
   state       Json      @default("{}")
   lastOrderAt DateTime?
@@ -1424,6 +1429,7 @@ model TelegramChat {
   updatedAt   DateTime  @updatedAt
 
   @@unique([tenantId, chatId])
+  @@index([tenantId, phone])
   @@map("telegram_chats")
 }
 
@@ -2404,6 +2410,8 @@ model TelegramConfig {
   orderBranchId String? @db.Uuid
   // Long-polling offset (self-hosted installs without a public HTTPS address).
   updateOffset  BigInt  @default(0)
+  // Electronic receipts sent automatically once an order is paid.
+  receiptsEnabled Boolean @default(false)
 
   @@map("telegram_configs")
 }
