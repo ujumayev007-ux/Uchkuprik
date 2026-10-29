@@ -405,6 +405,9 @@ export function canApprove(
       return false;
     case 'WAITER':
       return permissions.has('orders.create') || permissions.has('orders.approve');
+    case 'CASHIER':
+      // The cashier: whoever takes payments (as before workflows).
+      return permissions.has('payments.accept');
     default:
       return permissions.has('orders.approve');
   }

@@ -233,3 +233,23 @@ describe('the installed agent for the Owner', () => {
     }
   });
 });
+
+describe('workflow from the Owner', () => {
+  it('the restaurant keeps the active workflow it receives by heartbeat (newer versions only)', async () => {
+    const { customerId } = await linkedRestaurant();
+    const { PRESETS } = await import('../src/modules/workflow/engine.js');
+    await central.db.controlWorkflow.create({
+      data: { customerId, version: 5, config: PRESETS[1]!.config() as object },
+    });
+    expect(await runtime.beat()).toBe('ok');
+    const tenant = await install.db.tenant.findFirstOrThrow({
+      where: { kind: 'BUSINESS' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const profile = await install.db.tenantProfile.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+    expect(profile.workflowVersion).toBeGreaterThanOrEqual(5);
+    expect(profile.workflow).toMatchObject({ enabled: true, preset: 2 });
+    const activation = await central.db.controlActivation.findFirstOrThrow({ where: { customerId } });
+    expect(activation.capabilities).toContain('workflow');
+  });
+});

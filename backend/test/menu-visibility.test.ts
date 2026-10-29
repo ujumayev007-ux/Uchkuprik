@@ -46,3 +46,4 @@ describe('Admin Menu Visibility & Cashier Navigation Policy (R06, R12)', () => {
     expect(cashierAllowedPaths).not.toContain('/platforma/bizneslar');
   });
 });
+

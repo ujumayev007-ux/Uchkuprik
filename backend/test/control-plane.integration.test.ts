@@ -1210,3 +1210,40 @@ describe('Owner device management', () => {
     ).toBe(1);
   });
 });
+
+describe('Owner workflows (Ish rejimlari)', () => {
+  it('checks, activates as versions, rolls back and reaches the restaurant by heartbeat', async () => {
+    const { agent } = await signedIn();
+    const lic = await createLicensedCustomer(agent);
+    const pc = device(request.agent(ctx.app));
+    const id = (await pc.activate(lic.key).expect(201)).body.activationId as string;
+    await pc.heartbeat(id, { capabilities: ['workflow'], facts: { stations: [], staff: { cashier: 1, waiter: 1, kitchen: 1 } } }).expect(200);
+    const base = `/control/customers/${lic.customerId}/workflow`;
+    const start = await api(agent).get(base).expect(200);
+    expect(start.body.active).toBeNull();
+    expect(start.body.presets).toHaveLength(20);
+    const fastFood = start.body.presets.find((p: { id: number }) => p.id === 2).config;
+    const checked = await api(agent).post(`${base}/preview`, { config: fastFood }).expect(200);
+    expect(checked.body.routes[0].steps.join(' → ')).toContain('To‘lov');
+    // Activation needs explicit confirmation.
+    await api(agent).post(base, { config: fastFood }).expect(400);
+    const v1 = await api(agent).post(base, { config: fastFood, confirm: true }).expect(201);
+    expect(v1.body.version).toBe(1);
+    const table = start.body.presets.find((p: { id: number }) => p.id === 7).config;
+    await api(agent).post(base, { config: table, confirm: true }).expect(201);
+    const back = await api(agent).post(`${base}/rollback`, { version: 1, confirm: true }).expect(201);
+    expect(back.body.version).toBe(3);
+    const now = await api(agent).get(base).expect(200);
+    expect(now.body.active.version).toBe(3);
+    expect(now.body.active.config.preset).toBe(2);
+    expect(now.body.history.map((h: { version: number }) => h.version)).toEqual([3, 2, 1]);
+    // The signed heartbeat answer carries the active workflow.
+    const beat = await pc.heartbeat(id).expect(200);
+    const doc = verifyDocument<{ workflow: { version: number } }>(beat.body.response, [server.publicKey])!;
+    expect(doc.workflow.version).toBe(3);
+    const actions = (
+      await ctx.db.controlAuditLog.findMany({ where: { customerId: lic.customerId }, select: { action: true } })
+    ).map((entry) => entry.action);
+    expect(actions).toEqual(expect.arrayContaining(['workflow.activate', 'workflow.rollback']));
+  });
+});
