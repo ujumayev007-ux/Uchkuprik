@@ -29,6 +29,7 @@ import { verifyLicense } from '../license/license.js';
 import type { BrandingBundle } from '../branding/bundle.js';
 import { sha256Of, sniffMedia } from '../branding/media.js';
 import { loadAdminData, unlinkedView, type ControlView } from './view.js';
+import { storeWorkflow } from '../workflow/restaurant.js';
 
 type Transport = typeof fetch;
 
@@ -60,6 +61,7 @@ type BeatResponse = {
     name?: string;
   }[];
   update: AvailableUpdate | null;
+  workflow?: { version: number; config: unknown } | null;
   // Address the centre has moved to (signed with the same key as the grant).
   relocate?: string | null;
   // Design and advertising of this restaurant (only when the install's copy is outdated).
@@ -388,6 +390,48 @@ export function createControlRuntime(
     });
   }
 
+  /** Stations, printers, staff and TVs: what the Owner's workflow check looks at. */
+  async function restaurantFacts() {
+    const [stations, printers, roles, tv] = await Promise.all([
+      db.kitchenStation.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        take: 100,
+      }),
+      db.printer.groupBy({
+        by: ['kind'],
+        where: { isActive: true },
+        _count: { _all: true },
+      }),
+      db.userRole.findMany({
+        where: { user: { status: 'ACTIVE', deletedAt: null } },
+        select: { userId: true, role: { select: { permissions: true } } },
+      }),
+      db.device.count({ where: { panel: 'DISPLAY', status: 'ACTIVE' } }),
+    ]);
+    const holders = (permission: string) =>
+      new Set(
+        roles
+          .filter((row) => row.role.permissions.includes(permission))
+          .map((row) => row.userId),
+      ).size;
+    const count = (kind: string) =>
+      printers.find((row) => row.kind === kind)?._count._all ?? 0;
+    return {
+      stations: stations.map((station) => ({
+        id: station.id,
+        name: station.name.slice(0, 80),
+      })),
+      printers: { kitchen: count('KITCHEN'), receipt: count('RECEIPT') },
+      staff: {
+        cashier: holders('payments.accept'),
+        waiter: holders('orders.create'),
+        kitchen: holders('kitchen.access'),
+      },
+      tv,
+    };
+  }
+
   async function heartbeatPayload() {
     const at = sysNow();
     const current = await link();
@@ -426,6 +470,7 @@ export function createControlRuntime(
       // What this agent can do for the Owner.
       capabilities: [
         'rekey',
+        'workflow',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
       ],
       ...(rename
@@ -438,6 +483,7 @@ export function createControlRuntime(
           }
         : {}),
       currentUser: session?.user.displayName ?? null,
+      facts: await restaurantFacts(),
       os: `${os.type()} ${os.release()}`.slice(0, 80),
       ackCommands: ackIds.slice(0, 20),
       brandingVersion: await completeBrandingVersion(),
@@ -843,6 +889,16 @@ export function createControlRuntime(
       // The centre announced a new address: verify it first, then switch.
       if (doc.relocate && trimUrl(doc.relocate) !== row.serverUrl)
         void relocate(doc.relocate);
+      // The SUPER_OWNER's workflow: kept for the restaurant (newer versions only).
+      if (doc.workflow) {
+        const tenant = await db.tenant.findFirst({
+          where: { kind: 'BUSINESS' },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (tenant && (await storeWorkflow(db, tenant.id, doc.workflow)))
+          void announceConfigChange();
+      }
       // New decisions from the Owner reach connected screens and Android devices:
       // policy changes, and blocking / unblocking (the screens drop or show the
       // "blocked" notice at once instead of after a reload).

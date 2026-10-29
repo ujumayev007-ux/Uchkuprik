@@ -12,6 +12,8 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  workflowInvalid:
+    'Ish rejimida xatolar bor. Tekshiruv natijasini ko‘rib, tuzating.',
   workflowSource:
     'Ish rejimi bo‘yicha bu joyda bunday buyurtma qabul qilinmaydi (masalan, bu zonada faqat kassa buyurtma oladi).',
   workflowPaymentFirst:

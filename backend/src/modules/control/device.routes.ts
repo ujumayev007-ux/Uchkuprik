@@ -8,6 +8,7 @@ import { AppError, errors, parse } from '../../http/errors.js';
 import { messages } from '../../messages.js';
 import { compareVersions, timing } from './grant.js';
 import { issueGrant, loadPolicy } from './issue.js';
+import { activeWorkflow } from './workflow.routes.js';
 import {
   canonicalJson,
   fingerprintOf,
@@ -333,6 +334,26 @@ export function deviceRouter(services: Services) {
     hostname: text(80).optional(),
     // What the installed agent can do for the Owner.
     capabilities: z.array(z.string().max(40)).max(20).optional(),
+    // The restaurant's own facts for checking a workflow before activation.
+    facts: z
+      .object({
+        stations: z
+          .array(z.object({ id: z.uuid(), name: z.string().max(80) }))
+          .max(100)
+          .default([]),
+        printers: z
+          .object({ kitchen: z.number().int().min(0), receipt: z.number().int().min(0) })
+          .optional(),
+        staff: z
+          .object({
+            cashier: z.number().int().min(0),
+            waiter: z.number().int().min(0),
+            kitchen: z.number().int().min(0),
+          })
+          .optional(),
+        tv: z.number().int().min(0).optional(),
+      })
+      .optional(),
     // Outcome of the Owner's Windows-name request on the restaurant side.
     hostRename: z
       .object({
@@ -452,7 +473,10 @@ export function deviceRouter(services: Services) {
           model: beat.model ?? activation.model,
           os: beat.os ?? activation.os,
           branchName: beat.branches[0]?.name ?? activation.branchName,
-          stats: beat.stats as Prisma.InputJsonValue,
+          stats: {
+            ...(beat.stats as object),
+            ...(beat.facts ? { facts: beat.facts } : {}),
+          } as Prisma.InputJsonValue,
           pendingCommands: remaining as unknown as Prisma.InputJsonValue,
         },
       });
@@ -594,6 +618,8 @@ export function deviceRouter(services: Services) {
       serverTime: at.toISOString(),
       grant: document,
       commands: remaining,
+      // The SUPER_OWNER's workflow (older installs ignore it and keep their behaviour).
+      workflow: await activeWorkflow(db, activation.customerId),
       // Server migration: the signed answer carries the new address of the centre.
       relocate: services.control?.relocateTo ?? null,
       branding,
