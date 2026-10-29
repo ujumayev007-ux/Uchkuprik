@@ -3114,9 +3114,21 @@ export const uz = {
     telegramEnable: 'To‘langan buyurtmaning chekini mijozga avtomatik yuborish',
     telegramHint:
       'Bot chekni buyurtma kelgan Telegram chatiga yoki raqami Telegram tomonidan tasdiqlangan mijozga yuboradi. Mijoz botga /start yozib, «Raqamni yuborish» tugmasini bosadi; /stop bilan to‘xtatadi. Har bir chek bir marta yuboriladi.',
+    codeNote:
+      'QR-kodda kod bor. Havolani boshqa yo‘l bilan yuborsangiz, mijozga kodni alohida ayting.',
     lanWarning:
       'Havola shu server manzilida ochiladi: mijoz telefoni restoran Wi-Fi tarmog‘ida bo‘lishi kerak (yoki server internetga chiqarilgan bo‘lsa).',
     savePdf: 'PDF sifatida saqlash',
+    code: 'Chek kodi',
+    codeShown: 'Chek kodi: {code}',
+    codeHint:
+      'Chekni ko‘rish uchun 6 xonali kodni kiriting (QR-kod orqali ochilganda kod kerak emas).',
+    wrongCode: 'Kod noto‘g‘ri. Qayta urinib ko‘ring.',
+    locked:
+      'Juda ko‘p noto‘g‘ri urinish. 15 daqiqadan keyin qayta urinib ko‘ring.',
+    expired:
+      'Bu chek havolasining muddati tugagan. Restorandan yangi havola so‘rang.',
+    open: 'Chekni ochish',
   },
   receiptDesign: {
     title: 'Chek dizayni',

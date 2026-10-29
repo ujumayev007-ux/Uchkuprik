@@ -27,6 +27,7 @@ import {
   orderFlow,
   snapshotFor,
 } from '../workflow/restaurant.js';
+import { checkReceiptAccess } from '../orders/e-receipt.js';
 import { resolveBranch } from '../branches/access.js';
 import { upsertCustomer } from '../crm/loyalty.js';
 import { applyDeliveryZone } from '../delivery/delivery.routes.js';
@@ -494,6 +495,27 @@ export function onlineRouter(services: Services) {
       },
     });
     if (!order) throw errors.notFound();
+    // A staff-taken order's receipt opens only with its code (X-Receipt-Code, taken
+    // by the page from the link's #k= part); without it only the status shows.
+    const code = req.get('x-receipt-code')?.trim();
+    const access = await checkReceiptAccess(
+      db,
+      services.secrets,
+      order,
+      code && /^[0-9]{6}$/.test(code) ? code : code ? 'invalid' : undefined,
+      now(),
+    );
+    if (access !== 'OPEN' && access !== 'GRANTED') {
+      res.json({
+        number: order.number,
+        status: order.status,
+        type: order.type,
+        branch: { name: order.branch.name, phone: order.branch.phone },
+        createdAt: order.createdAt,
+        locked: access,
+      });
+      return;
+    }
     res.json({
       number: order.number,
       status: order.status,

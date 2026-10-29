@@ -172,6 +172,8 @@ type Tracking = {
   serviceCharge: number;
   total: number;
   paid: number;
+  // A staff-taken order's receipt without its code: only the status is given.
+  locked?: 'CODE_NEEDED' | 'WRONG' | 'LOCKED' | 'EXPIRED';
 };
 
 const steps = ['PENDING', 'PLACED', 'PREPARING', 'READY', 'SERVED'];
@@ -232,9 +234,18 @@ function FeedbackForm({ token }: { token: string }) {
 /** Customer order tracking: /buyurtma/:token (polls every 10 seconds). */
 export function TrackingPage() {
   const { token } = useParams();
+  // The receipt code comes in the link after '#' (never sent in the address).
+  const [code, setCode] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get('k') ?? '',
+  );
+  const [typed, setTyped] = useState('');
   const order = useQuery({
-    queryKey: ['public', 'tracking', token],
-    queryFn: () => api<Tracking>(`/public/orders/${token}`),
+    queryKey: ['public', 'tracking', token, code],
+    queryFn: () =>
+      api<Tracking>(
+        `/public/orders/${token}`,
+        code ? { headers: { 'X-Receipt-Code': code } } : {},
+      ),
     refetchInterval: (query) =>
       ['COMPLETED', 'CANCELLED'].includes(query.state.data?.status ?? '')
         ? false
@@ -256,6 +267,52 @@ export function TrackingPage() {
   if (order.isPending) return <LoadingState />;
   if (order.error) return <StoreUnavailable />;
   const o = order.data;
+  if (o.locked)
+    return (
+      <div className="store track">
+        <header className="store-header">
+          <div>
+            <h1>{t.eReceipt.title}</h1>
+            <p className="muted">{o.branch.name}</p>
+          </div>
+        </header>
+        <section className="card track-card stack">
+          <p className="order-number">№{o.number}</p>
+          {o.locked === 'EXPIRED' ? (
+            <p className="notice">{t.eReceipt.expired}</p>
+          ) : o.locked === 'LOCKED' ? (
+            <p className="form-error">{t.eReceipt.locked}</p>
+          ) : (
+            <form
+              className="stack"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setCode(typed.trim());
+              }}
+            >
+              <p className="muted">{t.eReceipt.codeHint}</p>
+              <input
+                className="input"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                aria-label={t.eReceipt.code}
+                placeholder="••••••"
+                value={typed}
+                onChange={(event) => setTyped(event.target.value)}
+              />
+              {o.locked === 'WRONG' && (
+                <p className="form-error">{t.eReceipt.wrongCode}</p>
+              )}
+              <button className="btn btn-primary" type="submit">
+                {t.eReceipt.open}
+              </button>
+            </form>
+          )}
+        </section>
+      </div>
+    );
   const current =
     o.status === 'COMPLETED' ? steps.length : steps.indexOf(o.status);
   return (

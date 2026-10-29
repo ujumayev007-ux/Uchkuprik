@@ -12,6 +12,7 @@ const e = t.eReceipt;
 export function EReceiptButton({ orderId }: { orderId: string }) {
   const toast = useToast();
   const [url, setUrl] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const [svg, setSvg] = useState('');
   useEffect(() => {
     if (!url) return;
@@ -27,11 +28,12 @@ export function EReceiptButton({ orderId }: { orderId: string }) {
       <Button
         onClick={async () => {
           try {
-            const result = await post<{ path: string }>(
+            const result = await post<{ path: string; code: string | null }>(
               `/orders/${orderId}/e-receipt`,
               {},
             );
             setUrl(`${window.location.origin}${result.path}`);
+            setCode(result.code);
           } catch (caught) {
             toast(errorMessage(caught), 'error');
           }
@@ -97,6 +99,12 @@ export function EReceiptButton({ orderId }: { orderId: string }) {
                 {e.botSend}
               </Button>
             </div>
+            {code && (
+              <>
+                <strong>{e.codeShown.replace('{code}', code)}</strong>
+                <p className="muted small">{e.codeNote}</p>
+              </>
+            )}
             <p className="muted small">{e.lanWarning}</p>
           </div>
         </Dialog>

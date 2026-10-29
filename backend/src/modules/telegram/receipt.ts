@@ -1,6 +1,6 @@
 import type { Services } from '../../context.js';
 import { AppError } from '../../http/errors.js';
-import { randomToken } from '../../lib/crypto.js';
+import { issueReceiptAccess } from '../orders/e-receipt.js';
 import { localDateTime } from '../../printing/receipt.js';
 import { netPaid } from '../orders/engine.js';
 import { methodLabels, receiptData } from '../orders/receipt-data.js';
@@ -53,17 +53,19 @@ export async function receiptText(
     where: { id: orderId },
     include: { items: true, payments: true, refunds: true, table: true },
   });
-  let token = order.trackingToken;
-  if (!token && origin) {
-    token = randomToken(18);
-    await services.db.order.updateMany({
-      where: { id: order.id, trackingToken: null },
-      data: { trackingToken: token },
-    });
-    token =
-      (await services.db.order.findUniqueOrThrow({ where: { id: order.id } }))
-        .trackingToken ?? token;
-  }
+  // Only an address a phone can open from anywhere gets a link (with its code).
+  const link = origin?.startsWith('https://')
+    ? `${origin}${
+        (
+          await issueReceiptAccess(
+            services.db,
+            services.secrets,
+            order.id,
+            services.now?.() ?? new Date(),
+          )
+        ).path
+      }`
+    : null;
   const receipt = await receiptData(services.db, order, {});
   const o = receipt.order;
   const lines = [
@@ -90,10 +92,7 @@ export async function receiptText(
     ...(receipt.fiscal.fiscalSign
       ? [`Fiskal belgi: ${receipt.fiscal.fiscalSign}`]
       : []),
-    // Only an address a phone can open from anywhere.
-    ...(token && origin?.startsWith('https://')
-      ? [`🔗 ${origin}/buyurtma/${token}`]
-      : []),
+    ...(link ? [`🔗 ${link}`] : []),
     receipt.business.footer ?? 'Xaridingiz uchun rahmat!',
   ];
   return lines.join('\n');

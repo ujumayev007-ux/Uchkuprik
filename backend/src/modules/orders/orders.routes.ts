@@ -10,7 +10,6 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
-import { randomToken } from '../../lib/crypto.js';
 import { qrPaymentOf } from '../settings/settings.routes.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import {
@@ -42,6 +41,7 @@ import { serialize } from './serialize.js';
 import { receiptBytes, receiptData, repeated } from './receipt-data.js';
 import { printRefund } from '../../printing/auto.js';
 import { sendTelegramReceipt } from '../telegram/receipt.js';
+import { issueReceiptAccess } from './e-receipt.js';
 import { enqueueKitchenTickets } from '../../printing/queue.js';
 import {
   approvalStatus,
@@ -1671,11 +1671,14 @@ export function ordersRouter(services: Services) {
       const auth = getAuth(res);
       const id = parse(z.uuid(), req.params.id);
       const order = await load(auth, id);
-      if (!order.trackingToken) {
-        await db.order.updateMany({
-          where: { id, tenantId: auth.tenantId, trackingToken: null },
-          data: { trackingToken: randomToken(18) },
-        });
+      // Staff-taken orders get a 6-digit code (in the QR link after '#').
+      const access = await issueReceiptAccess(
+        db,
+        services.secrets,
+        order.id,
+        now(),
+      );
+      if (!order.trackingToken)
         await audit(db, req, {
           tenantId: auth.tenantId,
           actorUserId: auth.userId,
@@ -1683,12 +1686,7 @@ export function ordersRouter(services: Services) {
           entityType: 'order',
           entityId: id,
         });
-      }
-      const { trackingToken } = await db.order.findFirstOrThrow({
-        where: { id, tenantId: auth.tenantId },
-        select: { trackingToken: true },
-      });
-      res.json({ token: trackingToken, path: `/buyurtma/${trackingToken}` });
+      res.json(access);
     },
   );
 

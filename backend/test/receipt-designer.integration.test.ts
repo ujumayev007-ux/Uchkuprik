@@ -157,19 +157,44 @@ describe('electronic receipt', () => {
       'post',
       `/orders/${order.body.id}/e-receipt`,
     ).expect(200);
-    expect(first.body.path).toMatch(/^\/buyurtma\/[A-Za-z0-9_-]{16,64}$/);
+    // A cashier's order: the link carries its 6-digit code after '#'.
+    expect(first.body.path).toMatch(
+      /^\/buyurtma\/[A-Za-z0-9_-]{16,64}#k=[0-9]{6}$/,
+    );
     const again = await send(
       owner,
       'post',
       `/orders/${order.body.id}/e-receipt`,
     ).expect(200);
     expect(again.body.token).toBe(first.body.token);
-    const page = await ctx
-      .agent()
-      .get(`/api/public/orders/${first.body.token}`)
-      .expect(200);
+    expect(again.body.code).toBe(first.body.code);
+    const open = (code?: string) => {
+      const call = ctx.agent().get(`/api/public/orders/${first.body.token}`);
+      return (code ? call.set('X-Receipt-Code', code) : call).expect(200);
+    };
+    // Without the code: only the status, no items or amounts.
+    const bare = await open();
+    expect(bare.body.locked).toBe('CODE_NEEDED');
+    expect(bare.body.total).toBeUndefined();
+    expect(bare.body.items).toBeUndefined();
+    const page = await open(first.body.code);
     expect(page.body.total).toBe(25_000);
     expect(page.body.items[0].name).toBe('Lavash');
+    // Wrong codes: the fifth locks the receipt (even the right code then).
+    const wrong = first.body.code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 4; i++)
+      expect((await open(wrong)).body.locked).toBe('WRONG');
+    expect((await open(wrong)).body.locked).toBe('LOCKED');
+    expect((await open(first.body.code)).body.locked).toBe('LOCKED');
+    // An expired link shows nothing more.
+    await ctx.db.order.update({
+      where: { id: order.body.id },
+      data: {
+        receiptLockedUntil: null,
+        receiptExpiresAt: new Date(Date.now() - 1000),
+      },
+    });
+    expect((await open(first.body.code)).body.locked).toBe('EXPIRED');
 
     const other = await createTenant(ctx);
     const stranger = ctx.agent();

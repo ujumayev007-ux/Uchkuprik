@@ -710,6 +710,12 @@ model Order {
   telegramNotified   String?
   // The electronic receipt was sent by the Telegram bot (once).
   telegramReceiptAt  DateTime?
+  // Electronic receipt of a staff-taken order: 6-digit access code (encrypted), valid
+  // until receiptExpiresAt; wrong codes lock the page for a while.
+  receiptCodeEnc     String?
+  receiptExpiresAt   DateTime?
+  receiptCodeFails   Int             @default(0)
+  receiptLockedUntil DateTime?
   createdById        String?         @db.Uuid
   version            Int             @default(1)
   // Customer receipts printed so far: from the second one on they are marked "NUSXA".
