@@ -4,6 +4,12 @@ import { Badge, Button, TextField, useToast } from '../components/ui';
 import { t } from '../i18n';
 import { ApiError, api, errorMessage, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
+import {
+  PartialRestorePanel,
+  PartialResultTable,
+  type PartialGroup,
+  type PartialResult,
+} from '../components/PartialRestore';
 
 const b = t.backups;
 
@@ -26,7 +32,8 @@ type Data = {
 type Pending =
   | { kind: 'export'; name: string }
   | { kind: 'restore'; name: string; at: string }
-  | { kind: 'rollback'; name: string };
+  | { kind: 'rollback'; name: string }
+  | { kind: 'partial'; name: string; at: string };
 
 const keptAt = (name: string) => {
   const d = name.replace('fastfood_before_', '');
@@ -67,6 +74,8 @@ export function BackupsCard() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPassword, setImportPassword] = useState('');
   const [restarting, setRestarting] = useState(false);
+  const [preview, setPreview] = useState<PartialResult | null>(null);
+  const [partialDone, setPartialDone] = useState<PartialResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const data = query.data;
   if (!data) return null;
@@ -84,6 +93,7 @@ export function BackupsCard() {
   };
   const close = () => {
     setPending(null);
+    setPreview(null);
     setPassword('');
     setAgain('');
     setWord('');
@@ -152,16 +162,67 @@ export function BackupsCard() {
           {data.status?.lastAt ? formatDateTime(data.status.lastAt) : b.never}{' '}
           {data.status?.ok === false && <Badge tone="danger">{b.failed}</Badge>}
         </span>
-        <Button size="sm" busy={busy} onClick={() => void run(async () => {
-          await post('/backups');
-          toast(b.created);
-        })}>
+        <Button
+          size="sm"
+          busy={busy}
+          onClick={() =>
+            void run(async () => {
+              await post('/backups');
+              toast(b.created);
+            })
+          }
+        >
           {b.createNow}
         </Button>
       </div>
 
-      {pending && (
-        <div className="card stack" style={{ borderColor: 'var(--danger, #c0392b)' }}>
+      {pending?.kind === 'partial' && (
+        <PartialRestorePanel
+          title={t.partialRestore.title.replace(
+            '{at}',
+            formatDateTime(pending.at),
+          )}
+          busy={busy}
+          preview={preview}
+          onClose={close}
+          onPreview={(groups: PartialGroup[]) =>
+            void run(async () => {
+              setPreview(
+                await post<PartialResult>(
+                  `/backups/${pending.name}/partial/preview`,
+                  {
+                    groups,
+                  },
+                ),
+              );
+            })
+          }
+          onRestore={(groups: PartialGroup[]) =>
+            void run(async () => {
+              // A recent sign-in, as for a full restore.
+              await post('/backups/unlock');
+              const result = await post<PartialResult>(
+                `/backups/${pending.name}/partial`,
+                { groups, confirm: 'TIKLASH' },
+              );
+              toast(t.partialRestore.done);
+              setPartialDone(result);
+              close();
+            })
+          }
+        />
+      )}
+      {partialDone && (
+        <div className="card stack">
+          <strong>{t.partialRestore.done}</strong>
+          <PartialResultTable result={partialDone} />
+        </div>
+      )}
+      {pending && pending.kind !== 'partial' && (
+        <div
+          className="card stack"
+          style={{ borderColor: 'var(--danger, #c0392b)' }}
+        >
           {pending.kind === 'export' ? (
             <>
               <strong>{b.exportTitle}</strong>
@@ -201,14 +262,24 @@ export function BackupsCard() {
             <Button
               variant={pending.kind === 'export' ? 'primary' : 'danger'}
               busy={busy}
-              disabled={pending.kind === 'export' ? !passwordOk : word.trim() !== 'TIKLASH'}
+              disabled={
+                pending.kind === 'export'
+                  ? !passwordOk
+                  : word.trim() !== 'TIKLASH'
+              }
               onClick={() => {
-                if (pending.kind === 'export') return void download(pending.name);
+                if (pending.kind === 'export')
+                  return void download(pending.name);
                 void run(async () => {
                   if (pending.kind === 'restore')
-                    await post(`/backups/${pending.name}/restore`, { confirm: 'TIKLASH' });
+                    await post(`/backups/${pending.name}/restore`, {
+                      confirm: 'TIKLASH',
+                    });
                   else
-                    await post('/backups/rollback', { database: pending.name, confirm: 'TIKLASH' });
+                    await post('/backups/rollback', {
+                      database: pending.name,
+                      confirm: 'TIKLASH',
+                    });
                   close();
                   setRestarting(true);
                 });
@@ -233,13 +304,24 @@ export function BackupsCard() {
                 <strong>{formatDateTime(row.createdAt)}</strong>{' '}
                 <Badge>{b.kinds[row.kind] ?? row.kind}</Badge>{' '}
                 <Badge
-                  tone={row.verified === true ? 'success' : row.verified === false ? 'danger' : 'neutral'}
+                  tone={
+                    row.verified === true
+                      ? 'success'
+                      : row.verified === false
+                        ? 'danger'
+                        : 'neutral'
+                  }
                 >
-                  {row.verified === true ? b.verified : row.verified === false ? b.failed : b.notVerified}
+                  {row.verified === true
+                    ? b.verified
+                    : row.verified === false
+                      ? b.failed
+                      : b.notVerified}
                 </Badge>
                 <div className="muted small">
                   {(row.bytes / 1024 / 1024).toFixed(1)} MB
-                  {row.totalRows !== null && ` · ${b.rows.replace('{n}', String(row.totalRows))}`}
+                  {row.totalRows !== null &&
+                    ` · ${b.rows.replace('{n}', String(row.totalRows))}`}
                 </div>
               </div>
               <div className="toolbar small">
@@ -249,22 +331,54 @@ export function BackupsCard() {
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
-                      const result = await post<{ ok: boolean }>(`/backups/${row.name}/verify`);
-                      toast(result.ok ? b.verifyOk : b.verifyFailed, result.ok ? undefined : 'error');
+                      const result = await post<{ ok: boolean }>(
+                        `/backups/${row.name}/verify`,
+                      );
+                      toast(
+                        result.ok ? b.verifyOk : b.verifyFailed,
+                        result.ok ? undefined : 'error',
+                      );
                     })
                   }
                 >
                   {b.verify}
                 </Button>
-                <Button size="sm" disabled={busy} onClick={() => setPending({ kind: 'export', name: row.name })}>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setPending({ kind: 'export', name: row.name })}
+                >
                   {b.downloadShort}
                 </Button>
+                {row.verified !== false && (
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setPreview(null);
+                      setPartialDone(null);
+                      setPending({
+                        kind: 'partial',
+                        name: row.name,
+                        at: row.createdAt,
+                      });
+                    }}
+                  >
+                    {t.partialRestore.button}
+                  </Button>
+                )}
                 {data.canRestore && row.verified !== false && (
                   <Button
                     size="sm"
                     variant="danger"
                     disabled={busy}
-                    onClick={() => setPending({ kind: 'restore', name: row.name, at: row.createdAt })}
+                    onClick={() =>
+                      setPending({
+                        kind: 'restore',
+                        name: row.name,
+                        at: row.createdAt,
+                      })
+                    }
                   >
                     {b.restore}
                   </Button>
@@ -313,7 +427,11 @@ export function BackupsCard() {
               <li key={name} className="ops-item">
                 <div className="grow">{keptAt(name)}</div>
                 {data.canRestore && (
-                  <Button size="sm" disabled={busy} onClick={() => setPending({ kind: 'rollback', name })}>
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setPending({ kind: 'rollback', name })}
+                  >
                     {b.rollback}
                   </Button>
                 )}

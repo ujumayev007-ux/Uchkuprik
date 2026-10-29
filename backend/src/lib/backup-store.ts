@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { createGunzip } from 'node:zlib';
 import pg from 'pg';
 import { AppError } from '../http/errors.js';
+import { partialRestore, type PartialGroup } from './backup-partial.js';
 import {
   createBackup,
   loadBackup,
@@ -38,7 +39,12 @@ import {
  * desktop launcher swaps the two while the server is stopped, keeping the old one.
  */
 
-export const BACKUP_KINDS = ['daily', 'manual', 'pre-restore', 'imported'] as const;
+export const BACKUP_KINDS = [
+  'daily',
+  'manual',
+  'pre-restore',
+  'imported',
+] as const;
 export type BackupKind = (typeof BACKUP_KINDS)[number];
 const KEEP: Record<BackupKind, number> = {
   daily: 7,
@@ -78,7 +84,11 @@ const unavailable = () =>
   new AppError(409, 'BACKUP_UNAVAILABLE', 'backupUnavailable');
 const notFound = () => new AppError(404, 'NOT_FOUND', 'notFound');
 const quote = (identifier: string) => `"${identifier.replace(/"/g, '""')}"`;
-const stamp = (at = new Date()) => at.toISOString().replace(/[-:.TZ]/g, '').slice(0, 17);
+const stamp = (at = new Date()) =>
+  at
+    .toISOString()
+    .replace(/[-:.TZ]/g, '')
+    .slice(0, 17);
 
 function withDatabase(url: string, database: string) {
   const parsed = new URL(url);
@@ -102,9 +112,14 @@ export async function contentsOf(file: string): Promise<BackupSummary> {
     crlfDelay: Infinity,
   })) {
     if (!line) continue;
-    const item = JSON.parse(line) as { format?: string; table?: string; r?: unknown };
+    const item = JSON.parse(line) as {
+      format?: string;
+      table?: string;
+      r?: unknown;
+    };
     if (first) {
-      if (item.format !== 'fastfood-backup/1') throw new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
+      if (item.format !== 'fastfood-backup/1')
+        throw new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
       first = false;
       continue;
     }
@@ -154,8 +169,12 @@ export async function writeStatus(dir: string, name: string, ok: boolean) {
 
 function keyFor(password: string, salt: Buffer) {
   return new Promise<Buffer>((resolve, reject) =>
-    scrypt(password, salt, 32, { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (error, key) =>
-      error ? reject(error) : resolve(key),
+    scrypt(
+      password,
+      salt,
+      32,
+      { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 },
+      (error, key) => (error ? reject(error) : resolve(key)),
     ),
   );
 }
@@ -177,7 +196,11 @@ export function backupStore(options: {
     if (!NAME.test(name)) throw notFound();
     return `${dir}/${name}`;
   };
-  const kindOf = (name: string) => name.split('-').slice(0, name.startsWith('pre-restore') ? 2 : 1).join('-') as BackupKind;
+  const kindOf = (name: string) =>
+    name
+      .split('-')
+      .slice(0, name.startsWith('pre-restore') ? 2 : 1)
+      .join('-') as BackupKind;
 
   async function list(): Promise<BackupInfo[]> {
     await mkdir(dir, { recursive: true });
@@ -207,7 +230,9 @@ export function backupStore(options: {
   }
 
   async function prune(kind: BackupKind) {
-    const old = (await list()).filter((row) => row.kind === kind).slice(KEEP[kind]);
+    const old = (await list())
+      .filter((row) => row.kind === kind)
+      .slice(KEEP[kind]);
     for (const row of old) {
       await rm(`${dir}/${row.name}`, { force: true });
       await rm(`${dir}/${row.name}.json`, { force: true });
@@ -222,7 +247,8 @@ export function backupStore(options: {
     try {
       const summary = await createBackup(databaseUrl, file);
       const check = await verifyBackup(databaseUrl, file, summary);
-      if (!check.ok) throw new AppError(500, 'BACKUP_VERIFY_FAILED', 'backupVerifyFailed');
+      if (!check.ok)
+        throw new AppError(500, 'BACKUP_VERIFY_FAILED', 'backupVerifyFailed');
       await writeManifest(file, kind, summary, true);
       await writeStatus(dir, name, true);
     } catch (error) {
@@ -247,20 +273,31 @@ export function backupStore(options: {
       .then((text) => JSON.parse(text) as Record<string, unknown>)
       .catch(() => null);
     if (manifest)
-      await writeFile(`${file}.json`, JSON.stringify({ ...manifest, verified: result.ok }));
+      await writeFile(
+        `${file}.json`,
+        JSON.stringify({ ...manifest, verified: result.ok }),
+      );
     else await writeManifest(file, kindOf(name), expected, result.ok);
     return result;
   }
 
   /** The backup encrypted with a password (AES-256-GCM, scrypt key): FFBK1|salt|iv|data|tag. */
-  async function exportEncrypted(name: string, password: string, out: Writable) {
+  async function exportEncrypted(
+    name: string,
+    password: string,
+    out: Writable,
+  ) {
     const file = fileOf(name);
     await stat(file).catch(() => {
       throw notFound();
     });
     const salt = randomBytes(16);
     const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', await keyFor(password, salt), iv);
+    const cipher = createCipheriv(
+      'aes-256-gcm',
+      await keyFor(password, salt),
+      iv,
+    );
     out.write(Buffer.concat([MAGIC, salt, iv]));
     for await (const chunk of createReadStream(file).pipe(cipher))
       if (!out.write(chunk)) await once(out, 'drain');
@@ -268,13 +305,17 @@ export function backupStore(options: {
   }
 
   /** Decrypts an uploaded export into the backup folder and checks it restores. */
-  async function importEncrypted(upload: string, password: string): Promise<BackupInfo> {
+  async function importEncrypted(
+    upload: string,
+    password: string,
+  ): Promise<BackupInfo> {
     const size = (await stat(upload)).size;
     const handle = await open(upload, 'r');
     const head = Buffer.alloc(MAGIC.length + 28);
     const tag = Buffer.alloc(16);
     try {
-      if (size < head.length + tag.length) throw new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
+      if (size < head.length + tag.length)
+        throw new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
       await handle.read(head, 0, head.length, 0);
       await handle.read(tag, 0, 16, size - 16);
     } finally {
@@ -284,7 +325,11 @@ export function backupStore(options: {
       throw new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
     const salt = head.subarray(MAGIC.length, MAGIC.length + 16);
     const iv = head.subarray(MAGIC.length + 16);
-    const decipher = createDecipheriv('aes-256-gcm', await keyFor(password, salt), iv);
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      await keyFor(password, salt),
+      iv,
+    );
     decipher.setAuthTag(tag);
     const name = `imported-${stamp()}-${randomBytes(2).toString('hex')}.ndjson.gz`;
     const file = `${dir}/${name}`;
@@ -307,7 +352,9 @@ export function backupStore(options: {
       await writeManifest(file, 'imported', summary, true);
     } catch (error) {
       await rm(file, { force: true });
-      throw error instanceof AppError ? error : new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
+      throw error instanceof AppError
+        ? error
+        : new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
     }
     await prune('imported');
     return (await list()).find((row) => row.name === name)!;
@@ -372,7 +419,10 @@ export function backupStore(options: {
           .map((entry) => entry.name)
           .sort();
         for (const migration of names) {
-          const sql = await readFile(`${MIGRATIONS}${migration}/migration.sql`, 'utf8');
+          const sql = await readFile(
+            `${MIGRATIONS}${migration}/migration.sql`,
+            'utf8',
+          );
           await migrated.query(sql);
           await migrated.query(
             'INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, applied_steps_count) VALUES (gen_random_uuid()::text, $1, now(), $2, 1)',
@@ -389,9 +439,18 @@ export function backupStore(options: {
         for (const table of expected.tables) {
           if (CARRY_TABLES.includes(table.name)) continue;
           const actual = Number(
-            (await check.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${quote(table.name)}`)).rows[0]!.n,
+            (
+              await check.query<{ n: string }>(
+                `SELECT count(*)::text AS n FROM ${quote(table.name)}`,
+              )
+            ).rows[0]!.n,
           );
-          if (actual !== table.rows) throw new AppError(500, 'BACKUP_VERIFY_FAILED', 'backupVerifyFailed');
+          if (actual !== table.rows)
+            throw new AppError(
+              500,
+              'BACKUP_VERIFY_FAILED',
+              'backupVerifyFailed',
+            );
         }
         // This computer's identity, licence and operation receipts: today's rows.
         const live = new pg.Client({ connectionString: databaseUrl });
@@ -427,22 +486,34 @@ export function backupStore(options: {
         }),
       );
       await rename(`${pending}.tmp`, pending);
-      return { database, backup: name, preRestore: before.name, rows: restored.totalRows };
+      return {
+        database,
+        backup: name,
+        preRestore: before.name,
+        rows: restored.totalRows,
+      };
     } catch (error) {
       await admin((client) =>
         client.query(`DROP DATABASE IF EXISTS ${quote(database)} WITH (FORCE)`),
       ).catch(() => undefined);
-      throw error instanceof AppError ? error : new AppError(500, 'BACKUP_FAILED', 'backupFailed');
+      throw error instanceof AppError
+        ? error
+        : new AppError(500, 'BACKUP_FAILED', 'backupFailed');
     }
   }
 
   /** Puts a database kept by an earlier restore back in use (after a restart). */
   async function prepareRollback(database: string) {
     const pending = pendingFile();
-    if (!KEPT_DB.test(database) || !(await keptDatabases()).includes(database)) throw notFound();
+    if (!KEPT_DB.test(database) || !(await keptDatabases()).includes(database))
+      throw notFound();
     await writeFile(
       `${pending}.tmp`,
-      JSON.stringify({ action: 'rollback', database, at: new Date().toISOString() }),
+      JSON.stringify({
+        action: 'rollback',
+        database,
+        at: new Date().toISOString(),
+      }),
     );
     await rename(`${pending}.tmp`, pending);
     return { database };
@@ -470,10 +541,37 @@ export function backupStore(options: {
     };
   }
 
+  /**
+   * Qisman tiklash into the live database: a dry run reports what would change; the
+   * real one first keeps a full pre-restore backup (to undo with a full restore).
+   */
+  async function partial(
+    name: string,
+    groups: PartialGroup[],
+    options: { dryRun: boolean },
+  ) {
+    const file = fileOf(name);
+    await stat(file).catch(() => {
+      throw notFound();
+    });
+    const safety = options.dryRun ? null : await create('pre-restore');
+    try {
+      const result = await partialRestore(databaseUrl, file, groups, options);
+      return { ...result, safetyBackup: safety?.name ?? null };
+    } catch {
+      throw new AppError(
+        409,
+        'BACKUP_PARTIAL_CONFLICT',
+        'backupPartialConflict',
+      );
+    }
+  }
+
   return {
     list,
     create,
     verify,
+    partial,
     exportEncrypted,
     importEncrypted,
     keptDatabases,

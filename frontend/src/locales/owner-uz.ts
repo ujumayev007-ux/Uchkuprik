@@ -273,7 +273,7 @@ export const owner = {
       rollbackTitle: 'Orqaga qaytish: {name}',
       none: 'Zaxira nusxalar topilmadi',
       partialNote:
-        'Qisman tiklash (faqat menyu yoki faqat sozlamalar) hozircha yo‘q.',
+        'Qisman tiklash: faqat menyu, zal va stollar, chek shablonlari, ombor ro‘yxati yoki mijozlarni zaxiradan qaytarish mumkin. Server to‘xtamaydi, buning uchun restoran serveri yangi versiyada bo‘lishi kerak.',
     },
     show: 'Ko‘rsatish',
     hide: 'Yashirish',
@@ -347,6 +347,7 @@ export const owner = {
       'backup.verify': 'Zaxira nusxa tekshirildi',
       'backup.restore': 'Maʼlumotlar tiklandi',
       'backup.rollback': 'Oldingi bazaga qaytildi',
+      'backup.partial': 'Qisman tiklash (ko‘rish yoki tiklash)',
     },
   },
   workflow: {

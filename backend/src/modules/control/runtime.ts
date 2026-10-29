@@ -522,7 +522,7 @@ export function createControlRuntime(
         'credit',
         'scheduled',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
-        ...(services.backups ? ['backups'] : []),
+        ...(services.backups ? ['backups', 'partial_restore'] : []),
         ...(services.backups?.canRestore ? ['restore'] : []),
       ],
       ...(rename

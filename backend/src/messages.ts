@@ -20,6 +20,8 @@ export const messages = {
   backupFailed: 'Zaxira nusxa olinmadi. Server jurnalini tekshiring.',
   backupPassword: 'Parol noto‘g‘ri yoki fayl shikastlangan.',
   backupConfirm: 'Tasdiqlash uchun TIKLASH so‘zini yozing.',
+  backupPartialConflict:
+    'Tanlangan maʼlumotlarni tiklab bo‘lmadi (hozirgi maʼlumotlar bilan to‘qnashuv). Hech narsa o‘zgarmadi.',
   printMayDuplicate:
     'Bu chek allaqachon chop etilgan bo‘lishi mumkin. Qayta yuborsangiz, ikkinchi chek chiqishi mumkin — tasdiqlang.',
   creditNotAllowed:

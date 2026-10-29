@@ -6,7 +6,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { backupStore } from '../src/lib/backup-store.js';
 import { executeOp } from '../src/modules/remote/ops.js';
-import { addUser, createTenant, createTestContext, login, ORIGIN } from './helpers.js';
+import {
+  addUser,
+  createTenant,
+  createTestContext,
+  login,
+  ORIGIN,
+} from './helpers.js';
 
 // Zaxira nusxalar: verified backups, encrypted export/import, and a restore that is
 // prepared in a new database (the live one untouched) with today's identity tables.
@@ -31,7 +37,9 @@ afterAll(async () => {
   const admin = new pg.Client({ connectionString: config.DATABASE_URL });
   await admin.connect();
   for (const name of created)
-    await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => undefined);
+    await admin
+      .query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)
+      .catch(() => undefined);
   await admin.end();
   await rm(dir, { recursive: true, force: true });
   await ctx.close();
@@ -46,7 +54,9 @@ describe('backups on the restaurant computer', () => {
     const tenantId = tenant.tenant.id;
     const owner = ctx.agent();
     await login(owner, tenant.slug, 'owner').expect(200);
-    const category = await ctx.db.menuCategory.create({ data: { tenantId, name: 'Oldin' } });
+    const category = await ctx.db.menuCategory.create({
+      data: { tenantId, name: 'Oldin' },
+    });
 
     await post(owner, '/backups/unlock').expect(200);
     const backup = await post(owner, '/backups').expect(201);
@@ -56,7 +66,9 @@ describe('backups on the restaurant computer', () => {
     const list = await owner.get('/api/backups').expect(200);
     expect(list.body).toMatchObject({ available: true, canRestore: true });
     expect(list.body.status).toMatchObject({ ok: true, lastName: name });
-    expect((await post(owner, `/backups/${name}/verify`).expect(200)).body.ok).toBe(true);
+    expect(
+      (await post(owner, `/backups/${name}/verify`).expect(200)).body.ok,
+    ).toBe(true);
 
     // Encrypted export → upload → import (wrong password refused).
     const exported = await owner
@@ -98,20 +110,34 @@ describe('backups on the restaurant computer', () => {
     // Changes after the backup; the computer's identity changes too.
     await ctx.db.menuCategory.create({ data: { tenantId, name: 'Keyin' } });
     const receiptId = '0190f000-0000-7000-8000-00000000abcd';
-    await ctx.db.remoteOpReceipt.create({ data: { id: receiptId, kind: 'snapshot.menu', ok: true } });
+    await ctx.db.remoteOpReceipt.create({
+      data: { id: receiptId, kind: 'snapshot.menu', ok: true },
+    });
 
     // Restore: confirmation word required; the live database is not touched.
-    const refused = await post(owner, `/backups/${name}/restore`, { confirm: 'ha' }).expect(400);
+    const refused = await post(owner, `/backups/${name}/restore`, {
+      confirm: 'ha',
+    }).expect(400);
     expect(refused.body.code).toBe('BACKUP_CONFIRM');
-    const restore = await post(owner, `/backups/${name}/restore`, { confirm: 'TIKLASH' }).expect(200);
+    const restore = await post(owner, `/backups/${name}/restore`, {
+      confirm: 'TIKLASH',
+    }).expect(200);
     created.push(restore.body.database);
     expect(restore.body).toMatchObject({ backup: name, restarting: true });
     expect(restore.body.preRestore).toMatch(/^pre-restore-/);
     expect(restart).toHaveBeenCalledTimes(1);
-    const pending = JSON.parse(await readFile(`${dir}/restore-pending.json`, 'utf8'));
-    expect(pending).toMatchObject({ action: 'restore', database: restore.body.database, backup: name });
+    const pending = JSON.parse(
+      await readFile(`${dir}/restore-pending.json`, 'utf8'),
+    );
+    expect(pending).toMatchObject({
+      action: 'restore',
+      database: restore.body.database,
+      backup: name,
+    });
     // Live database: unchanged.
-    expect(await ctx.db.menuCategory.count({ where: { tenantId, name: 'Keyin' } })).toBe(1);
+    expect(
+      await ctx.db.menuCategory.count({ where: { tenantId, name: 'Keyin' } }),
+    ).toBe(1);
     // Prepared database: the backup's data, today's identity rows, and migrations recorded.
     const url = new URL(config.DATABASE_URL);
     url.pathname = `/${restore.body.database}`;
@@ -119,15 +145,29 @@ describe('backups on the restaurant computer', () => {
     await restored.connect();
     try {
       const names = (
-        await restored.query<{ name: string }>('SELECT name FROM menu_categories WHERE "tenantId" = $1', [tenantId])
+        await restored.query<{ name: string }>(
+          'SELECT name FROM menu_categories WHERE "tenantId" = $1',
+          [tenantId],
+        )
       ).rows.map((row) => row.name);
       expect(names).toContain('Oldin');
       expect(names).not.toContain('Keyin');
       expect(
-        (await restored.query('SELECT 1 FROM remote_op_receipts WHERE id = $1', [receiptId])).rowCount,
+        (
+          await restored.query(
+            'SELECT 1 FROM remote_op_receipts WHERE id = $1',
+            [receiptId],
+          )
+        ).rowCount,
       ).toBe(1);
       expect(
-        Number((await restored.query('SELECT count(*) AS n FROM "_prisma_migrations"')).rows[0].n),
+        Number(
+          (
+            await restored.query(
+              'SELECT count(*) AS n FROM "_prisma_migrations"',
+            )
+          ).rows[0].n,
+        ),
       ).toBeGreaterThan(10);
     } finally {
       await restored.end();
@@ -135,37 +175,180 @@ describe('backups on the restaurant computer', () => {
     expect(category.id).toBeTruthy();
 
     // Rollback only to a database an earlier restore kept.
-    await post(owner, '/backups/rollback', { database: 'fastfood_before_20260101000000000', confirm: 'TIKLASH' }).expect(404);
+    await post(owner, '/backups/rollback', {
+      database: 'fastfood_before_20260101000000000',
+      confirm: 'TIKLASH',
+    }).expect(404);
     const audits = await ctx.db.auditLog.findMany({
       where: { tenantId, action: { startsWith: 'backup.' } },
       select: { action: true },
     });
     expect(audits.map((row) => row.action).sort()).toEqual(
-      ['backup.create', 'backup.export', 'backup.import', 'backup.restore', 'backup.verify'].sort(),
+      [
+        'backup.create',
+        'backup.export',
+        'backup.import',
+        'backup.restore',
+        'backup.verify',
+      ].sort(),
     );
     await ctx.db.remoteOpReceipt.delete({ where: { id: receiptId } });
   }, 240_000);
 
   it('other roles cannot use backups; Owner operations need the restaurant computer', async () => {
     const tenant = await createTenant(ctx);
-    await addUser(ctx, tenant.tenant.id, { username: 'kassir', roleIds: [tenant.roleId('cashier')] });
+    await addUser(ctx, tenant.tenant.id, {
+      username: 'kassir',
+      roleIds: [tenant.roleId('cashier')],
+    });
     const cashier = ctx.agent();
     await login(cashier, tenant.slug, 'kassir').expect(200);
     await cashier.get('/api/backups').expect(403);
-    const snapshot = (await executeOp(ctx.db, tenant.tenant.id, 'snapshot.backups', {}, {})) as {
+    const snapshot = (await executeOp(
+      ctx.db,
+      tenant.tenant.id,
+      'snapshot.backups',
+      {},
+      {},
+    )) as {
       available: boolean;
     };
     expect(snapshot.available).toBe(false);
-    await expect(executeOp(ctx.db, tenant.tenant.id, 'backup.create', {}, {})).rejects.toMatchObject({
+    await expect(
+      executeOp(ctx.db, tenant.tenant.id, 'backup.create', {}, {}),
+    ).rejects.toMatchObject({
       code: 'BACKUP_UNAVAILABLE',
     });
     await expect(
-      executeOp(ctx.db, tenant.tenant.id, 'backup.restore', { name: 'manual-x.ndjson.gz', confirm: 'no' }, {}),
+      executeOp(
+        ctx.db,
+        tenant.tenant.id,
+        'backup.restore',
+        { name: 'manual-x.ndjson.gz', confirm: 'no' },
+        {},
+      ),
     ).rejects.toThrow();
-    const listed = (await executeOp(ctx.db, tenant.tenant.id, 'snapshot.backups', {}, {
-      backups: ctx.services.backups,
-    })) as { available: boolean; backups: unknown[] };
+    const listed = (await executeOp(
+      ctx.db,
+      tenant.tenant.id,
+      'snapshot.backups',
+      {},
+      {
+        backups: ctx.services.backups,
+      },
+    )) as { available: boolean; backups: unknown[] };
     expect(listed.available).toBe(true);
     expect(listed.backups.length).toBeGreaterThan(0);
   });
+});
+
+describe('partial restore (Qisman tiklash)', () => {
+  it('puts the menu back from a backup in the live database; new rows stay; preview changes nothing', async () => {
+    const tenant = await createTenant(ctx);
+    const tenantId = tenant.tenant.id;
+    const owner = ctx.agent();
+    await login(owner, tenant.slug, 'owner').expect(200);
+    const category = await ctx.db.menuCategory.create({
+      data: { tenantId, name: 'Taomlar' },
+    });
+    const product = await ctx.db.product.create({
+      data: { tenantId, categoryId: category.id, name: 'Osh' },
+    });
+    await ctx.db.productVariant.create({
+      data: {
+        tenantId,
+        productId: product.id,
+        name: 'Standart',
+        price: 30_000,
+      },
+    });
+    const group = await ctx.db.modifierGroup.create({
+      data: { tenantId, name: 'Sous' },
+    });
+    const customer = await ctx.db.customer.create({
+      data: { tenantId, phone: '+998901234500', name: 'Aziz' },
+    });
+    await post(owner, '/backups/unlock').expect(200);
+    const name = (await post(owner, '/backups').expect(201)).body
+      .name as string;
+
+    // After the backup: renamed, deleted, added.
+    await ctx.db.product.update({
+      where: { id: product.id },
+      data: { name: 'Buzilgan nom' },
+    });
+    await ctx.db.modifierGroup.delete({ where: { id: group.id } });
+    const added = await ctx.db.product.create({
+      data: { tenantId, categoryId: category.id, name: 'Yangi taom' },
+    });
+    await ctx.db.customer.update({
+      where: { id: customer.id },
+      data: { name: 'Yangi ism' },
+    });
+
+    const preview = await post(owner, `/backups/${name}/partial/preview`, {
+      groups: ['MENU', 'CUSTOMERS'],
+    }).expect(200);
+    expect(preview.body.dryRun).toBe(true);
+    const row = (table: string) =>
+      (
+        preview.body.tables as {
+          table: string;
+          inserted: number;
+          updated: number;
+        }[]
+      ).find((t) => t.table === table)!;
+    expect(row('products').updated).toBeGreaterThanOrEqual(1);
+    expect(row('modifier_groups').inserted).toBeGreaterThanOrEqual(1);
+    // MISSING mode: an existing customer is never overwritten.
+    expect(row('customers').updated).toBe(0);
+    // The preview wrote nothing.
+    expect(
+      (await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } }))
+        .name,
+    ).toBe('Buzilgan nom');
+
+    // The word must be typed in.
+    await post(owner, `/backups/${name}/partial`, { groups: ['MENU'] }).expect(
+      400,
+    );
+    const done = await post(owner, `/backups/${name}/partial`, {
+      groups: ['MENU', 'CUSTOMERS'],
+      confirm: 'TIKLASH',
+    }).expect(200);
+    expect(done.body.safetyBackup).toMatch(/^pre-restore-/);
+    expect(
+      (await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } }))
+        .name,
+    ).toBe('Osh');
+    expect(
+      await ctx.db.modifierGroup.findUnique({ where: { id: group.id } }),
+    ).not.toBeNull();
+    // Rows made after the backup stay; customers keep today's data.
+    expect(
+      await ctx.db.product.findUnique({ where: { id: added.id } }),
+    ).not.toBeNull();
+    expect(
+      (await ctx.db.customer.findUniqueOrThrow({ where: { id: customer.id } }))
+        .name,
+    ).toBe('Yangi ism');
+    const audit = await ctx.db.auditLog.findFirst({
+      where: { tenantId, action: 'backup.partial' },
+    });
+    expect(audit?.data).toMatchObject({ groups: ['MENU', 'CUSTOMERS'] });
+
+    // Through the Owner channel: preview by default, the real one only with the word.
+    const store = ctx.services.backups!;
+    const viaOwner = (payload: object) =>
+      executeOp(ctx.db, tenantId, 'backup.partial', payload, {
+        backups: store,
+      });
+    await expect(
+      viaOwner({ name, groups: ['FLOOR'], dryRun: false }),
+    ).rejects.toThrow();
+    const remote = (await viaOwner({ name, groups: ['FLOOR'] })) as {
+      dryRun: boolean;
+    };
+    expect(remote.dryRun).toBe(true);
+  }, 240_000);
 });

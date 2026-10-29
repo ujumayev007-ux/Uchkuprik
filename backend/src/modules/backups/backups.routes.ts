@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { Services } from '../../context.js';
 import { AppError, parse } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { PARTIAL_GROUP_KEYS } from '../../lib/backup-partial.js';
 import {
   getAuth,
   requireAuth,
@@ -58,7 +59,13 @@ export function backupsRouter(services: Services) {
 
   router.get('/backups', ...manage, async (_req, res) => {
     if (!services.backups) {
-      res.json({ available: false, canRestore: false, backups: [], kept: [], status: null });
+      res.json({
+        available: false,
+        canRestore: false,
+        backups: [],
+        kept: [],
+        status: null,
+      });
       return;
     }
     const [backups, kept, status] = await Promise.all([
@@ -119,14 +126,21 @@ export function backupsRouter(services: Services) {
     const limit = new Transform({
       transform(chunk: Buffer, _encoding, done) {
         size += chunk.length;
-        done(size > MAX_UPLOAD ? new AppError(413, 'TOO_LARGE', 'validation') : null, chunk);
+        done(
+          size > MAX_UPLOAD
+            ? new AppError(413, 'TOO_LARGE', 'validation')
+            : null,
+          chunk,
+        );
       },
     });
     try {
       await pipeline(req, limit, createWriteStream(file, { mode: 0o600 }));
     } catch (error) {
       await rm(file, { force: true });
-      throw error instanceof AppError ? error : new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
+      throw error instanceof AppError
+        ? error
+        : new AppError(400, 'BACKUP_INVALID', 'backupInvalid');
     }
     res.status(201).json({ uploadId: id, bytes: size });
   });
@@ -157,6 +171,32 @@ export function backupsRouter(services: Services) {
     await record(req, auth, 'backup.restore', name, prepared);
     res.json({ ...prepared, restarting: true });
     services.requestRestart?.();
+  });
+
+  // Qisman tiklash: what would change (nothing is written)…
+  const groupsInput = z.object({
+    groups: z.array(z.enum(PARTIAL_GROUP_KEYS)).min(1).max(5),
+  });
+  router.post('/backups/:name/partial/preview', ...manage, async (req, res) => {
+    const name = parse(backupName, req.params.name);
+    const { groups } = parse(groupsInput, req.body);
+    res.json(await store().partial(name, groups, { dryRun: true }));
+  });
+
+  // …and the real one (TIKLASH typed in, recent sign-in): the live database changes in
+  // one transaction, after a full pre-restore backup; no restart.
+  router.post('/backups/:name/partial', ...manage, recent, async (req, res) => {
+    const auth = getAuth(res);
+    const name = parse(backupName, req.params.name);
+    const { groups } = parse(groupsInput, req.body);
+    confirmed(req.body);
+    const result = await store().partial(name, groups, { dryRun: false });
+    await record(req, auth, 'backup.partial', name, {
+      groups,
+      safetyBackup: result.safetyBackup,
+      tables: result.tables,
+    });
+    res.json(result);
   });
 
   router.post('/backups/rollback', ...manage, recent, async (req, res) => {

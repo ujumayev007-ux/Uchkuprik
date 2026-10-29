@@ -36,7 +36,7 @@ type Agent = ReturnType<typeof ctx.agent>;
 const post = (agent: Agent, path: string, body: object = {}) =>
   agent.post(`/api${path}`).set('Origin', ORIGIN).send(body);
 
-let version = 1000;
+let version = 0;
 async function setup(config: WorkflowConfig | null) {
   const tenant = await createTenant(ctx);
   const tenantId = tenant.tenant.id;

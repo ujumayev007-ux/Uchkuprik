@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Db } from '../../db.js';
 import type { BackupStore } from '../../lib/backup-store.js';
+import { PARTIAL_GROUP_KEYS } from '../../lib/backup-partial.js';
 import { AppError } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
 import { orderSettingsOf, orderSettingsSchema } from '../orders/settings.js';
@@ -91,6 +92,17 @@ export const OP_PAYLOADS = {
     database: z.string().regex(/^fastfood_before_[0-9]{8,20}$/),
     confirm: z.literal('TIKLASH'),
   }),
+  // Qisman tiklash (no restart): a dry run, or the real one with the word typed in.
+  'backup.partial': z
+    .object({
+      name: backupName,
+      groups: z.array(z.enum(PARTIAL_GROUP_KEYS)).min(1).max(5),
+      dryRun: z.boolean().default(true),
+      confirm: z.literal('TIKLASH').optional(),
+    })
+    .refine((value) => value.dryRun || value.confirm === 'TIKLASH', {
+      path: ['confirm'],
+    }),
 } as const;
 /** Operations after which the restaurant server restarts (database swap). */
 export const RESTART_OPS = ['backup.restore', 'backup.rollback'];
@@ -647,6 +659,19 @@ export async function executeOp(
       const prepared = await backups().prepareRollback(payload.database);
       await ownerAudit('backup.rollback', 'backup', payload.database);
       return { ...prepared, restarting: true };
+    }
+    case 'backup.partial': {
+      const payload = OP_PAYLOADS['backup.partial'].parse(rawPayload);
+      const result = await backups().partial(payload.name, payload.groups, {
+        dryRun: payload.dryRun,
+      });
+      if (!payload.dryRun)
+        await ownerAudit('backup.partial', 'backup', payload.name, {
+          groups: payload.groups,
+          safetyBackup: result.safetyBackup,
+          tables: result.tables,
+        });
+      return result;
     }
   }
 }

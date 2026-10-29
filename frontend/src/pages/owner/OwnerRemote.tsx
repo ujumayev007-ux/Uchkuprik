@@ -12,6 +12,11 @@ import { t } from '../../i18n';
 import { formatDateTime, formatMoney } from '../../lib/format';
 import { ownerApi, ownerPost } from '../../lib/owner';
 import {
+  PartialRestorePanel,
+  PartialResultTable,
+  type PartialResult,
+} from '../../components/PartialRestore';
+import {
   PrintRulesEditor,
   type PrintRules,
 } from '../../components/PrintRulesEditor';
@@ -49,6 +54,13 @@ type RemoteData = {
   compatible: boolean;
   backups?: boolean;
   restore?: boolean;
+  // Qisman tiklash (newer restaurant servers) and its newest finished run.
+  partialRestore?: boolean;
+  partial?: {
+    payload: { name?: string; dryRun?: boolean };
+    result: PartialResult | null;
+    doneAt: string | null;
+  } | null;
   monitoring?: Monitoring | null;
   lastContact: string | null;
   snapshots: Record<string, Snapshot<unknown>>;
@@ -179,6 +191,11 @@ export function RemoteSection({ customerId }: { customerId: string }) {
   const [busy, setBusy] = useState(false);
   const [prices, setPrices] = useState<Record<string, string>>({});
   // A restore or rollback waiting for the typed confirmation word.
+  const [partialFor, setPartialFor] = useState<{
+    name: string;
+    at: string;
+    asked: string;
+  } | null>(null);
   const [pendingRestore, setPendingRestore] = useState<
     | { kind: 'backup.restore'; name: string; title: string }
     | { kind: 'backup.rollback'; name: string; title: string }
@@ -386,6 +403,64 @@ export function RemoteSection({ customerId }: { customerId: string }) {
             </Button>
           </div>
           {restorePanel}
+          {partialFor && (
+            <PartialRestorePanel
+              title={t.partialRestore.title.replace(
+                '{at}',
+                formatDateTime(partialFor.at),
+              )}
+              busy={busy}
+              preview={
+                remote.partial?.payload.name === partialFor.name &&
+                remote.partial.payload.dryRun !== false &&
+                (remote.partial.doneAt ?? '') > partialFor.asked
+                  ? remote.partial.result
+                  : null
+              }
+              onClose={() => setPartialFor(null)}
+              onPreview={(groups) => {
+                setPartialFor({
+                  ...partialFor,
+                  asked: new Date().toISOString(),
+                });
+                void send('backup.partial', {
+                  name: partialFor.name,
+                  groups,
+                  dryRun: true,
+                });
+              }}
+              onRestore={(groups) => {
+                void send('backup.partial', {
+                  name: partialFor.name,
+                  groups,
+                  dryRun: false,
+                  confirm: 'TIKLASH',
+                });
+                setPartialFor(null);
+              }}
+            />
+          )}
+          {partialFor &&
+            remote.ops.some(
+              (op) =>
+                op.kind === 'backup.partial' &&
+                (op.status === 'QUEUED' || op.status === 'SENT'),
+            ) && (
+              <p className="muted small">{t.partialRestore.previewWaiting}</p>
+            )}
+          {!partialFor &&
+            remote.partial?.result &&
+            remote.partial.payload.dryRun === false && (
+              <div className="card stack">
+                <strong>
+                  {t.partialRestore.last.replace(
+                    '{at}',
+                    formatDateTime(remote.partial.doneAt ?? ''),
+                  )}
+                </strong>
+                <PartialResultTable result={remote.partial.result} />
+              </div>
+            )}
           {!data ? (
             <p className="muted">{r.noData}</p>
           ) : data.backups.length === 0 ? (
@@ -432,6 +507,21 @@ export function RemoteSection({ customerId }: { customerId: string }) {
                     >
                       {r.bk.verify}
                     </Button>
+                    {remote.partialRestore && row.verified !== false && (
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          setPartialFor({
+                            name: row.name,
+                            at: row.createdAt,
+                            asked: new Date().toISOString(),
+                          })
+                        }
+                      >
+                        {t.partialRestore.button}
+                      </Button>
+                    )}
                     {remote.restore &&
                       data.canRestore &&
                       row.verified !== false && (

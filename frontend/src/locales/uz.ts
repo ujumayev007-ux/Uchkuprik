@@ -2966,6 +2966,43 @@ export const uz = {
     keptHint: 'Tiklashdan oldin ishlatilgan baza shu yerda saqlanadi.',
     rollback: 'Shu bazaga qaytish',
   },
+  partialRestore: {
+    button: 'Qisman tiklash',
+    title: 'Qisman tiklash: {at}',
+    hint: 'Faqat tanlangan qism zaxiradagi holatiga qaytariladi, server to‘xtamaydi. Zaxiradan keyin qo‘shilgan yozuvlar o‘chirilmaydi. Avval hozirgi holatdan to‘liq zaxira olinadi.',
+    groups: {
+      MENU: 'Menyu (kategoriyalar, taomlar, narxlar, qo‘shimchalar, oshxona bo‘limlari)',
+      FLOOR: 'Zallar va stollar',
+      RECEIPTS: 'Chek shablonlari',
+      INVENTORY:
+        'Ombor ro‘yxati (mahsulotlar, o‘lchovlar, yetkazuvchilar, retseptlar)',
+      CUSTOMERS: 'Mijozlar va promokodlar',
+    } as Record<string, string>,
+    modes: {
+      MENU: 'O‘chirilganlari qaytadi, o‘zgartirilganlari zaxiradagi holatiga keladi',
+      FLOOR:
+        'O‘chirilganlari qaytadi, o‘zgartirilganlari zaxiradagi holatiga keladi',
+      RECEIPTS:
+        'O‘chirilganlari qaytadi, o‘zgartirilganlari zaxiradagi holatiga keladi',
+      INVENTORY:
+        'Faqat o‘chirilganlari qaytadi (qoldiq va tannarx o‘zgarmaydi)',
+      CUSTOMERS: 'Faqat o‘chirilganlari qaytadi (ballar o‘zgarmaydi)',
+    } as Record<string, string>,
+    preview: 'Nima o‘zgarishini ko‘rish',
+    previewWaiting:
+      'Restoran kompyuteridan javob kutilmoqda (keyingi aloqada keladi).',
+    cancel: 'Bekor qilish',
+    group: 'Qism',
+    inserted: 'Qaytadi',
+    updated: 'Tiklanadi',
+    unchanged: 'O‘zgarmaydi',
+    warn: 'Tasdiqlansa, tanlangan qism shu jadvaldagidek o‘zgaradi. Kerak bo‘lsa, avtomatik olingan to‘liq zaxiradan qaytarish mumkin.',
+    typeWord: 'Tasdiqlash uchun TIKLASH deb yozing',
+    restore: 'Tanlanganini tiklash',
+    done: 'Tanlangan maʼlumotlar tiklandi',
+    sent: 'Tiklash buyrug‘i restoranga yuborildi',
+    last: 'Oxirgi qisman tiklash: {at}',
+  },
   credit: {
     hint: 'Nasiya (mijoz qarzi) va mehmonxona xonasi hisoblari. Buyurtma to‘lovida «Qarzga / xona hisobiga» tanlanadi; qarz keyin naqd yoki karta bilan to‘lanadi. Naqd to‘lov kassa smenasiga kirim sifatida yoziladi.',
     workflowOff:

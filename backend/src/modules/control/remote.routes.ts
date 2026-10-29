@@ -46,10 +46,13 @@ export function remoteRouter(services: Services) {
   const now = () => services.now?.() ?? new Date();
 
   // Personal data and every change need a fresh password + code.
-  const needsReauth = (kind: string) => !isSnapshot(kind) || kind === 'snapshot.staff';
+  const needsReauth = (kind: string) =>
+    !isSnapshot(kind) || kind === 'snapshot.staff';
   const checkReauth = (req: Request, res: Response) =>
     new Promise<void>((resolve, reject) =>
-      reauth(req, res, (error?: unknown) => (error ? reject(error) : resolve())),
+      reauth(req, res, (error?: unknown) =>
+        error ? reject(error) : resolve(),
+      ),
     );
 
   router.get('/control/customers/:id/remote', ...authed, async (req, res) => {
@@ -81,7 +84,8 @@ export function remoteRouter(services: Services) {
       }),
     ]);
     // The newest finished snapshot of each kind.
-    const snapshots: Record<string, { result: unknown; doneAt: Date | null }> = {};
+    const snapshots: Record<string, { result: unknown; doneAt: Date | null }> =
+      {};
     for (const kind of OP_KINDS.filter(isSnapshot)) {
       const done = await db.controlRemoteOp.findFirst({
         where: { customerId: id, kind, status: 'DONE' },
@@ -90,6 +94,12 @@ export function remoteRouter(services: Services) {
       });
       if (done) snapshots[kind] = done;
     }
+    // Qisman tiklash: the newest finished preview or restore (with what it was asked).
+    const partial = await db.controlRemoteOp.findFirst({
+      where: { customerId: id, kind: 'backup.partial', status: 'DONE' },
+      orderBy: { doneAt: 'desc' },
+      select: { payload: true, result: true, doneAt: true },
+    });
     res.json({
       hosted: customer.tenantId !== null,
       compatible:
@@ -99,82 +109,106 @@ export function remoteRouter(services: Services) {
       // Ma'lumotlarni tiklash needs the restaurant computer's backups (new server build).
       backups: activation?.capabilities.includes('backups') ?? false,
       restore: activation?.capabilities.includes('restore') ?? false,
+      partialRestore:
+        activation?.capabilities.includes('partial_restore') ?? false,
+      partial,
       // Owner → Monitoring: the restaurant's last reported state.
       monitoring:
-        ((activation?.stats as { facts?: unknown } | null)?.facts as object | undefined) ??
-        null,
+        ((activation?.stats as { facts?: unknown } | null)?.facts as
+          object | undefined) ?? null,
       snapshots,
       ops,
     });
   });
 
-  router.post('/control/customers/:id/remote/ops', ...authed, async (req, res) => {
-    const owner = getOwner(res);
-    const customerId = idParam(req.params.id);
-    const input = parse(
-      z.object({ kind: z.enum(OP_KINDS as [string, ...string[]]), payload: z.unknown().optional() }),
-      req.body,
-    );
-    if (needsReauth(input.kind)) await checkReauth(req, res);
-    const payload = OP_PAYLOADS[input.kind as keyof typeof OP_PAYLOADS].parse(
-      input.payload ?? {},
-    ) as Prisma.InputJsonValue;
-    const customer = await db.controlCustomer.findUnique({
-      where: { id: customerId },
-      select: { tenantId: true },
-    });
-    if (!customer) throw errors.notFound();
-    // One snapshot request of a kind at a time.
-    if (isSnapshot(input.kind)) {
-      const waiting = await db.controlRemoteOp.findFirst({
-        where: { customerId, kind: input.kind, status: { in: ['QUEUED', 'SENT'] } },
-        select: { id: true, status: true },
+  router.post(
+    '/control/customers/:id/remote/ops',
+    ...authed,
+    async (req, res) => {
+      const owner = getOwner(res);
+      const customerId = idParam(req.params.id);
+      const input = parse(
+        z.object({
+          kind: z.enum(OP_KINDS as [string, ...string[]]),
+          payload: z.unknown().optional(),
+        }),
+        req.body,
+      );
+      if (needsReauth(input.kind)) await checkReauth(req, res);
+      const payload = OP_PAYLOADS[input.kind as keyof typeof OP_PAYLOADS].parse(
+        input.payload ?? {},
+      ) as Prisma.InputJsonValue;
+      const customer = await db.controlCustomer.findUnique({
+        where: { id: customerId },
+        select: { tenantId: true },
       });
-      if (waiting) {
-        res.json(waiting);
-        return;
-      }
-    }
-    const op = await db.controlRemoteOp.create({
-      data: { customerId, kind: input.kind, payload, createdById: owner.ownerId },
-    });
-    await controlAudit(db, req, {
-      ownerId: owner.ownerId,
-      customerId,
-      action: `remote.${input.kind}`,
-      entityType: 'remote_op',
-      entityId: op.id,
-      ...(isSnapshot(input.kind) ? {} : { data: { payload } }),
-    });
-    // A restaurant hosted on this server: run now.
-    if (customer.tenantId) {
-      try {
-        const result = await executeOp(db, customer.tenantId, input.kind, payload);
-        await db.controlRemoteOp.update({
-          where: { id: op.id },
-          data: {
-            status: 'DONE',
-            result: (result ?? null) as Prisma.InputJsonValue,
-            doneAt: now(),
+      if (!customer) throw errors.notFound();
+      // One snapshot request of a kind at a time.
+      if (isSnapshot(input.kind)) {
+        const waiting = await db.controlRemoteOp.findFirst({
+          where: {
+            customerId,
+            kind: input.kind,
+            status: { in: ['QUEUED', 'SENT'] },
           },
+          select: { id: true, status: true },
         });
-      } catch (error) {
-        await db.controlRemoteOp.update({
-          where: { id: op.id },
-          data: {
-            status: 'FAILED',
-            error: error instanceof AppError ? error.code : 'FAILED',
-            doneAt: now(),
-          },
-        });
+        if (waiting) {
+          res.json(waiting);
+          return;
+        }
       }
-    }
-    const saved = await db.controlRemoteOp.findUniqueOrThrow({
-      where: { id: op.id },
-      select: { id: true, status: true, error: true },
-    });
-    res.status(201).json(saved);
-  });
+      const op = await db.controlRemoteOp.create({
+        data: {
+          customerId,
+          kind: input.kind,
+          payload,
+          createdById: owner.ownerId,
+        },
+      });
+      await controlAudit(db, req, {
+        ownerId: owner.ownerId,
+        customerId,
+        action: `remote.${input.kind}`,
+        entityType: 'remote_op',
+        entityId: op.id,
+        ...(isSnapshot(input.kind) ? {} : { data: { payload } }),
+      });
+      // A restaurant hosted on this server: run now.
+      if (customer.tenantId) {
+        try {
+          const result = await executeOp(
+            db,
+            customer.tenantId,
+            input.kind,
+            payload,
+          );
+          await db.controlRemoteOp.update({
+            where: { id: op.id },
+            data: {
+              status: 'DONE',
+              result: (result ?? null) as Prisma.InputJsonValue,
+              doneAt: now(),
+            },
+          });
+        } catch (error) {
+          await db.controlRemoteOp.update({
+            where: { id: op.id },
+            data: {
+              status: 'FAILED',
+              error: error instanceof AppError ? error.code : 'FAILED',
+              doneAt: now(),
+            },
+          });
+        }
+      }
+      const saved = await db.controlRemoteOp.findUniqueOrThrow({
+        where: { id: op.id },
+        select: { id: true, status: true, error: true },
+      });
+      res.status(201).json(saved);
+    },
+  );
 
   return router;
 }
