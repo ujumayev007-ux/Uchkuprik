@@ -100,6 +100,11 @@ export const receiptTemplateSchema = z.object({
   showCopyMark: z.boolean().default(true),
   presetKey: z.string().optional(),
   sectionOrder: z.array(z.string()).optional(),
+  // Order of the receipt parts (logo, header, meta, delivery, items, totals, fiscal,
+  // wifi, qr, barcode, footer). Absent: the usual order.
+  layoutOrder: z.array(z.string().max(20)).max(20).optional(),
+  // Browser printing on an office printer: A4/A5 page instead of the paper roll.
+  pageSize: z.enum(['roll', 'A4', 'A5']).optional(),
 });
 export type ReceiptTemplateSettings = z.infer<typeof receiptTemplateSchema>;
 

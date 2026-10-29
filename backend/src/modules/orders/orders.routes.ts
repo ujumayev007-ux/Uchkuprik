@@ -10,6 +10,7 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { randomToken } from '../../lib/crypto.js';
 import { qrPaymentOf } from '../settings/settings.routes.js';
 import { resolveTemplate } from '../../printing/resolve-template.js';
 import { localDateTime, receiptTicket } from '../../printing/receipt.js';
@@ -1709,6 +1710,37 @@ export function ordersRouter(services: Services) {
       const id = parse(z.uuid(), req.params.id);
       const query = parse(receiptQuery, req.query);
       res.json(await buildReceipt(auth, id, query));
+    },
+  );
+
+  // Electronic receipt: an unguessable link to the order's public page (/buyurtma/:token)
+  // the guest opens from a QR code or a message. Online orders already have one.
+  router.post(
+    '/orders/:id/e-receipt',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const order = await load(auth, id);
+      if (!order.trackingToken) {
+        await db.order.updateMany({
+          where: { id, tenantId: auth.tenantId, trackingToken: null },
+          data: { trackingToken: randomToken(18) },
+        });
+        await audit(db, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'order.e_receipt',
+          entityType: 'order',
+          entityId: id,
+        });
+      }
+      const { trackingToken } = await db.order.findFirstOrThrow({
+        where: { id, tenantId: auth.tenantId },
+        select: { trackingToken: true },
+      });
+      res.json({ token: trackingToken, path: `/buyurtma/${trackingToken}` });
     },
   );
 

@@ -3056,10 +3056,29 @@ model ReceiptTemplate {
   updatedAt DateTime @updatedAt
 
   assignments ReceiptAssignment[]
+  versions    ReceiptTemplateVersion[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
   @@map("receipt_templates")
+}
+
+// Earlier states of a receipt template, kept on every save (restore, history).
+// templateId null: the restaurant default receipt (TenantProfile.receiptSettings).
+model ReceiptTemplateVersion {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @db.Uuid
+  templateId  String?  @db.Uuid
+  name        String
+  kind        String   @default("CUSTOMER")
+  settings    Json
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  template ReceiptTemplate? @relation(fields: [tenantId, templateId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, templateId, createdAt])
+  @@map("receipt_template_versions")
 }
 
 model ReceiptAssignment {

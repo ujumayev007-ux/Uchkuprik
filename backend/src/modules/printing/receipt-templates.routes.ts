@@ -23,6 +23,44 @@ const templateBody = z.object({
   settings: receiptTemplateSchema,
 });
 
+/** Versions kept per template; older ones are dropped. */
+const KEEP_VERSIONS = 30;
+
+type Tx = Pick<Services['db'], 'receiptTemplateVersion'>;
+
+/** Keeps the state a template had before a save (templateId null: the default receipt). */
+export async function keepVersion(
+  tx: Tx,
+  tenantId: string,
+  templateId: string | null,
+  state: { name: string; kind: string; settings: unknown },
+  userId: string | null,
+) {
+  await tx.receiptTemplateVersion.create({
+    data: {
+      tenantId,
+      templateId,
+      name: state.name,
+      kind: state.kind,
+      settings: (state.settings ?? {}) as Prisma.InputJsonValue,
+      createdById: userId,
+    },
+  });
+  const old = await tx.receiptTemplateVersion.findMany({
+    where: { tenantId, templateId },
+    orderBy: { createdAt: 'desc' },
+    skip: KEEP_VERSIONS,
+    select: { id: true },
+  });
+  if (old.length)
+    await tx.receiptTemplateVersion.deleteMany({
+      where: { tenantId, id: { in: old.map((row) => row.id) } },
+    });
+}
+
+const DEFAULT_NAME = 'Asosiy chek';
+const templateKey = z.union([z.literal('default'), z.uuid()]);
+
 const targetSchema = z.object({
   type: z.enum(ASSIGNMENT_TARGETS),
   targetId: z.string().trim().min(1).max(64),
@@ -96,15 +134,21 @@ export function receiptTemplatesRouter(services: Services) {
     const id = parse(z.uuid(), req.params.id);
     const input = parse(templateBody, req.body);
     try {
-      const result = await db.receiptTemplate.updateMany({
-        where: { id, tenantId: auth.tenantId },
-        data: {
-          name: input.name,
-          kind: input.kind,
-          settings: input.settings as unknown as Prisma.InputJsonValue,
-        },
+      await db.$transaction(async (tx) => {
+        const before = await tx.receiptTemplate.findFirst({
+          where: { id, tenantId: auth.tenantId },
+        });
+        if (!before) throw errors.notFound();
+        await keepVersion(tx, auth.tenantId, id, before, auth.userId);
+        await tx.receiptTemplate.update({
+          where: { id },
+          data: {
+            name: input.name,
+            kind: input.kind,
+            settings: input.settings as unknown as Prisma.InputJsonValue,
+          },
+        });
       });
-      if (result.count === 0) throw errors.notFound();
     } catch (error) {
       if (isUniqueViolation(error)) throw errors.conflict();
       throw error;
@@ -135,6 +179,138 @@ export function receiptTemplatesRouter(services: Services) {
       entityId: id,
     });
     res.json({ ok: true });
+  });
+
+  // Saved versions of a template, newest first ("default": the restaurant default receipt).
+  router.get('/receipt-templates/:key/versions', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const key = parse(templateKey, req.params.key);
+    const templateId = key === 'default' ? null : key;
+    const versions = await db.receiptTemplateVersion.findMany({
+      where: { tenantId: auth.tenantId, templateId },
+      orderBy: { createdAt: 'desc' },
+      take: KEEP_VERSIONS,
+    });
+    res.json({
+      versions: versions.map((row) => ({
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        createdAt: row.createdAt,
+        settings: templateSettingsOf(row.settings),
+      })),
+    });
+  });
+
+  // Puts a saved version back; the state being replaced becomes a version itself.
+  router.post(
+    '/receipt-templates/:key/versions/:versionId/restore',
+    ...manage,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const key = parse(templateKey, req.params.key);
+      const versionId = parse(z.uuid(), req.params.versionId);
+      const templateId = key === 'default' ? null : key;
+      await db.$transaction(async (tx) => {
+        const version = await tx.receiptTemplateVersion.findFirst({
+          where: { id: versionId, tenantId: auth.tenantId, templateId },
+        });
+        if (!version) throw errors.notFound();
+        const settings = templateSettingsOf(
+          version.settings,
+        ) as unknown as Prisma.InputJsonValue;
+        if (templateId === null) {
+          const profile = await tx.tenantProfile.findUnique({
+            where: { tenantId: auth.tenantId },
+            select: { receiptSettings: true },
+          });
+          await keepVersion(
+            tx,
+            auth.tenantId,
+            null,
+            {
+              name: DEFAULT_NAME,
+              kind: 'CUSTOMER',
+              settings: fromLegacyLayout(profile?.receiptSettings),
+            },
+            auth.userId,
+          );
+          await tx.tenantProfile.upsert({
+            where: { tenantId: auth.tenantId },
+            update: { receiptSettings: settings },
+            create: { tenantId: auth.tenantId, receiptSettings: settings },
+          });
+        } else {
+          const before = await tx.receiptTemplate.findFirst({
+            where: { id: templateId, tenantId: auth.tenantId },
+          });
+          if (!before) throw errors.notFound();
+          await keepVersion(tx, auth.tenantId, templateId, before, auth.userId);
+          // The current name stays (another template may have taken the old one).
+          await tx.receiptTemplate.update({
+            where: { id: templateId },
+            data: { kind: version.kind, settings },
+          });
+        }
+        await audit(tx, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'receipt.template.restore',
+          entityType: 'receipt_template',
+          entityId: templateId ?? key,
+          data: { versionId, versionAt: version.createdAt.toISOString() },
+        });
+      });
+      res.json({ ok: true });
+    },
+  );
+
+  // A copy under a new name, without the original's printer assignments.
+  router.post('/receipt-templates/:key/duplicate', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const key = parse(templateKey, req.params.key);
+    const { name } = parse(
+      z.object({ name: z.string().trim().min(1).max(60) }),
+      req.body,
+    );
+    let kind = 'CUSTOMER';
+    let settings: unknown;
+    if (key === 'default') {
+      const profile = await db.tenantProfile.findUnique({
+        where: { tenantId: auth.tenantId },
+        select: { receiptSettings: true },
+      });
+      settings = fromLegacyLayout(profile?.receiptSettings);
+    } else {
+      const source = await db.receiptTemplate.findFirst({
+        where: { id: key, tenantId: auth.tenantId },
+      });
+      if (!source) throw errors.notFound();
+      kind = source.kind;
+      settings = templateSettingsOf(source.settings);
+    }
+    try {
+      const created = await db.receiptTemplate.create({
+        data: {
+          tenantId: auth.tenantId,
+          name,
+          kind,
+          settings: settings as Prisma.InputJsonValue,
+        },
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'receipt.template.duplicate',
+        entityType: 'receipt_template',
+        entityId: created.id,
+        data: { from: key, name },
+      });
+      res.status(201).json({ id: created.id });
+    } catch (error) {
+      if (isUniqueViolation(error)) throw errors.conflict();
+      throw error;
+    }
   });
 
   // Replaces where one template applies (printers, departments, receipt type default).

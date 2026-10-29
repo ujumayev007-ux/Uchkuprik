@@ -170,6 +170,7 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       'GET /orders/:id/receipt',
       'POST /orders/:id/receipt/print',
+      'POST /orders/:id/e-receipt',
       'GET /receipt-printers',
     ],
   }),

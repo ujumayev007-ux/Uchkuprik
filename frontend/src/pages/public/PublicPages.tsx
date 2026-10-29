@@ -346,6 +346,13 @@ export function TrackingPage() {
         <p className="muted small">
           {formatDateTime(o.createdAt)} · {t.online.autoRefresh}
         </p>
+        <button
+          type="button"
+          className="btn btn-secondary no-print"
+          onClick={() => window.print()}
+        >
+          {t.eReceipt.savePdf}
+        </button>
       </section>
     </div>
   );

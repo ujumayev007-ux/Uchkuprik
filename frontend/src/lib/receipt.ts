@@ -60,7 +60,36 @@ export type ReceiptLayout = {
   showCopyMark: boolean;
   presetKey?: string;
   sectionOrder?: string[];
+  /** Order of the receipt parts; absent: the usual order. */
+  layoutOrder?: string[];
+  /** Browser printing on an office printer; thermal printers keep the roll width. */
+  pageSize?: 'roll' | 'A4' | 'A5';
 };
+
+/** Receipt parts in the printed order (backend/src/printing/receipt.ts). */
+export const RECEIPT_BLOCKS = [
+  'logo',
+  'header',
+  'meta',
+  'delivery',
+  'items',
+  'totals',
+  'fiscal',
+  'wifi',
+  'qr',
+  'barcode',
+  'footer',
+] as const;
+export type ReceiptBlock = (typeof RECEIPT_BLOCKS)[number];
+
+/** The chosen order: unknown names dropped, parts left out appended. */
+export function blockOrder(chosen: readonly string[]): ReceiptBlock[] {
+  const known = chosen.filter((name): name is ReceiptBlock =>
+    (RECEIPT_BLOCKS as readonly string[]).includes(name),
+  );
+  const unique = [...new Set(known)];
+  return [...unique, ...RECEIPT_BLOCKS.filter((name) => !unique.includes(name))];
+}
 
 export const defaultLayout: ReceiptLayout = {
   widthMm: 80,
@@ -133,9 +162,16 @@ export const defaultLayout: ReceiptLayout = {
 };
 
 /** 6 professional editable template presets required by the system. */
-export const receiptPresets: Record<
+type ReceiptPreset = {
+  name: string;
+  kind: 'CUSTOMER' | 'KITCHEN';
+  desc: string;
+  layout: Partial<ReceiptLayout>;
+};
+
+const basePresets: Record<
   'classic' | 'premium' | 'minimal' | 'kitchen' | 'delivery' | 'branded',
-  { name: string; kind: 'CUSTOMER' | 'KITCHEN'; desc: string; layout: Partial<ReceiptLayout> }
+  ReceiptPreset
 > = {
   classic: {
     name: 'Klassik (Classic)',
@@ -319,6 +355,157 @@ export const receiptPresets: Record<
   },
 };
 
+/** Library designs added next to the six above (none of them changes a saved template). */
+const libraryPresets = {
+  modern: {
+    name: 'Zamonaviy (Modern)',
+    kind: 'CUSTOMER',
+    desc: 'Toza ko‘rinish, yakka chiziqlar, QQS va taomlar soni bilan.',
+    layout: {
+      widthMm: 80,
+      fontSize: 'normal',
+      lineSpacing: 'loose',
+      showLegalName: false,
+      showTaxId: true,
+      showWaiter: false,
+      showItemCount: true,
+      showVat: true,
+      separatorStyle: 'single',
+      title: '',
+      thankYou: 'Rahmat! Yana kutib qolamiz.',
+    },
+  },
+  bold: {
+    name: 'Qalin (Bold)',
+    kind: 'CUSTOMER',
+    desc: 'Katta shrift, qalin ajratgichlar — uzoqdan ham o‘qiladi.',
+    layout: {
+      widthMm: 80,
+      fontSize: 'large',
+      lineSpacing: 'normal',
+      largeOrderNumber: true,
+      showItemUnitPrice: false,
+      separatorStyle: 'heavy',
+      thankYou: 'RAHMAT!',
+    },
+  },
+  compact: {
+    name: 'Ixcham (Compact)',
+    kind: 'CUSTOMER',
+    desc: '58 mm, kichik shrift, faqat eng kerakli qatorlar — qog‘ozni tejaydi.',
+    layout: {
+      widthMm: 58,
+      fontSize: 'small',
+      lineSpacing: 'tight',
+      marginTopMm: 0,
+      marginBottomMm: 3,
+      showLegalName: false,
+      showTaxId: false,
+      showBranch: false,
+      showCashier: false,
+      showWaiter: false,
+      showOrderType: false,
+      showModifiers: false,
+      showItemUnitPrice: false,
+      showCustomer: false,
+      separatorStyle: 'single',
+      thankYou: 'Rahmat!',
+    },
+  },
+  fastfood: {
+    name: 'Fast Food',
+    kind: 'CUSTOMER',
+    desc: 'Navbat raqami katta harflarda — mijozni kassadan chaqirish uchun.',
+    layout: {
+      widthMm: 80,
+      fontSize: 'normal',
+      largeOrderNumber: true,
+      showOrderNumber: true,
+      showOrderType: true,
+      showTable: false,
+      showWaiter: false,
+      showItemCount: true,
+      separatorStyle: 'dashed',
+      title: 'NAVBAT RAQAMINGIZ',
+      thankYou: 'Raqamingiz ekranda chiqqanda olib keting!',
+    },
+  },
+  vip: {
+    name: 'VIP',
+    kind: 'CUSTOMER',
+    desc: 'Logotip, ofitsiant, xizmat haqi va qo‘shaloq chiziqlar — VIP zal uchun.',
+    layout: {
+      widthMm: 80,
+      fontSize: 'normal',
+      lineSpacing: 'loose',
+      showLogo: true,
+      logoAlign: 'center',
+      logoWidthPct: 55,
+      showWaiter: true,
+      showTable: true,
+      showServiceCharge: true,
+      showItemUnitPrice: true,
+      separatorStyle: 'double',
+      title: 'VIP',
+      thankYou: 'Tashrifingiz uchun minnatdormiz!',
+    },
+  },
+  qr: {
+    name: 'QR chek',
+    kind: 'CUSTOMER',
+    desc: 'Pastida katta QR-kod: fikr bildirish, menyu yoki Telegram bot uchun.',
+    layout: {
+      widthMm: 80,
+      fontSize: 'normal',
+      showQrCode: true,
+      qrContent: '',
+      qrLabel: 'Skanerlang: menyu va takliflar',
+      showWifi: false,
+      separatorStyle: 'dashed',
+      thankYou: 'Xaridingiz uchun rahmat!',
+    },
+  },
+  custom: {
+    name: 'Bo‘sh (Custom)',
+    kind: 'CUSTOMER',
+    desc: 'Eng oddiy boshlanish: faqat nom, raqam, taomlar va jami — qolganini o‘zingiz qo‘shasiz.',
+    layout: {
+      widthMm: 80,
+      fontSize: 'normal',
+      showLogo: false,
+      showLegalName: false,
+      showTaxId: false,
+      showBranch: false,
+      showPhone: false,
+      showCashier: false,
+      showWaiter: false,
+      showOrderType: false,
+      showTable: false,
+      showModifiers: false,
+      showItemUnitPrice: false,
+      showNotes: false,
+      showDiscount: true,
+      showServiceCharge: false,
+      showPayments: false,
+      showChange: false,
+      showCustomer: false,
+      showQrCode: false,
+      showBarcode: false,
+      showWifi: false,
+      showSocialMedia: false,
+      title: '',
+      extraLines: '',
+      separatorStyle: 'single',
+      thankYou: 'Rahmat!',
+    },
+  },
+} satisfies Record<string, ReceiptPreset>;
+
+export const receiptPresets: Record<
+  keyof typeof basePresets | keyof typeof libraryPresets,
+  ReceiptPreset
+> = { ...basePresets, ...libraryPresets };
+
 /** Old servers sent `paperWidth: '58' | '80'`; read both shapes. */
 export function normalizeLayout(value: unknown): ReceiptLayout {
   const raw = (
@@ -343,9 +530,16 @@ const FONT_PX = { small: 11, normal: 13, large: 16 } as const;
 const LINE_HEIGHT = { tight: 1.15, normal: 1.35, loose: 1.75 } as const;
 
 /** CSS of the paper: width, margins, font, spacing and (fixed) length in millimetres. */
+/** Printable width of an office page with 10 mm margins. */
+const PAGE_WIDTH_MM = { A4: 190, A5: 128 } as const;
+
 export function sheetStyle(layout: ReceiptLayout): CSSProperties {
+  const page =
+    layout.pageSize === 'A4' || layout.pageSize === 'A5'
+      ? PAGE_WIDTH_MM[layout.pageSize]
+      : null;
   return {
-    width: `${layout.widthMm}mm`,
+    width: `${page ?? layout.widthMm}mm`,
     boxSizing: 'border-box',
     padding: `${layout.marginTopMm}mm ${layout.marginRightMm}mm ${layout.marginBottomMm}mm ${layout.marginLeftMm}mm`,
     fontSize: `${FONT_PX[layout.fontSize]}px`,
@@ -358,6 +552,8 @@ export function sheetStyle(layout: ReceiptLayout): CSSProperties {
 
 /** Print rules: the page is exactly the paper width; the length follows the content. */
 export function pageCss(layout: ReceiptLayout): string {
+  if (layout.pageSize === 'A4' || layout.pageSize === 'A5')
+    return `@page { size: ${layout.pageSize}; margin: 10mm; }`;
   const length =
     layout.lengthMode === 'fixed' ? `${layout.fixedLengthMm}mm` : 'auto';
   return `@page { size: ${layout.widthMm}mm ${length}; margin: 0; }`;

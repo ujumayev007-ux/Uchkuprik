@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useMe } from '../auth/session';
+import { EReceiptButton } from './EReceiptDialog';
 import { Button, useToast } from './ui';
 import { t } from '../i18n';
 import { api, errorMessage, post } from '../lib/api';
@@ -66,6 +67,7 @@ export function PrintReceipt({ orderId }: { orderId: string }) {
       >
         {t.payment.printReceipt}
       </Button>
+      <EReceiptButton orderId={orderId} />
       {printerId && (
         <Button
           variant="primary"

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMe } from '../auth/session';
 import { ReceiptSheet, sampleSheet } from '../components/ReceiptSheet';
 import {
@@ -15,8 +15,11 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { api, errorMessage } from '../lib/api';
+import { formatDateTime } from '../lib/format';
 import {
+  blockOrder,
   columnsForWidth,
+  RECEIPT_BLOCKS,
   logoFromFile,
   rasterizeLogo,
   normalizeLayout,
@@ -38,6 +41,16 @@ type Template = {
 };
 type TemplateList = { defaultTemplate: ReceiptLayout; templates: Template[] };
 type PrinterRow = { id: string; name: string; kind: Kind | 'RECEIPT' };
+type Version = {
+  id: string;
+  name: string;
+  kind: Kind;
+  createdAt: string;
+  settings: ReceiptLayout;
+};
+
+/** File format of an exported template (import accepts only this). */
+const FILE_FORMAT = 'fastfood-receipt-template';
 
 // 'default' is the restaurant's original layout; other keys are template ids or 'new'.
 type Key = 'default' | 'new' | string;
@@ -112,6 +125,18 @@ export function ReceiptDesignPage() {
   const [targets, setTargets] = useState<Assignment[]>([]);
   const [testPrinter, setTestPrinter] = useState('');
   const [busy, setBusy] = useState(false);
+  // Unsaved changes can be undone and redone.
+  const [past, setPast] = useState<ReceiptLayout[]>([]);
+  const [future, setFuture] = useState<ReceiptLayout[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const versions = useQuery({
+    queryKey: ['receipt-template-versions', key],
+    queryFn: () =>
+      api<{ versions: Version[] }>(`/receipt-templates/${key}/versions`).then(
+        (data) => data.versions,
+      ),
+    enabled: key !== 'new',
+  });
 
   const current = useMemo(
     () => list.data?.templates.find((item) => item.id === key) ?? null,
@@ -120,6 +145,8 @@ export function ReceiptDesignPage() {
   // Load the chosen template into the form.
   useEffect(() => {
     if (!list.data) return;
+    setPast([]);
+    setFuture([]);
     if (key === 'default') {
       setForm(normalizeLayout(list.data.defaultTemplate));
       setName('');
@@ -139,10 +166,95 @@ export function ReceiptDesignPage() {
       <ErrorState error={list.error} onRetry={() => void list.refetch()} />
     );
   if (!list.data || !form) return <LoadingState />;
+  const change = (next: ReceiptLayout) => {
+    setPast([...past.slice(-49), form]);
+    setFuture([]);
+    setForm(next);
+  };
+  const undo = () => {
+    const previous = past[past.length - 1];
+    if (!previous) return;
+    setPast(past.slice(0, -1));
+    setFuture([form, ...future]);
+    setForm(previous);
+  };
+  const redo = () => {
+    const next = future[0];
+    if (!next) return;
+    setFuture(future.slice(1));
+    setPast([...past, form]);
+    setForm(next);
+  };
   const set = <K extends keyof ReceiptLayout>(
     field: K,
     value: ReceiptLayout[K],
-  ) => setForm({ ...form, [field]: value });
+  ) => change({ ...form, [field]: value });
+  const sequence = blockOrder(form.layoutOrder ?? RECEIPT_BLOCKS);
+  const move = (index: number, step: number) => {
+    const next = [...sequence];
+    const other = next[index + step];
+    const current = next[index];
+    if (!other || !current) return;
+    next[index] = other;
+    next[index + step] = current;
+    set('layoutOrder', next);
+  };
+  const resetOrder = () => {
+    const rest = { ...form };
+    delete rest.layoutOrder;
+    change(rest);
+  };
+  const exportFile = () => {
+    const file = new Blob(
+      [
+        JSON.stringify(
+          {
+            format: FILE_FORMAT,
+            version: 1,
+            name: name || k.defaultName,
+            kind,
+            settings: form,
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: 'application/json' },
+    );
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `chek-shablon-${(name || 'asosiy').replace(/[^\w-]+/g, '_')}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const importFile = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as {
+        format?: unknown;
+        name?: unknown;
+        kind?: unknown;
+        settings?: unknown;
+      };
+      if (
+        parsed.format !== FILE_FORMAT ||
+        typeof parsed.settings !== 'object' ||
+        parsed.settings === null
+      )
+        throw new Error(k.importBad);
+      // The server checks every field again when the template is saved.
+      change(normalizeLayout(parsed.settings));
+      if (key === 'new' && !name && typeof parsed.name === 'string')
+        setName(parsed.name.slice(0, 60));
+      if (key !== 'default' && (parsed.kind === 'CUSTOMER' || parsed.kind === 'KITCHEN'))
+        setKind(parsed.kind);
+      toast(k.imported);
+    } catch {
+      toast(k.importBad, 'error');
+    }
+  };
+  const refreshVersions = () =>
+    client.invalidateQueries({ queryKey: ['receipt-template-versions'] });
   const num =
     (field: keyof ReceiptLayout, min: number, max: number) =>
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,7 +262,8 @@ export function ReceiptDesignPage() {
       if (Number.isFinite(value))
         set(field, Math.min(max, Math.max(min, value)) as never);
     };
-  const standard = form.widthMm === 58 || form.widthMm === 80;
+  const standard =
+    form.widthMm === 58 || form.widthMm === 76 || form.widthMm === 80;
   const refresh = () =>
     client.invalidateQueries({ queryKey: ['receipt-templates'] });
 
@@ -176,6 +289,7 @@ export function ReceiptDesignPage() {
       }
       toast(k.saved);
       await refresh();
+      await refreshVersions();
     } catch (caught) {
       toast(errorMessage(caught), 'error');
     } finally {
@@ -269,7 +383,7 @@ export function ReceiptDesignPage() {
           <div>
             <strong style={{ fontSize: '0.95em' }}>✨ {k.presets}</strong>
             <p className="muted small" style={{ margin: 0 }}>
-              6 ta tayyor professional andozadan birini tanlang va o‘zingizga moslang
+              {k.presetsHint}
             </p>
           </div>
         </div>
@@ -309,7 +423,7 @@ export function ReceiptDesignPage() {
                     : 'none',
               }}
               onClick={() => {
-                setForm(
+                change(
                   normalizeLayout({
                     ...form,
                     ...preset.layout,
@@ -355,6 +469,31 @@ export function ReceiptDesignPage() {
             void save();
           }}
         >
+          <div className="toolbar">
+            <Button size="sm" disabled={past.length === 0} onClick={undo}>
+              ↶ {k.undo}
+            </Button>
+            <Button size="sm" disabled={future.length === 0} onClick={redo}>
+              ↷ {k.redo}
+            </Button>
+            <Button size="sm" onClick={exportFile}>
+              {k.exportJson}
+            </Button>
+            <Button size="sm" onClick={() => fileInput.current?.click()}>
+              {k.importJson}
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void importFile(file);
+              }}
+            />
+          </div>
           {key !== 'default' && (
             <div className="form-grid">
               <TextField
@@ -394,6 +533,7 @@ export function ReceiptDesignPage() {
                 }
               >
                 <option value="80">80 mm</option>
+                <option value="76">76 mm</option>
                 <option value="58">58 mm</option>
                 <option value="custom">{k.custom}</option>
               </SelectField>
@@ -407,6 +547,22 @@ export function ReceiptDesignPage() {
                   onChange={num('widthMm', 40, 112)}
                 />
               )}
+              <SelectField
+                label={k.pageSize}
+                value={form.pageSize ?? 'roll'}
+                onChange={(event) =>
+                  set(
+                    'pageSize',
+                    event.target.value as NonNullable<ReceiptLayout['pageSize']>,
+                  )
+                }
+              >
+                {Object.entries(k.pageSizes).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </SelectField>
               <SelectField
                 label={r.font}
                 value={form.fontSize}
@@ -702,6 +858,55 @@ export function ReceiptDesignPage() {
               </div>
             )}
           </fieldset>
+          {form.pageSize && form.pageSize !== 'roll' && (
+            <p className="muted small">{k.pageHint}</p>
+          )}
+          <fieldset className="stack compact">
+            <legend>{k.order}</legend>
+            <p className="muted small">{k.orderHint}</p>
+            <ol className="stack compact" style={{ margin: 0, paddingLeft: 20 }}>
+              {sequence.map((block, index) => (
+                <li key={block}>
+                  <div
+                    className="toolbar small"
+                    style={{ justifyContent: 'space-between' }}
+                  >
+                    <span>{k.blocks[block]}</span>
+                    <span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`${k.blocks[block]}: ${k.up}`}
+                        disabled={index === 0}
+                        onClick={() => move(index, -1)}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`${k.blocks[block]}: ${k.down}`}
+                        disabled={index === sequence.length - 1}
+                        onClick={() => move(index, 1)}
+                      >
+                        ↓
+                      </Button>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="toolbar small">
+              <span className="muted">
+                {form.layoutOrder ? k.orderCustom : k.orderReset}
+              </span>
+              {form.layoutOrder && (
+                <Button size="sm" onClick={resetOrder}>
+                  {k.orderReset}
+                </Button>
+              )}
+            </div>
+          </fieldset>
           <TextField
             label={r.extraLines}
             value={form.extraLines}
@@ -824,6 +1029,68 @@ export function ReceiptDesignPage() {
               </div>
             </div>
           </section>
+
+          {key !== 'new' && (
+            <section className="card stack">
+              <h2 className="section-title">{k.versions}</h2>
+              <p className="muted small">{k.versionsHint}</p>
+              {(versions.data ?? []).length === 0 ? (
+                <p className="muted small">{k.noVersions}</p>
+              ) : (
+                <ul
+                  className="stack compact"
+                  style={{ listStyle: 'none', padding: 0, margin: 0 }}
+                >
+                  {(versions.data ?? []).map((version) => (
+                    <li
+                      key={version.id}
+                      className="toolbar small"
+                      style={{ justifyContent: 'space-between' }}
+                    >
+                      <span>
+                        {formatDateTime(version.createdAt)} · {version.name} ·{' '}
+                        {version.settings.widthMm} mm
+                      </span>
+                      <span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            change(normalizeLayout(version.settings));
+                            toast(k.versionViewing);
+                          }}
+                        >
+                          {k.versionView}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            if (!(await confirm(k.versionRestoreAsk))) return;
+                            try {
+                              await api(
+                                `/receipt-templates/${key}/versions/${version.id}/restore`,
+                                { method: 'POST' },
+                              );
+                              toast(k.versionRestored);
+                              await client.invalidateQueries({
+                                queryKey: ['receipt-layout'],
+                              });
+                              await refresh();
+                              await refreshVersions();
+                            } catch (caught) {
+                              toast(errorMessage(caught), 'error');
+                            }
+                          }}
+                        >
+                          {k.versionRestore}
+                        </Button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           {key !== 'default' && key !== 'new' && (
             <section className="card stack">

@@ -90,6 +90,34 @@ const SPACING_DOTS = { tight: 24, normal: 30, loose: 42 } as const;
  * length. The logo is printed as a 1-bit picture (when the designer made one) and shown
  * as the uploaded image on browser receipts.
  */
+/** Receipt parts in today's printing order; a template may print them in another order. */
+export const DEFAULT_BLOCKS = [
+  'logo',
+  'header',
+  'meta',
+  'delivery',
+  'items',
+  'totals',
+  'fiscal',
+  'wifi',
+  'qr',
+  'barcode',
+  'footer',
+] as const;
+export type ReceiptBlock = (typeof DEFAULT_BLOCKS)[number];
+
+/** The chosen order: unknown names dropped, parts left out appended in today's order. */
+export function blockOrder(chosen: readonly string[]): ReceiptBlock[] {
+  const known = chosen.filter((name): name is ReceiptBlock =>
+    (DEFAULT_BLOCKS as readonly string[]).includes(name),
+  );
+  const unique = [...new Set(known)];
+  return [
+    ...unique,
+    ...DEFAULT_BLOCKS.filter((name) => !unique.includes(name)),
+  ];
+}
+
 export function receiptTicket(
   data: ReceiptData,
   settings: ReceiptTemplateSettings,
@@ -129,169 +157,199 @@ export function receiptTicket(
   };
   const big = settings.fontSize === 'large';
 
-  if (settings.showLogo && settings.logoRaster) {
-    const { w, h, data } = settings.logoRaster;
-    const bytes = Buffer.from(data, 'base64');
-    // Only a picture that fits the printable width is sent (never a clipped one).
-    if (
-      w <= printableDots(settings.widthMm) - marginsMm * 8 &&
-      bytes.length === (w >> 3) * h
-    ) {
-      doc.align(settings.logoAlign).raster(w, h, bytes);
-      // The picture does not end with a line feed: advance the paper past it.
-      doc.feedDots(8);
-    }
-  }
-  doc.align('center');
-  if (settings.title) {
-    doc.bold(true);
-    line(settings.title);
-    doc.bold(false);
-  }
-  if (settings.showBusinessName) {
-    doc.bold(true);
-    if (big) doc.size(2, 1);
-    line(data.business.name);
-    if (big) doc.size(1, 1);
-    doc.bold(false);
-  }
-  if (settings.showLegalName && data.business.legalName)
-    line(data.business.legalName);
-  if (settings.showTaxId && data.business.taxId)
-    line(`STIR: ${data.business.taxId}`);
-  if (settings.showBranch) {
-    line(data.branch.name);
-    if (data.branch.address) line(data.branch.address);
-  }
-  if (settings.showPhone && data.business.phone) line(data.business.phone);
-  if (data.business.header) line(data.business.header);
-  if (settings.showCopyMark && (data.copy ?? 0) > 0) {
-    doc.bold(true).size(2, 2);
-    line('NUSXA');
-    doc.size(1, 1).bold(false);
-  }
-  doc.align('left');
-  rule();
-  const bigNumber = settings.largeOrderNumber && settings.showOrderNumber;
-  if (bigNumber) {
-    doc.align('center').bold(true).size(2, 2);
-    line(`N ${data.number}`);
-    doc.size(1, 1).bold(false).align('left');
-  }
-  if ((settings.showOrderNumber && !bigNumber) || settings.showDateTime)
-    pair(
-      settings.showOrderNumber && !bigNumber ? `N ${data.number}` : '',
-      settings.showDateTime ? data.dateTime : '',
-    );
-  if (settings.showOrderType || (settings.showTable && data.table))
-    line(
-      [
-        settings.showOrderType ? data.typeLabel : '',
-        settings.showTable && data.table ? data.table : '',
-      ]
-        .filter(Boolean)
-        .join(' - '),
-    );
-  if (settings.showCashier && data.cashier) line(`Kassir: ${data.cashier}`);
-  if (settings.showWaiter && data.waiter) line(`Ofitsiant: ${data.waiter}`);
   const customer = data.customer ?? {};
-  if (settings.showCustomer && (customer.name || customer.phone))
-    line(
-      `Mijoz: ${[customer.name, customer.phone].filter(Boolean).join(', ')}`,
-    );
-  if (settings.showDeliveryDetails && customer.address) {
-    rule();
-    doc.bold(true);
-    line('! YETKAZIB BERISH !');
-    doc.bold(false);
-    line(`Manzil: ${customer.address}`);
+  const blocks: Record<ReceiptBlock, () => void> = {
+    logo: () => {
+      if (settings.showLogo && settings.logoRaster) {
+        const { w, h, data } = settings.logoRaster;
+        const bytes = Buffer.from(data, 'base64');
+        // Only a picture that fits the printable width is sent (never a clipped one).
+        if (
+          w <= printableDots(settings.widthMm) - marginsMm * 8 &&
+          bytes.length === (w >> 3) * h
+        ) {
+          doc.align(settings.logoAlign).raster(w, h, bytes);
+          // The picture does not end with a line feed: advance the paper past it.
+          doc.feedDots(8);
+        }
+      }
+    },
+    header: () => {
+      doc.align('center');
+      if (settings.title) {
+        doc.bold(true);
+        line(settings.title);
+        doc.bold(false);
+      }
+      if (settings.showBusinessName) {
+        doc.bold(true);
+        if (big) doc.size(2, 1);
+        line(data.business.name);
+        if (big) doc.size(1, 1);
+        doc.bold(false);
+      }
+      if (settings.showLegalName && data.business.legalName)
+        line(data.business.legalName);
+      if (settings.showTaxId && data.business.taxId)
+        line(`STIR: ${data.business.taxId}`);
+      if (settings.showBranch) {
+        line(data.branch.name);
+        if (data.branch.address) line(data.branch.address);
+      }
+      if (settings.showPhone && data.business.phone) line(data.business.phone);
+      if (data.business.header) line(data.business.header);
+      if (settings.showCopyMark && (data.copy ?? 0) > 0) {
+        doc.bold(true).size(2, 2);
+        line('NUSXA');
+        doc.size(1, 1).bold(false);
+      }
+      doc.align('left');
+      rule();
+    },
+    meta: () => {
+      const bigNumber = settings.largeOrderNumber && settings.showOrderNumber;
+      if (bigNumber) {
+        doc.align('center').bold(true).size(2, 2);
+        line(`N ${data.number}`);
+        doc.size(1, 1).bold(false).align('left');
+      }
+      if ((settings.showOrderNumber && !bigNumber) || settings.showDateTime)
+        pair(
+          settings.showOrderNumber && !bigNumber ? `N ${data.number}` : '',
+          settings.showDateTime ? data.dateTime : '',
+        );
+      if (settings.showOrderType || (settings.showTable && data.table))
+        line(
+          [
+            settings.showOrderType ? data.typeLabel : '',
+            settings.showTable && data.table ? data.table : '',
+          ]
+            .filter(Boolean)
+            .join(' - '),
+        );
+      if (settings.showCashier && data.cashier) line(`Kassir: ${data.cashier}`);
+      if (settings.showWaiter && data.waiter) line(`Ofitsiant: ${data.waiter}`);
+      if (settings.showCustomer && (customer.name || customer.phone))
+        line(
+          `Mijoz: ${[customer.name, customer.phone].filter(Boolean).join(', ')}`,
+        );
+    },
+    delivery: () => {
+      if (settings.showDeliveryDetails && customer.address) {
+        rule();
+        doc.bold(true);
+        line('! YETKAZIB BERISH !');
+        doc.bold(false);
+        line(`Manzil: ${customer.address}`);
+      }
+    },
+    items: () => {
+      rule();
+      for (const item of data.items) {
+        pair(`${item.quantity} x ${item.name}`, money(item.lineTotal));
+        if (settings.showItemUnitPrice && item.quantity > 1)
+          line(`   ${money(item.unitPrice)} x ${item.quantity}`);
+        if (settings.showModifiers && item.modifiers?.length)
+          line(`   + ${item.modifiers.join(', ')}`);
+        if (settings.showNotes && item.note) line(`   ! ${item.note}`);
+      }
+      if (settings.showItemCount)
+        pair(
+          'Taomlar soni',
+          String(data.items.reduce((sum, item) => sum + item.quantity, 0)),
+        );
+      rule();
+    },
+    totals: () => {
+      if (settings.showDiscount && data.discountTotal > 0)
+        pair('Chegirma', `-${money(data.discountTotal)}`);
+      if (settings.showServiceCharge && data.serviceCharge > 0)
+        pair('Xizmat haqi', money(data.serviceCharge));
+      doc.bold(true);
+      if (big) doc.size(1, 2);
+      pair('JAMI', money(data.total));
+      if (big) doc.size(1, 1);
+      doc.bold(false);
+      if (settings.showVat && settings.vatPercent > 0)
+        pair(
+          `Shu jumladan QQS ${settings.vatPercent}%`,
+          money(vatIncluded(data.total, settings.vatPercent)),
+        );
+      if (settings.showPayments)
+        for (const payment of data.payments) {
+          pair(payment.label, money(payment.amount));
+          if (settings.showChange && payment.change)
+            pair('Qaytim', money(payment.change));
+        }
+      if (data.due > 0) {
+        doc.bold(true);
+        pair('QOLDI', money(data.due));
+        doc.bold(false);
+      }
+    },
+    fiscal: () => {
+      // Real fiscal data only: a receipt the fiscal provider has not registered shows none.
+      if (settings.showFiscalData && data.fiscal?.fiscalSign) {
+        rule();
+        doc.align('center');
+        line('FISKAL CHEK');
+        if (data.business.taxId) line(`STIR: ${data.business.taxId}`);
+        line(`Fiskal belgi: ${data.fiscal.fiscalSign}`);
+        if (data.fiscal.qrUrl) {
+          doc.qrCode(data.fiscal.qrUrl, 4);
+          lines += 6;
+        }
+        doc.align('left');
+      }
+    },
+    wifi: () => {
+      if (settings.showSocialMedia && settings.socialMedia) {
+        line(`Ijtimoiy tarmoq: ${settings.socialMedia}`);
+      }
+      if (settings.showWifi && settings.wifiName) {
+        rule();
+        doc.align('center');
+        line(`Wi-Fi: ${settings.wifiName}`);
+        if (settings.wifiPassword) line(`Parol: ${settings.wifiPassword}`);
+        if (settings.wifiQr) {
+          doc.qrCode(wifiQrText(settings.wifiName, settings.wifiPassword), 4);
+          lines += 6;
+        }
+        doc.align('left');
+      }
+    },
+    qr: () => {
+      if (settings.showQrCode && settings.qrContent) {
+        doc.align('center');
+        doc.qrCode(settings.qrContent, 4);
+        lines += 6;
+        if (settings.qrLabel) {
+          line(settings.qrLabel);
+        }
+      }
+    },
+    barcode: () => {
+      if (settings.showBarcode) {
+        doc.align('center');
+        const code = String(data.number).padStart(8, '0');
+        doc.barcode(code, 40);
+        lines += 5;
+      }
+    },
+    footer: () => {
+      doc.align('center');
+      if (settings.extraLines)
+        for (const text of settings.extraLines.split('\n')) line(text);
+      if (data.business.footer) line(data.business.footer);
+      line(settings.thankYou);
+    },
+  };
+  // Without a chosen order the receipt is printed exactly as before.
+  const order = settings.layoutOrder ? blockOrder(settings.layoutOrder) : null;
+  for (const name of order ?? DEFAULT_BLOCKS) {
+    if (order) doc.align('left');
+    blocks[name]();
   }
-  rule();
-  for (const item of data.items) {
-    pair(`${item.quantity} x ${item.name}`, money(item.lineTotal));
-    if (settings.showItemUnitPrice && item.quantity > 1)
-      line(`   ${money(item.unitPrice)} x ${item.quantity}`);
-    if (settings.showModifiers && item.modifiers?.length)
-      line(`   + ${item.modifiers.join(', ')}`);
-    if (settings.showNotes && item.note) line(`   ! ${item.note}`);
-  }
-  if (settings.showItemCount)
-    pair(
-      'Taomlar soni',
-      String(data.items.reduce((sum, item) => sum + item.quantity, 0)),
-    );
-  rule();
-  if (settings.showDiscount && data.discountTotal > 0)
-    pair('Chegirma', `-${money(data.discountTotal)}`);
-  if (settings.showServiceCharge && data.serviceCharge > 0)
-    pair('Xizmat haqi', money(data.serviceCharge));
-  doc.bold(true);
-  if (big) doc.size(1, 2);
-  pair('JAMI', money(data.total));
-  if (big) doc.size(1, 1);
-  doc.bold(false);
-  if (settings.showVat && settings.vatPercent > 0)
-    pair(
-      `Shu jumladan QQS ${settings.vatPercent}%`,
-      money(vatIncluded(data.total, settings.vatPercent)),
-    );
-  if (settings.showPayments)
-    for (const payment of data.payments) {
-      pair(payment.label, money(payment.amount));
-      if (settings.showChange && payment.change)
-        pair('Qaytim', money(payment.change));
-    }
-  if (data.due > 0) {
-    doc.bold(true);
-    pair('QOLDI', money(data.due));
-    doc.bold(false);
-  }
-  // Real fiscal data only: a receipt the fiscal provider has not registered shows none.
-  if (settings.showFiscalData && data.fiscal?.fiscalSign) {
-    rule();
-    doc.align('center');
-    line('FISKAL CHEK');
-    if (data.business.taxId) line(`STIR: ${data.business.taxId}`);
-    line(`Fiskal belgi: ${data.fiscal.fiscalSign}`);
-    if (data.fiscal.qrUrl) {
-      doc.qrCode(data.fiscal.qrUrl, 4);
-      lines += 6;
-    }
-    doc.align('left');
-  }
-  if (settings.showSocialMedia && settings.socialMedia) {
-    line(`Ijtimoiy tarmoq: ${settings.socialMedia}`);
-  }
-  if (settings.showWifi && settings.wifiName) {
-    rule();
-    doc.align('center');
-    line(`Wi-Fi: ${settings.wifiName}`);
-    if (settings.wifiPassword) line(`Parol: ${settings.wifiPassword}`);
-    if (settings.wifiQr) {
-      doc.qrCode(wifiQrText(settings.wifiName, settings.wifiPassword), 4);
-      lines += 6;
-    }
-    doc.align('left');
-  }
-  if (settings.showQrCode && settings.qrContent) {
-    doc.align('center');
-    doc.qrCode(settings.qrContent, 4);
-    lines += 6;
-    if (settings.qrLabel) {
-      line(settings.qrLabel);
-    }
-  }
-  if (settings.showBarcode) {
-    doc.align('center');
-    const code = String(data.number).padStart(8, '0');
-    doc.barcode(code, 40);
-    lines += 5;
-  }
-  doc.align('center');
-  if (settings.extraLines)
-    for (const text of settings.extraLines.split('\n')) line(text);
-  if (data.business.footer) line(data.business.footer);
-  line(settings.thankYou);
   // Fixed length: pad to the requested length; auto: only the bottom margin.
   const usedMm = (lines * spacing) / 8 + settings.marginTopMm;
   const padMm =
