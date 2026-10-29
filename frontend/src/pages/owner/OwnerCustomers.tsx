@@ -25,6 +25,7 @@ import {
 import { DeviceCards } from './OwnerDevices';
 import { OwnerData } from './OwnerData';
 import { PolicyEditor } from './OwnerPolicy';
+import { WorkflowSection } from './OwnerWorkflow';
 
 const c = t.owner.customers;
 const l = t.owner.license;
@@ -492,6 +493,7 @@ function CustomerDetailView({
           </ul>
         )}
       </section>
+      <WorkflowSection customerId={id} />
       <OwnerData customerId={id} hosted={!!customer.hosted} />
       <PolicyEditor
         key={customer.policy.version}
