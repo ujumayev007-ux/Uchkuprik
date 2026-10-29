@@ -15,7 +15,14 @@ import {
 import { randomToken } from '../../lib/crypto.js';
 import { messages } from '../../messages.js';
 import { audit } from '../audit/audit.js';
-import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
+import {
+  getAuth,
+  requireAnyPermission,
+  requireAuth,
+} from '../auth/session.js';
+import { netPaid } from '../orders/engine.js';
+import { canApprove, requiredBeforeKitchen } from '../workflow/engine.js';
+import { orderFlow, snapshotFor } from '../workflow/restaurant.js';
 import { resolveBranch } from '../branches/access.js';
 import { upsertCustomer } from '../crm/loyalty.js';
 import { applyDeliveryZone } from '../delivery/delivery.routes.js';
@@ -355,6 +362,19 @@ export function onlineRouter(services: Services) {
               input.customerName,
             )
           : null;
+        // The SUPER_OWNER's workflow: QR / web orders may be refused by the zone, or go
+        // straight to the kitchen when it needs no approval and no money up front.
+        const flow = await snapshotFor(tx, {
+          tenantId,
+          type,
+          channel,
+          tableId,
+          waiter: false,
+        });
+        const direct =
+          !!flow &&
+          flow.approval === 'AUTO' &&
+          requiredBeforeKitchen(flow, 1) === 0;
         const created = await tx.order.create({
           data: {
             tenantId,
@@ -364,7 +384,12 @@ export function onlineRouter(services: Services) {
             businessDate: date,
             type,
             channel,
-            status: 'PENDING',
+            status: direct ? 'PLACED' : 'PENDING',
+            ...(direct ? { placedAt: now() } : {}),
+            ...(direct && !flow.kitchenConfirm
+              ? { kitchenAcceptedAt: now() }
+              : {}),
+            ...(flow ? { workflow: flow } : {}),
             tableId,
             customerName: input.customerName,
             customerPhone: input.customerPhone ?? null,
@@ -494,12 +519,20 @@ export function onlineRouter(services: Services) {
       const to = approve ? 'PLACED' : 'CANCELLED';
       if (order.status !== 'PENDING')
         throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
-      // Staff orders waiting for cashier confirmation are approved by the cashier.
-      if (
+      // Under a workflow the zone says who approves (cashier, waiter or admin).
+      const flow = orderFlow(order);
+      if (flow) {
+        if (!canApprove(flow, auth.permissions))
+          throw new AppError(403, 'WORKFLOW_APPROVAL', 'workflowApproval');
+        if (approve && netPaid(order) < requiredBeforeKitchen(flow, order.total))
+          throw new AppError(409, 'WORKFLOW_PAYMENT_FIRST', 'workflowPaymentFirst');
+      } else if (
+        // Staff orders waiting for cashier confirmation are approved by the cashier.
         (order.channel === 'POS' || order.channel === 'WAITER') &&
         !auth.permissions.has('payments.accept')
       )
         throw errors.forbidden();
+      else if (!auth.permissions.has('orders.approve')) throw errors.forbidden();
       assertTransition(order.status, to);
       const updated = await tx.order.update({
         where: { id },
@@ -507,6 +540,7 @@ export function onlineRouter(services: Services) {
           ? {
               status: 'PLACED',
               placedAt: now(),
+              ...(flow && !flow.kitchenConfirm ? { kitchenAcceptedAt: now() } : {}),
               // Waiter orders keep their waiter; online orders get the approver.
               createdById: order.createdById ?? auth.userId,
               version: { increment: 1 },
@@ -540,7 +574,8 @@ export function onlineRouter(services: Services) {
   router.post(
     '/orders/:id/approve',
     requireAuth(),
-    requirePermission('orders.approve'),
+    // The order's own rule is checked in decide() (a waiter may approve QR orders).
+    requireAnyPermission('orders.approve', 'orders.create', 'settings.manage'),
     async (req, res) => {
       const auth = getAuth(res);
       const order = await decide(
@@ -556,7 +591,7 @@ export function onlineRouter(services: Services) {
   router.post(
     '/orders/:id/reject',
     requireAuth(),
-    requirePermission('orders.approve'),
+    requireAnyPermission('orders.approve', 'orders.create', 'settings.manage'),
     async (req, res) => {
       const auth = getAuth(res);
       const { reason } = parse(

@@ -10,6 +10,7 @@ import { notifyOnlineOrder } from '../notifications/hooks.js';
 import { telegramTransport } from '../notifications/notify.js';
 import { publicMenu } from '../online/online.routes.js';
 import { issueOrderCode } from '../orders/codes.js';
+import { snapshotFor } from '../workflow/restaurant.js';
 import {
   addEvent,
   businessDate,
@@ -518,6 +519,12 @@ export async function handleTelegramUpdate(
           '😔 Afsuski, bu manzil yetkazib berish masofasidan tashqarida. Olib ketishni tanlashingiz mumkin.',
           MAIN_KEYBOARD,
         );
+      // The restaurant's workflow does not take Telegram orders here.
+      if (error instanceof AppError && error.code === 'WORKFLOW_SOURCE')
+        return send(
+          '😔 Afsuski, restoran hozir Telegram orqali bunday buyurtma qabul qilmaydi.',
+          MAIN_KEYBOARD,
+        );
       throw error;
     }
     async function placeTx() {
@@ -542,6 +549,14 @@ export async function handleTelegramUpdate(
           chat.phone!,
           chat.name ?? 'Telegram',
         );
+        // The SUPER_OWNER's workflow (Telegram orders always wait for approval).
+        const flow = await snapshotFor(tx, {
+          tenantId,
+          type: state.type!,
+          channel: 'TELEGRAM',
+          tableId: null,
+          waiter: false,
+        });
         const created = await tx.order.create({
           data: {
             tenantId,
@@ -552,6 +567,7 @@ export async function handleTelegramUpdate(
             type: state.type!,
             channel: 'TELEGRAM',
             status: 'PENDING',
+            ...(flow ? { workflow: flow } : {}),
             customerName: chat.name ?? null,
             customerPhone: chat.phone,
             deliveryAddress:

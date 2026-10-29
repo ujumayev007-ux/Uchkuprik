@@ -37,6 +37,7 @@ import {
 import { kitchenVariantIds } from './kitchen-filter.js';
 import { completeOrder } from '../orders/complete.js';
 import { netPaid } from '../orders/engine.js';
+import { readOrderWorkflow } from '../workflow/engine.js';
 
 const stationInput = z.object({
   name: z.string().trim().min(1).max(60),
@@ -864,18 +865,28 @@ export function kitchenRouter(services: Services) {
         kitchenRejectedAt: null,
       },
       orderBy: [{ readyAt: 'desc' }, { placedAt: 'asc' }],
-      select: { id: true, number: true, status: true, readyAt: true },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        readyAt: true,
+        workflow: true,
+      },
     });
+    // Zones whose workflow keeps their orders off the customers' TV.
+    const shown = orders.filter(
+      (order) => readOrderWorkflow(order.workflow)?.queueTv !== false,
+    );
     return {
       branch: { name: branch.name },
       // Kassa switched the TVs off: they show a pause screen and keep polling.
       paused: branch.tvPaused,
       // Layout, visible statuses and voice settings chosen centrally.
       display,
-      preparing: orders
+      preparing: shown
         .filter((order) => order.status !== 'READY')
         .map((order) => order.number),
-      ready: orders
+      ready: shown
         .filter((order) => order.status === 'READY')
         .map((order) => ({
           id: order.id,

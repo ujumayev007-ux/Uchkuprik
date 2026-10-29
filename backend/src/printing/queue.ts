@@ -6,6 +6,7 @@ import { kitchenTicket } from './escpos.js';
 import { columnsForWidth } from './receipt-template.js';
 import { resolveTemplate } from './resolve-template.js';
 import { ticketTemplateOf } from './template.js';
+import { readOrderWorkflow } from '../modules/workflow/engine.js';
 
 const MAX_ATTEMPTS = 6;
 // Failed attempts before a copy of the ticket goes to the fallback printer.
@@ -85,6 +86,24 @@ export async function enqueueKitchenTickets(
       order.items.length === 0
     )
       return;
+    // Workflow: tickets wait for the full payment, and a zone may send every item to
+    // one kitchen station (food court, VIP kitchen).
+    const flow = readOrderWorkflow(order.workflow);
+    if (
+      flow?.kitchenPrint === 'AFTER_PAYMENT' &&
+      order.status !== 'CANCELLED' &&
+      order.paidTotal - order.refundedTotal < order.total
+    )
+      return;
+    if (flow?.stationId) {
+      const stationId = flow.stationId;
+      await tx.orderItem.updateMany({
+        where: { orderId, kitchenPrintedAt: null, NOT: { stationId } },
+        data: { stationId },
+      });
+      for (const item of order.items)
+        if (!item.kitchenPrintedAt) item.stationId = stationId;
+    }
     const fresh =
       order.status === 'CANCELLED'
         ? []
