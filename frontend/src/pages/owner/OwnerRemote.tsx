@@ -11,6 +11,10 @@ import {
 import { t } from '../../i18n';
 import { formatDateTime, formatMoney } from '../../lib/format';
 import { ownerApi, ownerPost } from '../../lib/owner';
+import {
+  PrintRulesEditor,
+  type PrintRules,
+} from '../../components/PrintRulesEditor';
 
 const r = t.owner.remote;
 type Tab = keyof typeof r.tabs;
@@ -74,6 +78,32 @@ type Settings = {
   }[];
   stations: { id: string; name: string; isActive: boolean }[];
 };
+type PrinterRow = {
+  id: string;
+  name: string;
+  kind: keyof typeof r.printerKind;
+  host: string;
+  port: number;
+  paperWidth: number;
+  isActive: boolean;
+  stationId: string | null;
+  fallbackPrinterId: string | null;
+  lastJob: {
+    status: keyof typeof r.jobStatus;
+    createdAt: string;
+    lastError: string | null;
+  } | null;
+  failed24h: number;
+  unknown24h: number;
+  pending: number;
+  duplicateAddress: boolean;
+};
+type Printers = {
+  printers: PrinterRow[];
+  stations: { id: string; name: string; isActive: boolean }[];
+  rules: PrintRules;
+  enforced: string[];
+};
 type Inventory = {
   items: {
     id: string;
@@ -94,6 +124,7 @@ const SNAPSHOT: Partial<Record<Tab, string>> = {
   staff: 'snapshot.staff',
   floor: 'snapshot.floor',
   settings: 'snapshot.settings',
+  printers: 'snapshot.printers',
   inventory: 'snapshot.inventory',
   reports: 'snapshot.reports',
 };
@@ -412,6 +443,155 @@ export function RemoteSection({ customerId }: { customerId: string }) {
               </li>
             ))}
           </ul>
+        </div>
+      );
+    }
+    if (tab === 'printers') {
+      const data = snapshot.result as Printers;
+      const select = (
+        label: string,
+        value: string,
+        options: [string, string][],
+        onChange: (value: string) => void,
+      ) => (
+        <label>
+          {label}{' '}
+          <select
+            className="input"
+            value={value}
+            disabled={busy}
+            onChange={(event) => onChange(event.target.value)}
+          >
+            {options.map(([key, text]) => (
+              <option key={key} value={key}>
+                {text}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+      return (
+        <div className="stack">
+          <ul className="ops-list">
+            {data.printers.map((printer) => (
+              <li key={printer.id} className="ops-item">
+                <div className="grow stack" style={{ gap: 4 }}>
+                  <div>
+                    <strong>{printer.name}</strong>{' '}
+                    <Badge>{r.printerKind[printer.kind]}</Badge>{' '}
+                    <Badge tone={printer.isActive ? 'success' : 'neutral'}>
+                      {printer.isActive ? r.active : r.inactive}
+                    </Badge>
+                  </div>
+                  <div className="muted small">
+                    {printer.host}:{printer.port} ·{' '}
+                    {printer.lastJob
+                      ? r.lastJob
+                          .replace(
+                            '{status}',
+                            r.jobStatus[printer.lastJob.status],
+                          )
+                          .replace(
+                            '{at}',
+                            formatDateTime(printer.lastJob.createdAt),
+                          )
+                      : r.noJobs}
+                    {' · '}
+                    {r.failed24h.replace(
+                      '{n}',
+                      String(printer.failed24h),
+                    )},{' '}
+                    {r.unknown24h.replace('{n}', String(printer.unknown24h))},{' '}
+                    {r.pending.replace('{n}', String(printer.pending))}
+                  </div>
+                  {printer.duplicateAddress && (
+                    <small style={{ color: 'var(--danger, #c0392b)' }}>
+                      ⚠ {r.duplicateAddress}
+                    </small>
+                  )}
+                  <div className="toolbar small">
+                    {select(
+                      r.paper,
+                      String(printer.paperWidth),
+                      [58, 76, 80].map((mm) => [String(mm), `${mm} mm`]),
+                      (value) =>
+                        void send('printer.update', {
+                          printerId: printer.id,
+                          paperWidth: Number(value),
+                        }),
+                    )}
+                    {printer.kind === 'KITCHEN' &&
+                      select(
+                        r.station,
+                        printer.stationId ?? '',
+                        [
+                          ['', r.stationAll],
+                          ...data.stations.map((s): [string, string] => [
+                            s.id,
+                            s.name,
+                          ]),
+                        ],
+                        (value) =>
+                          void send('printer.update', {
+                            printerId: printer.id,
+                            stationId: value || null,
+                          }),
+                      )}
+                    {select(
+                      r.fallback,
+                      printer.fallbackPrinterId ?? '',
+                      [
+                        ['', r.fallbackNone],
+                        ...data.printers
+                          .filter((other) => other.id !== printer.id)
+                          .map((other): [string, string] => [
+                            other.id,
+                            other.name,
+                          ]),
+                      ],
+                      (value) =>
+                        void send('printer.update', {
+                          printerId: printer.id,
+                          fallbackPrinterId: value || null,
+                        }),
+                    )}
+                  </div>
+                </div>
+                <div className="stack" style={{ gap: 4 }}>
+                  <Button
+                    size="sm"
+                    disabled={busy || !printer.isActive}
+                    onClick={() =>
+                      void send('printer.test', { printerId: printer.id })
+                    }
+                  >
+                    🖨 {r.test}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() =>
+                      void send('printer.update', {
+                        printerId: printer.id,
+                        isActive: !printer.isActive,
+                      })
+                    }
+                  >
+                    {printer.isActive ? r.hide : r.show}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <h4 style={{ margin: 0 }}>{t.printRules.title}</h4>
+          <PrintRulesEditor
+            key={snapshot.doneAt ?? ''}
+            rules={data.rules}
+            enforced={data.enforced}
+            busy={busy}
+            onSave={(rules) => void send('print.rules', rules)}
+          />
         </div>
       );
     }

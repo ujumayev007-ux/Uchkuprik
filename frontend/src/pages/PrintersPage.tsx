@@ -22,6 +22,10 @@ import {
 } from '../components/TerminalPrinter';
 import { t } from '../i18n';
 import { api, del, patch, post } from '../lib/api';
+import {
+  PrintRulesEditor,
+  type PrintRules,
+} from '../components/PrintRulesEditor';
 import { formatDateTime } from '../lib/format';
 import { useStations } from './KitchenPage';
 
@@ -550,6 +554,46 @@ function DiscoveryDialog({
   );
 }
 
+/** Chop etish qoidalari of this restaurant (12 receipt types). */
+function RulesSection() {
+  const toast = useToast();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const rules = useQuery({
+    queryKey: ['print-rules'],
+    queryFn: () =>
+      api<{ rules: PrintRules; enforced: string[] }>('/print-rules'),
+  });
+  if (!rules.data) return null;
+  return (
+    <details className="card">
+      <summary>
+        <strong>{t.printRules.title}</strong>
+      </summary>
+      <PrintRulesEditor
+        rules={rules.data.rules}
+        enforced={rules.data.enforced}
+        busy={busy}
+        onSave={async (next) => {
+          setBusy(true);
+          try {
+            await api('/print-rules', { method: 'PUT', body: { rules: next } });
+            toast(t.printRules.saved);
+            await client.invalidateQueries({ queryKey: ['print-rules'] });
+          } catch (caught) {
+            toast(
+              caught instanceof Error ? caught.message : t.common.errorTitle,
+              'error',
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </details>
+  );
+}
+
 export function PrintersPage() {
   const { data: me } = useMe();
   const client = useQueryClient();
@@ -810,6 +854,7 @@ export function PrintersPage() {
         </div>
       )}
 
+      {can(me, 'settings.manage') && <RulesSection />}
       {manage && <h2 className="section-title">{p.jobs}</h2>}
       {!manage ? null : jobs.data && jobs.data.length > 0 ? (
         <div className="table-wrap">
