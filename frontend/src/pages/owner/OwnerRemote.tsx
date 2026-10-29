@@ -19,9 +19,32 @@ import {
 const r = t.owner.remote;
 type Tab = keyof typeof r.tabs;
 type Snapshot<T> = { result: T; doneAt: string | null } | undefined;
+type Counted = { total: number; online: number };
+type Monitoring = {
+  printing?: { failed24h: number; unknown24h: number; pending: number };
+  panels?: Partial<Record<keyof typeof r.mon.panel, Counted>>;
+  backup?: { lastAt: string | null; ok: boolean | null; lastName: string | null; count: number };
+};
+type BackupRow = {
+  name: string;
+  kind: string;
+  createdAt: string;
+  bytes: number;
+  totalRows: number | null;
+  verified: boolean | null;
+};
+type Backups = {
+  available: boolean;
+  canRestore: boolean;
+  backups: BackupRow[];
+  kept: string[];
+};
 type RemoteData = {
   hosted: boolean;
   compatible: boolean;
+  backups?: boolean;
+  restore?: boolean;
+  monitoring?: Monitoring | null;
   lastContact: string | null;
   snapshots: Record<string, Snapshot<unknown>>;
   ops: {
@@ -127,6 +150,16 @@ const SNAPSHOT: Partial<Record<Tab, string>> = {
   printers: 'snapshot.printers',
   inventory: 'snapshot.inventory',
   reports: 'snapshot.reports',
+  backups: 'snapshot.backups',
+};
+
+/** "fastfood_before_20261029170954138" → the date and time it was kept. */
+const keptAt = (name: string) => {
+  const digits = name.replace('fastfood_before_', '');
+  const at = new Date(
+    `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}Z`,
+  );
+  return Number.isNaN(at.getTime()) ? name : formatDateTime(at.toISOString());
 };
 
 /**
@@ -140,6 +173,11 @@ export function RemoteSection({ customerId }: { customerId: string }) {
   const [tab, setTab] = useState<Tab>('menu');
   const [busy, setBusy] = useState(false);
   const [prices, setPrices] = useState<Record<string, string>>({});
+  // A restore or rollback waiting for the typed confirmation word.
+  const [pendingRestore, setPendingRestore] = useState<
+    { kind: 'backup.restore'; name: string; title: string } | { kind: 'backup.rollback'; name: string; title: string } | null
+  >(null);
+  const [word, setWord] = useState('');
   const data = useQuery({
     queryKey: ['owner', 'remote', customerId],
     queryFn: () => ownerApi<RemoteData>(`/customers/${customerId}/remote`),
@@ -187,7 +225,235 @@ export function RemoteSection({ customerId }: { customerId: string }) {
       )
     : false;
 
+  const restorePanel = pendingRestore && (
+    <div className="card stack" style={{ borderColor: 'var(--danger, #c0392b)' }}>
+      <strong>{pendingRestore.title}</strong>
+      <p className="small">{r.bk.restoreWarn}</p>
+      <label className="stack" style={{ gap: 4 }}>
+        <span className="small">{r.bk.typeWord}</span>
+        <input
+          className="input"
+          value={word}
+          autoComplete="off"
+          onChange={(event) => setWord(event.target.value)}
+        />
+      </label>
+      <div className="toolbar">
+        <Button
+          variant="danger"
+          busy={busy}
+          disabled={word.trim() !== 'TIKLASH'}
+          onClick={async () => {
+            await send(
+              pendingRestore.kind,
+              pendingRestore.kind === 'backup.restore'
+                ? { name: pendingRestore.name, confirm: 'TIKLASH' }
+                : { database: pendingRestore.name, confirm: 'TIKLASH' },
+            );
+            setPendingRestore(null);
+            setWord('');
+          }}
+        >
+          {r.bk.confirmRestore}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setPendingRestore(null);
+            setWord('');
+          }}
+        >
+          {r.bk.cancel}
+        </Button>
+      </div>
+    </div>
+  );
+
   const body = () => {
+    if (tab === 'monitoring') {
+      const m = remote.monitoring;
+      const online =
+        remote.lastContact !== null &&
+        Date.now() - new Date(remote.lastContact).getTime() < 5 * 60_000;
+      if (remote.hosted) return <p className="muted">{r.mon.hosted}</p>;
+      const printing = m?.printing;
+      const printingBad = printing ? printing.failed24h + printing.unknown24h > 0 : false;
+      const backupBad = m?.backup ? m.backup.ok === false || !m.backup.lastAt : false;
+      return (
+        <div className="stack">
+          <div>
+            <Badge tone={online ? 'success' : 'danger'}>
+              {online ? r.mon.online : r.mon.offline}
+            </Badge>{' '}
+            <span className="muted small">
+              {remote.lastContact
+                ? r.mon.lastContact.replace('{at}', formatDateTime(remote.lastContact))
+                : r.mon.never}
+            </span>
+          </div>
+          {!m?.printing ? (
+            <p className="muted">{r.mon.noFacts}</p>
+          ) : (
+            <ul className="ops-list">
+              <li className="ops-item">
+                <div className="grow">
+                  <strong>{r.mon.printing}</strong>
+                  <div className="muted small">
+                    {r.mon.printingLine
+                      .replace('{failed}', String(m.printing.failed24h))
+                      .replace('{unknown}', String(m.printing.unknown24h))
+                      .replace('{pending}', String(m.printing.pending))}
+                  </div>
+                </div>
+                <Badge tone={printingBad ? 'warning' : 'success'}>
+                  {printingBad ? r.mon.attention : r.mon.allGood}
+                </Badge>
+              </li>
+              <li className="ops-item">
+                <div className="grow">
+                  <strong>{r.mon.panels}</strong>
+                  {(Object.keys(r.mon.panel) as (keyof typeof r.mon.panel)[]).map((panel) => {
+                    const counted = m.panels?.[panel];
+                    if (!counted || counted.total === 0) return null;
+                    return (
+                      <div key={panel} className="muted small">
+                        {r.mon.panel[panel]}:{' '}
+                        {r.mon.onlineOf
+                          .replace('{online}', String(counted.online))
+                          .replace('{total}', String(counted.total))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </li>
+              <li className="ops-item">
+                <div className="grow">
+                  <strong>{r.mon.backup}</strong>
+                  <div className="muted small">
+                    {m.backup?.lastAt ? formatDateTime(m.backup.lastAt) : r.mon.backupNone}
+                  </div>
+                </div>
+                {m.backup && (
+                  <Badge tone={backupBad ? 'danger' : 'success'}>
+                    {backupBad ? r.mon.backupFailed : r.mon.backupOk}
+                  </Badge>
+                )}
+              </li>
+            </ul>
+          )}
+        </div>
+      );
+    }
+    if (tab === 'backups') {
+      if (remote.hosted) return <p className="muted">{r.bk.hosted}</p>;
+      if (!remote.backups) return <p className="notice">{r.bk.needsUpdate}</p>;
+      const data = snapshot?.result as Backups | undefined;
+      return (
+        <div className="stack">
+          <p className="muted small">{r.bk.hint}</p>
+          <p className="muted small">{r.bk.partialNote}</p>
+          {!remote.restore && <p className="notice">{r.bk.restoreUnsupported}</p>}
+          <div>
+            <Button size="sm" busy={busy} onClick={() => void send('backup.create')}>
+              {r.bk.createNow}
+            </Button>
+          </div>
+          {restorePanel}
+          {!data ? (
+            <p className="muted">{r.noData}</p>
+          ) : data.backups.length === 0 ? (
+            <p className="muted">{r.bk.none}</p>
+          ) : (
+            <ul className="ops-list">
+              {data.backups.map((row) => (
+                <li key={row.name} className="ops-item">
+                  <div className="grow">
+                    <strong>{formatDateTime(row.createdAt)}</strong>{' '}
+                    <Badge>{r.bk.kinds[row.kind] ?? row.kind}</Badge>{' '}
+                    <Badge
+                      tone={
+                        row.verified === true
+                          ? 'success'
+                          : row.verified === false
+                            ? 'danger'
+                            : 'neutral'
+                      }
+                    >
+                      {row.verified === true
+                        ? r.bk.verified
+                        : row.verified === false
+                          ? r.bk.failed
+                          : r.bk.notVerified}
+                    </Badge>
+                    <div className="muted small">
+                      {r.bk.size.replace('{mb}', (row.bytes / 1024 / 1024).toFixed(1))}
+                      {row.totalRows !== null &&
+                        ` · ${r.bk.rows.replace('{n}', String(row.totalRows))}`}
+                    </div>
+                  </div>
+                  <div className="toolbar small">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => void send('backup.verify', { name: row.name })}
+                    >
+                      {r.bk.verify}
+                    </Button>
+                    {remote.restore && data.canRestore && row.verified !== false && (
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={busy}
+                        onClick={() => {
+                          setWord('');
+                          setPendingRestore({
+                            kind: 'backup.restore',
+                            name: row.name,
+                            title: r.bk.restoreTitle.replace('{at}', formatDateTime(row.createdAt)),
+                          });
+                        }}
+                      >
+                        {r.bk.restore}
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {data && data.kept.length > 0 && (
+            <>
+              <h4 style={{ margin: 0 }}>{r.bk.kept}</h4>
+              <p className="muted small">{r.bk.keptHint}</p>
+              <ul className="ops-list">
+                {data.kept.map((name) => (
+                  <li key={name} className="ops-item">
+                    <div className="grow">{keptAt(name)}</div>
+                    {remote.restore && data.canRestore && (
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          setWord('');
+                          setPendingRestore({
+                            kind: 'backup.rollback',
+                            name,
+                            title: r.bk.rollbackTitle.replace('{name}', keptAt(name)),
+                          });
+                        }}
+                      >
+                        {r.bk.rollback}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      );
+    }
     if (tab === 'ops')
       return (
         <ul className="ops-list">

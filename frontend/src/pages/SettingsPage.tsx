@@ -18,6 +18,7 @@ import { OrderSettingsCard } from './OrderSettingsCard';
 import { LoyaltyRulesCard } from './LoyaltyRulesCard';
 import { FiscalCard } from './FiscalCard';
 import { MenuVisibilityCard } from './MenuVisibilityCard';
+import { BackupsCard } from './BackupsCard';
 
 type Settings = {
   name: string;
@@ -277,6 +278,7 @@ export function SettingsPage() {
       <LoyaltyRulesCard editable={editable} />
       {editable && <FiscalCard />}
       <MenuVisibilityCard editable={editable} />
+      {editable && <BackupsCard />}
     </>
   );
 }

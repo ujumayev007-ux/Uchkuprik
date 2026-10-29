@@ -77,7 +77,7 @@ export function remoteRouter(services: Services) {
       db.controlActivation.findFirst({
         where: { customerId: id, status: 'ACTIVE' },
         orderBy: { lastHeartbeatAt: 'desc' },
-        select: { capabilities: true, lastHeartbeatAt: true },
+        select: { capabilities: true, lastHeartbeatAt: true, stats: true },
       }),
     ]);
     // The newest finished snapshot of each kind.
@@ -96,6 +96,13 @@ export function remoteRouter(services: Services) {
         customer.tenantId !== null ||
         (activation?.capabilities.includes('remote_ops') ?? false),
       lastContact: activation?.lastHeartbeatAt ?? null,
+      // Ma'lumotlarni tiklash needs the restaurant computer's backups (new server build).
+      backups: activation?.capabilities.includes('backups') ?? false,
+      restore: activation?.capabilities.includes('restore') ?? false,
+      // Owner → Monitoring: the restaurant's last reported state.
+      monitoring:
+        ((activation?.stats as { facts?: unknown } | null)?.facts as object | undefined) ??
+        null,
       snapshots,
       ops,
     });

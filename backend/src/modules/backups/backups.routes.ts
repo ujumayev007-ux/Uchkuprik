@@ -75,6 +75,12 @@ export function backupsRouter(services: Services) {
     });
   });
 
+  // Lets the page ask for the password again before a download or an upload.
+  router.post('/backups/unlock', ...manage, recent, (_req, res) => {
+    store();
+    res.json({ ok: true });
+  });
+
   router.post('/backups', ...manage, async (req, res) => {
     const auth = getAuth(res);
     const created = await store().create('manual');

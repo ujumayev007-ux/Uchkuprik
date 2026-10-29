@@ -509,6 +509,8 @@ export function createControlRuntime(
         'workflow',
         'remote_ops',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
+        ...(services.backups ? ['backups'] : []),
+        ...(services.backups?.canRestore ? ['restore'] : []),
       ],
       ...(rename
         ? {

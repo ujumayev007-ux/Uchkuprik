@@ -297,5 +297,15 @@ describe('Owner remote operations on a restaurant computer', () => {
       expect((await central.db.controlRemoteOp.findUniqueOrThrow({ where: { id: write.id } })).status).toBe('DONE');
       expect((await install.db.product.findUniqueOrThrow({ where: { id: product.id } })).isActive).toBe(false);
     }
+
+    // Owner → Monitoring: the heartbeat carries the print queue and panel state.
+    const activation = await central.db.controlActivation.findFirstOrThrow({
+      where: { customerId, status: 'ACTIVE' },
+    });
+    const facts = (activation.stats as { facts?: Record<string, unknown> }).facts!;
+    expect(facts.printing).toMatchObject({ failed24h: expect.any(Number), pending: expect.any(Number) });
+    expect(facts.panels).toHaveProperty('kitchen');
+    // No backup folder in this test install: the Owner sees no backup capability.
+    expect(activation.capabilities).not.toContain('backups');
   });
 });

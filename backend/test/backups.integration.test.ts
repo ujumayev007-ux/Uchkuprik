@@ -48,6 +48,7 @@ describe('backups on the restaurant computer', () => {
     await login(owner, tenant.slug, 'owner').expect(200);
     const category = await ctx.db.menuCategory.create({ data: { tenantId, name: 'Oldin' } });
 
+    await post(owner, '/backups/unlock').expect(200);
     const backup = await post(owner, '/backups').expect(201);
     expect(backup.body).toMatchObject({ kind: 'manual', verified: true });
     expect(backup.body.totalRows).toBeGreaterThan(0);
