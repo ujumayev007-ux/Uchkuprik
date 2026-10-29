@@ -12,6 +12,12 @@ import {
   requireAnyPermission,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import {
+  ENFORCED_TYPES,
+  loadPrintRules,
+  printRulesSchema,
+  RECEIPT_TYPES,
+} from '../../printing/rules.js';
 
 export function checkPrinterPing(
   host: string,
@@ -446,6 +452,35 @@ export function printersRouter(services: Services) {
         sentAt: job.sentAt,
       })),
     });
+  });
+
+  // Chop etish qoidalari of this restaurant (12 receipt types).
+  router.get('/print-rules', ...terminalAccess, async (_req, res) => {
+    const auth = getAuth(res);
+    res.json({
+      rules: await loadPrintRules(db, auth.tenantId),
+      types: RECEIPT_TYPES,
+      enforced: ENFORCED_TYPES,
+    });
+  });
+
+  router.put('/print-rules', requireAuth(), requireAnyPermission('settings.manage'), async (req, res) => {
+    const auth = getAuth(res);
+    const rules = parse(printRulesSchema, req.body?.rules ?? {});
+    await db.tenantProfile.upsert({
+      where: { tenantId: auth.tenantId },
+      create: { tenantId: auth.tenantId, printRules: rules },
+      update: { printRules: rules },
+    });
+    await audit(db, req, {
+      tenantId: auth.tenantId,
+      actorUserId: auth.userId,
+      action: 'print.rules',
+      entityType: 'tenant_profile',
+      entityId: auth.tenantId,
+      data: { types: Object.keys(rules) },
+    });
+    res.json({ ok: true });
   });
 
   /**

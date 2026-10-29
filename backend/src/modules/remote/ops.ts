@@ -3,6 +3,14 @@ import type { Db } from '../../db.js';
 import { AppError } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
 import { orderSettingsOf, orderSettingsSchema } from '../orders/settings.js';
+import {
+  ENFORCED_TYPES,
+  loadPrintRules,
+  printRulesSchema,
+  RECEIPT_TYPES,
+  testPage,
+} from '../../printing/rules.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 
 /**
  * Operations the SUPER_OWNER may run on a restaurant (Owner → Restoran boshqaruvi).
@@ -41,6 +49,17 @@ export const OP_PAYLOADS = {
     isActive: z.boolean().optional(),
   }),
   'settings.orders': orderSettingsSchema.partial(),
+  'snapshot.printers': z.object({}),
+  'printer.update': z.object({
+    printerId: uuid,
+    name: z.string().trim().min(1).max(60).optional(),
+    isActive: z.boolean().optional(),
+    paperWidth: z.number().int().min(40).max(112).optional(),
+    stationId: uuid.nullable().optional(),
+    fallbackPrinterId: uuid.nullable().optional(),
+  }),
+  'printer.test': z.object({ printerId: uuid }),
+  'print.rules': printRulesSchema,
   'inventory.minStock': z.object({
     stockItemId: uuid,
     minStock: z.number().min(0).max(1_000_000_000),
@@ -334,6 +353,103 @@ export async function executeOp(
         update: { orderSettings: next },
       });
       await ownerAudit('settings.orders', 'tenant_profile', tenantId, payload);
+      return { ok: true };
+    }
+    case 'snapshot.printers': {
+      OP_PAYLOADS['snapshot.printers'].parse(rawPayload ?? {});
+      const since = new Date(Date.now() - 86_400_000);
+      const [printers, stations, rules] = await Promise.all([
+        db.printer.findMany({
+          where: owned,
+          orderBy: { name: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            kind: true,
+            host: true,
+            port: true,
+            paperWidth: true,
+            isActive: true,
+            stationId: true,
+            fallbackPrinterId: true,
+            branchId: true,
+          },
+        }),
+        db.kitchenStation.findMany({
+          where: owned,
+          select: { id: true, name: true, isActive: true },
+        }),
+        loadPrintRules(db, tenantId),
+      ]);
+      const withStatus = await Promise.all(
+        printers.map(async (printer) => {
+          const [last, failed, unknown, pending] = await Promise.all([
+            db.printJob.findFirst({
+              where: { printerId: printer.id },
+              orderBy: { createdAt: 'desc' },
+              select: { status: true, createdAt: true, lastError: true },
+            }),
+            db.printJob.count({ where: { printerId: printer.id, status: 'FAILED', createdAt: { gte: since } } }),
+            db.printJob.count({ where: { printerId: printer.id, status: 'UNKNOWN', createdAt: { gte: since } } }),
+            db.printJob.count({ where: { printerId: printer.id, status: { in: ['PENDING', 'PRINTING'] } } }),
+          ]);
+          return { ...printer, lastJob: last, failed24h: failed, unknown24h: unknown, pending };
+        }),
+      );
+      // Two active printers on one address print each other's tickets.
+      const seen = new Map<string, number>();
+      for (const printer of printers.filter((p) => p.isActive))
+        seen.set(`${printer.host}:${printer.port}`, (seen.get(`${printer.host}:${printer.port}`) ?? 0) + 1);
+      return {
+        printers: withStatus.map((printer) => ({
+          ...printer,
+          duplicateAddress: (seen.get(`${printer.host}:${printer.port}`) ?? 0) > 1,
+        })),
+        stations,
+        rules,
+        types: RECEIPT_TYPES,
+        enforced: ENFORCED_TYPES,
+      };
+    }
+    case 'printer.update': {
+      const { printerId, ...data } = OP_PAYLOADS['printer.update'].parse(rawPayload ?? {});
+      const printer = await db.printer.findFirst({ where: { ...owned, id: printerId } });
+      if (!printer) throw notFound();
+      if (data.stationId) {
+        const station = await db.kitchenStation.findFirst({ where: { ...owned, id: data.stationId } });
+        if (!station) throw notFound();
+      }
+      if (data.fallbackPrinterId) {
+        const fallback = await db.printer.findFirst({
+          where: { ...owned, id: data.fallbackPrinterId, NOT: { id: printerId } },
+        });
+        if (!fallback) throw notFound();
+      }
+      await db.printer.update({ where: { id: printerId }, data: given(data) });
+      await ownerAudit('printer.update', 'printer', printerId, given(data));
+      return { ok: true };
+    }
+    case 'printer.test': {
+      const { printerId } = OP_PAYLOADS['printer.test'].parse(rawPayload ?? {});
+      const printer = await db.printer.findFirst({
+        where: { ...owned, id: printerId },
+        include: { station: true },
+      });
+      if (!printer) throw notFound();
+      const job = await db.printJob.create({
+        data: { tenantId, printerId, kind: printer.kind, payload: testPage(printer) },
+      });
+      await ownerAudit('printer.test', 'printer', printerId);
+      return { jobId: job.id };
+    }
+    case 'print.rules': {
+      const rules = OP_PAYLOADS['print.rules'].parse(rawPayload ?? {});
+      await db.tenantProfile.upsert({
+        where: owned,
+        create: { tenantId, printRules: rules as Prisma.InputJsonValue },
+        update: { printRules: rules as Prisma.InputJsonValue },
+      });
+      await ownerAudit('print.rules', 'tenant_profile', tenantId, { types: Object.keys(rules) });
       return { ok: true };
     }
     case 'inventory.minStock': {

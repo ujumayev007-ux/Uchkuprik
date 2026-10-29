@@ -45,6 +45,7 @@ import {
   type OrderWorkflow,
 } from '../workflow/engine.js';
 import { isWaiter, orderFlow, snapshotFor } from '../workflow/restaurant.js';
+import { loadPrintRules, ruleOf } from '../../printing/rules.js';
 
 /** Under a workflow, the kitchen gets the order only when the money it asks for is in. */
 const assertPaidForKitchen = (
@@ -1782,7 +1783,7 @@ export function ordersRouter(services: Services) {
         OTHER: 'Boshqa',
       };
       const order = receipt.order;
-      const payload = receiptTicket(
+      const single = receiptTicket(
         {
           business: receipt.business,
           branch: receipt.branch,
@@ -1825,6 +1826,23 @@ export function ordersRouter(services: Services) {
         },
         receipt.layout,
       );
+      // Chop etish qoidalari: copies of the paid receipt (the first one only; reprints
+      // stay a single copy).
+      const paidRule = ruleOf(
+        await loadPrintRules(db, auth.tenantId),
+        order.due > 0 ? 'SALES' : 'PAID',
+      );
+      if (paidRule?.enabled === false)
+        throw new AppError(409, 'PRINT_RULE_OFF', 'printRuleOff');
+      const copies = receipt.copy === 0 ? (paidRule?.copies ?? 1) : 1;
+      const payload =
+        copies === 1
+          ? single
+          : (() => {
+              const joined = new Uint8Array(single.length * copies);
+              for (let i = 0; i < copies; i++) joined.set(single, i * single.length);
+              return joined;
+            })();
       const job = await db.printJob.create({
         data: {
           tenantId: auth.tenantId,

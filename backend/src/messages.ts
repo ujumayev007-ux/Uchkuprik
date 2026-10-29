@@ -14,6 +14,7 @@ export const messages = {
   invalidPin: 'PIN-kod noto‘g‘ri.',
   printMayDuplicate:
     'Bu chek allaqachon chop etilgan bo‘lishi mumkin. Qayta yuborsangiz, ikkinchi chek chiqishi mumkin — tasdiqlang.',
+  printRuleOff: 'Bu chek turini chop etish o‘chirilgan (Chop etish qoidalari).',
   printInProgress: 'Chek hozir printerga yuborilmoqda. Biroz kuting.',
   workflowInvalid:
     'Ish rejimida xatolar bor. Tekshiruv natijasini ko‘rib, tuzating.',

@@ -7,6 +7,7 @@ import { columnsForWidth } from './receipt-template.js';
 import { resolveTemplate } from './resolve-template.js';
 import { ticketTemplateOf } from './template.js';
 import { readOrderWorkflow } from '../modules/workflow/engine.js';
+import { loadPrintRules, ruleOf } from './rules.js';
 
 const MAX_ATTEMPTS = 6;
 // Failed attempts before a copy of the ticket goes to the fallback printer.
@@ -151,6 +152,17 @@ export async function enqueueKitchenTickets(
             })
           )?.displayName ?? null)
         : nameOf(lastChange?.actorId ?? null);
+    // Printing rules (Chop etish qoidalari); without a rule today's behaviour stays.
+    const rules = await loadPrintRules(tx, order.tenantId);
+    const kitchenRule = ruleOf(rules, 'KITCHEN');
+    const changeRule = ruleOf(rules, 'MODIFICATION');
+    const cancelRule = ruleOf(rules, 'CANCELLATION');
+    const showPrices = kitchenRule ? kitchenRule.showPrices : settings.kitchenPrices;
+    // A switched-off type is marked as handled (no flood of old tickets later).
+    const skipItems =
+      (!printedBefore && kitchenRule?.enabled === false) ||
+      (printedBefore && changeRule?.enabled === false);
+    const skipCancelled = cancelRule?.enabled === false;
     const toLine = (item: (typeof order.items)[number]) => ({
       quantity: item.quantity,
       name: `${item.productName}${item.variantName === 'Standart' ? '' : ` (${item.variantName})`}`,
@@ -164,7 +176,7 @@ export async function enqueueKitchenTickets(
         ),
       ],
       note: item.note,
-      ...(settings.kitchenPrices ? { price: item.lineTotal } : {}),
+      ...(showPrices ? { price: item.lineTotal } : {}),
     });
     const printers = await tx.printer.findMany({
       where: {
@@ -187,8 +199,8 @@ export async function enqueueKitchenTickets(
       );
     const now = services.now?.() ?? new Date();
     for (const printer of printers) {
-      const items = forPrinter(printer, fresh);
-      const cancelled = forPrinter(printer, removed);
+      const items = skipItems ? [] : forPrinter(printer, fresh);
+      const cancelled = skipCancelled ? [] : forPrinter(printer, removed);
       if (items.length === 0 && cancelled.length === 0) continue;
       const update = printedBefore;
       const station = ticketTemplateOf(printer.station?.ticketTemplate);
@@ -234,7 +246,11 @@ export async function enqueueKitchenTickets(
         changedAt: update ? (lastChange?.createdAt ?? now) : now,
         template: layout,
       });
-      const copies = Array.from({ length: layout.copies }, () => single);
+      const rule = update ? changeRule : kitchenRule;
+      const copies = Array.from(
+        { length: rule?.copies ?? layout.copies },
+        () => single,
+      );
       const payload = new Uint8Array(
         copies.reduce((total, part) => total + part.length, 0),
       );

@@ -315,6 +315,8 @@ export const featureCatalog: FeatureDef[] = [
       '* /printers/*',
       '* /print-jobs',
       '* /print-jobs/*',
+      // Chop etish qoidalari (receipt types).
+      '* /print-rules',
     ],
   }),
   f({
