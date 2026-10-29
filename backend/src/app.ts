@@ -245,6 +245,8 @@ export function createApp({
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
     // Results of the Owner's remote operations (menu, staff… snapshots) are larger.
     app.use('/api/control/device/op-result', express.json({ limit: '4mb' }));
+    // Off-device backup copies arrive in 1 MB chunks (base64).
+    app.use('/api/control/device/backup-chunk', express.json({ limit: '2mb' }));
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
     // Restaurant operations stay on the restaurant's own network (self-hosted installs).

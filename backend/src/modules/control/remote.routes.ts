@@ -210,5 +210,58 @@ export function remoteRouter(services: Services) {
     },
   );
 
+  // Off-device copies the restaurant computer sent here (encrypted by the restaurant;
+  // its password opens them in Admin -> Zaxira nusxalar -> Yuklab olingan nusxani qo'shish).
+  router.get(
+    '/control/customers/:id/offsite-backups',
+    ...authed,
+    async (req, res) => {
+      const customerId = idParam(req.params.id);
+      const rows = await db.controlBackupUpload.findMany({
+        where: { customerId, status: 'COMPLETE' },
+        orderBy: { completedAt: 'desc' },
+        select: { id: true, name: true, bytes: true, completedAt: true },
+      });
+      res.json({ backups: rows });
+    },
+  );
+
+  router.get(
+    '/control/customers/:id/offsite-backups/:uploadId/download',
+    ...authed,
+    async (req, res) => {
+      const customerId = idParam(req.params.id);
+      const uploadId = idParam(req.params.uploadId);
+      await checkReauth(req, res);
+      const upload = await db.controlBackupUpload.findFirst({
+        where: { id: uploadId, customerId, status: 'COMPLETE' },
+      });
+      if (!upload) throw errors.notFound();
+      const owner = getOwner(res);
+      await controlAudit(db, req, {
+        ownerId: owner.ownerId,
+        customerId,
+        action: 'remote.backup_download',
+        entityType: 'backup_upload',
+        entityId: upload.id,
+        data: { name: upload.name, bytes: upload.bytes },
+      });
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${upload.name}"`,
+      );
+      res.setHeader('Content-Length', String(upload.bytes));
+      for (let index = 0; index < upload.chunks; index++) {
+        const part = await db.controlBackupChunk.findUnique({
+          where: { uploadId_index: { uploadId: upload.id, index } },
+        });
+        if (!part) break;
+        res.write(Buffer.from(part.data));
+      }
+      res.end();
+    },
+  );
+
   return router;
 }

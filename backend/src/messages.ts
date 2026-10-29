@@ -20,6 +20,8 @@ export const messages = {
   backupFailed: 'Zaxira nusxa olinmadi. Server jurnalini tekshiring.',
   backupPassword: 'Parol noto‘g‘ri yoki fayl shikastlangan.',
   backupConfirm: 'Tasdiqlash uchun TIKLASH so‘zini yozing.',
+  offsiteFolder:
+    'Bu papkaga yozib bo‘lmadi. To‘liq yo‘lni kiriting (masalan D:\\FastFood-zaxira yoki \\\\server\\zaxira) va disk ulanganini tekshiring.',
   backupPartialConflict:
     'Tanlangan maʼlumotlarni tiklab bo‘lmadi (hozirgi maʼlumotlar bilan to‘qnashuv). Hech narsa o‘zgarmadi.',
   printMayDuplicate:

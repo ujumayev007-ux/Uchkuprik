@@ -10,7 +10,7 @@ import {
 } from '../../components/ui';
 import { t } from '../../i18n';
 import { formatDateTime, formatMoney } from '../../lib/format';
-import { ownerApi, ownerPost } from '../../lib/owner';
+import { ownerApi, ownerDownload, ownerPost } from '../../lib/owner';
 import {
   PartialRestorePanel,
   PartialResultTable,
@@ -33,6 +33,10 @@ type Monitoring = {
     ok: boolean | null;
     lastName: string | null;
     count: number;
+    offsite?: {
+      folder: { at: string | null; ok: boolean | null; error: string | null };
+      central: { at: string | null; ok: boolean | null; error: string | null };
+    };
   };
 };
 type BackupRow = {
@@ -377,6 +381,33 @@ export function RemoteSection({ customerId }: { customerId: string }) {
                   </Badge>
                 )}
               </li>
+              <li className="ops-item">
+                <div className="grow">
+                  <strong>{r.mon.offsite}</strong>
+                  {(['folder', 'central'] as const).map((key) => {
+                    const target = m.backup?.offsite?.[key];
+                    return (
+                      <div key={key} className="muted small">
+                        {key === 'folder'
+                          ? r.mon.offsiteFolder
+                          : r.mon.offsiteCentral}
+                        :{' '}
+                        {target?.at ? (
+                          <>
+                            {formatDateTime(target.at)}{' '}
+                            <Badge tone={target.ok ? 'success' : 'danger'}>
+                              {target.ok ? r.mon.backupOk : r.mon.backupFailed}
+                            </Badge>
+                            {target.error && ` · ${target.error}`}
+                          </>
+                        ) : (
+                          r.mon.offsiteNone
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </li>
             </ul>
           )}
         </div>
@@ -549,6 +580,7 @@ export function RemoteSection({ customerId }: { customerId: string }) {
               ))}
             </ul>
           )}
+          <CentralCopies customerId={customerId} />
           {data && data.kept.length > 0 && (
             <>
               <h4 style={{ margin: 0 }}>{r.bk.kept}</h4>
@@ -1081,5 +1113,64 @@ export function RemoteSection({ customerId }: { customerId: string }) {
       {body()}
       {element}
     </section>
+  );
+}
+
+/** Owner → Ma'lumotlarni tiklash: encrypted copies the restaurant sent to this server. */
+function CentralCopies({ customerId }: { customerId: string }) {
+  const toast = useToast();
+  const copies = useQuery({
+    queryKey: ['owner', 'offsite', customerId],
+    queryFn: () =>
+      ownerApi<{
+        backups: {
+          id: string;
+          name: string;
+          bytes: number;
+          completedAt: string;
+        }[];
+      }>(`/customers/${customerId}/offsite-backups`),
+    retry: false,
+  });
+  if (!copies.data) return null;
+  return (
+    <>
+      <h4 style={{ margin: 0 }}>{r.bk.central}</h4>
+      <p className="muted small">{r.bk.centralHint}</p>
+      {copies.data.backups.length === 0 ? (
+        <p className="muted small">{r.bk.centralNone}</p>
+      ) : (
+        <ul className="ops-list">
+          {copies.data.backups.map((copy) => (
+            <li key={copy.id} className="ops-item">
+              <div className="grow">
+                <strong>{formatDateTime(copy.completedAt)}</strong>
+                <div className="muted small">
+                  {copy.name} · {(copy.bytes / 1024 / 1024).toFixed(1)} MB
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() =>
+                  void ownerDownload(
+                    `/customers/${customerId}/offsite-backups/${copy.id}/download`,
+                    copy.name,
+                  ).catch((error: unknown) =>
+                    toast(
+                      error instanceof Error && error.message
+                        ? error.message
+                        : t.common.errorTitle,
+                      'error',
+                    ),
+                  )
+                }
+              >
+                {r.bk.download}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }

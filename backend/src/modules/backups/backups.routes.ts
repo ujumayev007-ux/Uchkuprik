@@ -199,6 +199,49 @@ export function backupsRouter(services: Services) {
     res.json(result);
   });
 
+  // Zaxira nusxani boshqa joyga: a folder (another disk, USB, network share) and/or
+  // the Owner's central server; encrypted with this password before it leaves.
+  const offsite = () => {
+    if (!services.offsite)
+      throw new AppError(409, 'BACKUP_UNAVAILABLE', 'backupUnavailable');
+    return services.offsite;
+  };
+  router.get('/backups/offsite', ...manage, async (_req, res) => {
+    const service = offsite();
+    res.json({
+      config: await service.config(),
+      state: await service.state(),
+      // The central copy needs this computer linked to the Owner.
+      centralLinked: !!(await services.controlRuntime?.link()),
+    });
+  });
+  router.put('/backups/offsite', ...manage, recent, async (req, res) => {
+    const auth = getAuth(res);
+    const input = parse(
+      z.object({
+        folder: z.string().trim().min(3).max(260).nullable(),
+        central: z.boolean(),
+        keep: z.number().int().min(1).max(60).default(7),
+        password: password.optional(),
+      }),
+      req.body,
+    );
+    const config = await offsite().configure(input);
+    await record(req, auth, 'backup.offsite.configure', 'offsite', {
+      folder: input.folder,
+      central: input.central,
+      keep: input.keep,
+      passwordChanged: !!input.password,
+    });
+    res.json({ config });
+  });
+  router.post('/backups/offsite/run', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const state = await offsite().run();
+    await record(req, auth, 'backup.offsite.run', 'offsite', state);
+    res.json({ state });
+  });
+
   router.post('/backups/rollback', ...manage, recent, async (req, res) => {
     const auth = getAuth(res);
     confirmed(req.body);

@@ -16,6 +16,7 @@ import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startScheduleWorker } from './modules/workflow/schedule.js';
 import { autoPrintOrder } from './printing/auto.js';
+import { offsiteBackups, startOffsiteWorker } from './lib/backup-offsite.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { setEntitlementsOverride } from './modules/billing/entitlements.js';
 import {
@@ -122,6 +123,14 @@ async function main(): Promise<void> {
       databaseUrl: config.DATABASE_URL,
       canSwap: config.RESTORE_SWAP,
     });
+  // Encrypted copies of the newest backup off this computer (when configured).
+  if (services.backups && config.BACKUP_DIR)
+    services.offsite = offsiteBackups({
+      dir: config.BACKUP_DIR,
+      store: services.backups,
+      secrets: services.secrets,
+      central: () => services.controlRuntime?.uploadBackup ?? null,
+    });
   // The launcher starts the server again (and swaps a prepared database in first).
   services.requestRestart = () => {
     logger.warn('Restarting for a database swap');
@@ -151,6 +160,9 @@ async function main(): Promise<void> {
     );
   };
   const stopPrinting = startPrintWorker(services);
+  const stopOffsite = services.offsite
+    ? startOffsiteWorker(services.offsite, logger)
+    : () => undefined;
   // Scheduled orders and banquets reach the kitchen on time.
   const stopSchedule = startScheduleWorker(services);
   const stopLicenseSync = config.SELF_HOSTED
@@ -210,6 +222,7 @@ async function main(): Promise<void> {
     void realtime.close();
     stopPrinting();
     stopSchedule();
+    stopOffsite();
     stopBilling();
     stopMaintenance();
     stopNotifications();

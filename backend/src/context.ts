@@ -50,6 +50,8 @@ export type Services = {
   databaseUrl?: string;
   // Backups of the restaurant computer (desktop app only).
   backups?: BackupStore;
+  // Off-device copies of the newest backup (folder / central server).
+  offsite?: import('./lib/backup-offsite.js').OffsiteBackups;
   // Called after an answer is sent when the server must restart (database swap).
   requestRestart?: () => void;
   // Version of the running build (compared with the policy's minimum version).

@@ -235,6 +235,10 @@ export const owner = {
       backupOk: 'Tekshirildi',
       backupFailed: 'Xato',
       backupNone: 'Zaxira nusxa yo‘q',
+      offsite: 'Kompyuterdan tashqaridagi nusxa',
+      offsiteFolder: 'Papka',
+      offsiteCentral: 'Markaz',
+      offsiteNone: 'sozlanmagan',
       allGood: 'Hammasi joyida',
       attention: 'Eʼtibor bering',
     },
@@ -272,6 +276,12 @@ export const owner = {
       rollback: 'Shu bazaga qaytish',
       rollbackTitle: 'Orqaga qaytish: {name}',
       none: 'Zaxira nusxalar topilmadi',
+      central: 'Markaziy serverdagi nusxalar',
+      centralHint:
+        'Restoran kompyuteri yuborgan shifrlangan nusxalar (eng yangi 2 tasi). Ularni faqat restoran paroli ochadi: yangi kompyuterda Admin → Sozlamalar → Zaxira nusxalar → «Yuklab olingan nusxani qo‘shish».',
+      centralNone:
+        'Markazga hali nusxa kelmagan (Admin’da «Owner markaziy serveriga ham yuborish» yoqilmagan bo‘lishi mumkin).',
+      download: 'Yuklab olish',
       partialNote:
         'Qisman tiklash: faqat menyu, zal va stollar, chek shablonlari, ombor ro‘yxati yoki mijozlarni zaxiradan qaytarish mumkin. Server to‘xtamaydi, buning uchun restoran serveri yangi versiyada bo‘lishi kerak.',
     },

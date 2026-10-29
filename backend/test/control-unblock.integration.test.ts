@@ -1,3 +1,7 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
@@ -11,12 +15,7 @@ import {
 } from '../src/modules/control/view.js';
 import { clearLicenseCache } from '../src/modules/license/license.js';
 import { createEventBus } from '../src/realtime/bus.js';
-import {
-  createTenant,
-  createTestContext,
-  login,
-  unique,
-} from './helpers.js';
+import { createTenant, createTestContext, login, unique } from './helpers.js';
 
 // Owner → Mijozlar: a blocked customer (or a blocked computer) is unblocked and the
 // restaurant works again after its next check-in; the licence end date is unchanged.
@@ -56,7 +55,8 @@ install.services.appVersion = '1.15.8';
 install.services.events = createEventBus();
 const announced: string[] = [];
 install.services.events.subscribe((event) => announced.push(event.type));
-const configChanges = () => announced.filter((type) => type === 'config.changed').length;
+const configChanges = () =>
+  announced.filter((type) => type === 'config.changed').length;
 
 afterAll(async () => {
   await install.close();
@@ -89,7 +89,11 @@ async function linkedRestaurant() {
     },
   });
   await central.db.controlPolicy.create({
-    data: { customerId: customer.id, offlineEnabled: true, maxOfflineMinutes: 120 },
+    data: {
+      customerId: customer.id,
+      offlineEnabled: true,
+      maxOfflineMinutes: 120,
+    },
   });
   const result = await runtime.activate({
     licenseKey: key,
@@ -112,9 +116,16 @@ describe('unblocking a customer', () => {
   it('a blocked customer works again after unblocking; the licence end is unchanged', async () => {
     const { customerId, licenseId, tenant } = await linkedRestaurant();
     expect(await beatAndMode()).toBe('ONLINE');
-    const ends = (await central.db.controlLicense.findUniqueOrThrow({ where: { id: licenseId } })).expiresAt;
+    const ends = (
+      await central.db.controlLicense.findUniqueOrThrow({
+        where: { id: licenseId },
+      })
+    ).expiresAt;
 
-    await central.db.controlCustomer.update({ where: { id: customerId }, data: { status: 'SUSPENDED' } });
+    await central.db.controlCustomer.update({
+      where: { id: customerId },
+      data: { status: 'SUSPENDED' },
+    });
     const beforeBlock = configChanges();
     expect(await beatAndMode()).toBe('BLOCKED');
     // Open screens are told at once (they show the notice without a reload).
@@ -125,7 +136,10 @@ describe('unblocking a customer', () => {
     const refused = await staff.get('/api/menu').expect(403);
     expect(refused.body.code).toBe('DEVICE_BLOCKED');
 
-    await central.db.controlCustomer.update({ where: { id: customerId }, data: { status: 'ACTIVE' } });
+    await central.db.controlCustomer.update({
+      where: { id: customerId },
+      data: { status: 'ACTIVE' },
+    });
     const beforeUnblock = configChanges();
     expect(await beatAndMode()).toBe('ONLINE');
     expect(configChanges()).toBe(beforeUnblock + 1);
@@ -135,17 +149,29 @@ describe('unblocking a customer', () => {
     // The same session works again: nothing was reset on the restaurant side.
     await staff.get('/api/menu').expect(200);
     expect(
-      (await central.db.controlLicense.findUniqueOrThrow({ where: { id: licenseId } })).expiresAt,
+      (
+        await central.db.controlLicense.findUniqueOrThrow({
+          where: { id: licenseId },
+        })
+      ).expiresAt,
     ).toEqual(ends);
   });
 
   it('a blocked computer works again after unblocking', async () => {
     const { customerId, tenant } = await linkedRestaurant();
     expect(await beatAndMode()).toBe('ONLINE');
-    const activation = await central.db.controlActivation.findFirstOrThrow({ where: { customerId } });
-    await central.db.controlActivation.update({ where: { id: activation.id }, data: { status: 'BLOCKED' } });
+    const activation = await central.db.controlActivation.findFirstOrThrow({
+      where: { customerId },
+    });
+    await central.db.controlActivation.update({
+      where: { id: activation.id },
+      data: { status: 'BLOCKED' },
+    });
     expect(await beatAndMode()).toBe('BLOCKED');
-    await central.db.controlActivation.update({ where: { id: activation.id }, data: { status: 'ACTIVE' } });
+    await central.db.controlActivation.update({
+      where: { id: activation.id },
+      data: { status: 'ACTIVE' },
+    });
     expect(await beatAndMode()).toBe('ONLINE');
     const staff = install.agent();
     await login(staff, tenant.slug, 'owner').expect(200);
@@ -162,14 +188,23 @@ describe('the installed agent for the Owner', () => {
     }
     throw new Error('no heartbeat');
   };
-  const queue = async (activationId: string, command: Record<string, unknown>) => {
-    const row = await central.db.controlActivation.findUniqueOrThrow({ where: { id: activationId } });
+  const queue = async (
+    activationId: string,
+    command: Record<string, unknown>,
+  ) => {
+    const row = await central.db.controlActivation.findUniqueOrThrow({
+      where: { id: activationId },
+    });
     await central.db.controlActivation.update({
       where: { id: activationId },
       data: {
         pendingCommands: [
           ...(row.pendingCommands as object[]),
-          { id: crypto.randomUUID(), issuedAt: new Date().toISOString(), ...command },
+          {
+            id: crypto.randomUUID(),
+            issuedAt: new Date().toISOString(),
+            ...command,
+          },
         ],
       },
     });
@@ -178,7 +213,9 @@ describe('the installed agent for the Owner', () => {
   it('renews the Device ID when the Owner asks; the restaurant waits for approval', async () => {
     const { customerId, tenant } = await linkedRestaurant();
     await beatOk();
-    const old = await central.db.controlActivation.findFirstOrThrow({ where: { customerId } });
+    const old = await central.db.controlActivation.findFirstOrThrow({
+      where: { customerId },
+    });
     expect(old.capabilities).toContain('rekey');
     expect(old.hostname).toBeTruthy();
     await queue(old.id, { type: 'reset_identity' });
@@ -187,12 +224,23 @@ describe('the installed agent for the Owner', () => {
     const renewed = await central.db.controlActivation.findFirstOrThrow({
       where: { customerId, status: 'PENDING' },
     });
-    expect((await central.db.controlActivation.findUniqueOrThrow({ where: { id: old.id } })).status).toBe('REPLACED');
+    expect(
+      (
+        await central.db.controlActivation.findUniqueOrThrow({
+          where: { id: old.id },
+        })
+      ).status,
+    ).toBe('REPLACED');
     expect(renewed.fingerprint).not.toBe(old.fingerprint);
-    expect((await install.db.controlLink.findFirstOrThrow()).activationId).toBe(renewed.id);
+    expect((await install.db.controlLink.findFirstOrThrow()).activationId).toBe(
+      renewed.id,
+    );
     // Waiting for the Owner: the restaurant does not work yet.
     expect(await beatAndMode()).toBe('BLOCKED');
-    await central.db.controlActivation.update({ where: { id: renewed.id }, data: { status: 'ACTIVE' } });
+    await central.db.controlActivation.update({
+      where: { id: renewed.id },
+      data: { status: 'ACTIVE' },
+    });
     expect(await beatAndMode()).toBe('ONLINE');
     // Restaurant data and accounts are untouched.
     await login(install.agent(), tenant.slug, 'owner').expect(200);
@@ -210,14 +258,25 @@ describe('the installed agent for the Owner', () => {
       const requestId = crypto.randomUUID();
       await central.db.controlActivation.update({
         where: { id: activation.id },
-        data: { hostRename: { id: requestId, name: 'KASSA-9', status: 'REQUESTED' } },
+        data: {
+          hostRename: { id: requestId, name: 'KASSA-9', status: 'REQUESTED' },
+        },
       });
-      await queue(activation.id, { type: 'rename_host', requestId, name: 'KASSA-9' });
+      await queue(activation.id, {
+        type: 'rename_host',
+        requestId,
+        name: 'KASSA-9',
+      });
       await beatOk();
       const admin = install.agent();
       await login(admin, tenant.slug, 'owner').expect(200);
-      const shown = await admin.get('/api/control/link/host-rename').expect(200);
-      expect(shown.body).toMatchObject({ agent: true, request: { id: requestId, name: 'KASSA-9' } });
+      const shown = await admin
+        .get('/api/control/link/host-rename')
+        .expect(200);
+      expect(shown.body).toMatchObject({
+        agent: true,
+        request: { id: requestId, name: 'KASSA-9' },
+      });
       // (The desktop app asked Windows; here it reports success.)
       await admin
         .post('/api/control/link/host-rename')
@@ -225,9 +284,14 @@ describe('the installed agent for the Owner', () => {
         .send({ id: requestId, status: 'DONE' })
         .expect(200);
       await beatOk();
-      const after = await central.db.controlActivation.findUniqueOrThrow({ where: { id: activation.id } });
+      const after = await central.db.controlActivation.findUniqueOrThrow({
+        where: { id: activation.id },
+      });
       expect(after.hostRename).toMatchObject({ id: requestId, status: 'DONE' });
-      expect((await admin.get('/api/control/link/host-rename').expect(200)).body.request).toBeNull();
+      expect(
+        (await admin.get('/api/control/link/host-rename').expect(200)).body
+          .request,
+      ).toBeNull();
     } finally {
       install.services.hostRenameAgent = false;
     }
@@ -246,10 +310,14 @@ describe('workflow from the Owner', () => {
       where: { kind: 'BUSINESS' },
       orderBy: { createdAt: 'asc' },
     });
-    const profile = await install.db.tenantProfile.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+    const profile = await install.db.tenantProfile.findUniqueOrThrow({
+      where: { tenantId: tenant.id },
+    });
     expect(profile.workflowVersion).toBeGreaterThanOrEqual(5);
     expect(profile.workflow).toMatchObject({ enabled: true, preset: 2 });
-    const activation = await central.db.controlActivation.findFirstOrThrow({ where: { customerId } });
+    const activation = await central.db.controlActivation.findFirstOrThrow({
+      where: { customerId },
+    });
     expect(activation.capabilities).toContain('workflow');
   });
 });
@@ -265,9 +333,15 @@ describe('Owner remote operations on a restaurant computer', () => {
   it('runs each operation exactly once and reports signed results', async () => {
     const { customerId, tenant } = await linkedRestaurant();
     await runtime.beat();
-    const category = await install.db.menuCategory.create({ data: { tenantId: tenant.tenant.id, name: 'Taomlar' } });
+    const category = await install.db.menuCategory.create({
+      data: { tenantId: tenant.tenant.id, name: 'Taomlar' },
+    });
     const product = await install.db.product.create({
-      data: { tenantId: tenant.tenant.id, categoryId: category.id, name: 'Somsa' },
+      data: {
+        tenantId: tenant.tenant.id,
+        categoryId: category.id,
+        name: 'Somsa',
+      },
     });
     // The install and the centre share one test database: the restaurant's tenant is
     // the oldest business tenant, as the install picks it.
@@ -275,37 +349,145 @@ describe('Owner remote operations on a restaurant computer', () => {
       where: { kind: 'BUSINESS' },
       orderBy: { createdAt: 'asc' },
     });
-    const snapshot = await central.db.controlRemoteOp.create({ data: { customerId, kind: 'snapshot.staff' } });
+    const snapshot = await central.db.controlRemoteOp.create({
+      data: { customerId, kind: 'snapshot.staff' },
+    });
     const write =
       restaurant.id === tenant.tenant.id
         ? await central.db.controlRemoteOp.create({
-            data: { customerId, kind: 'menu.product.visibility', payload: { productId: product.id, isActive: false } },
+            data: {
+              customerId,
+              kind: 'menu.product.visibility',
+              payload: { productId: product.id, isActive: false },
+            },
           })
         : null;
     await beatOk();
     await runtime.runOwnerOps();
-    const done = await central.db.controlRemoteOp.findUniqueOrThrow({ where: { id: snapshot.id } });
+    const done = await central.db.controlRemoteOp.findUniqueOrThrow({
+      where: { id: snapshot.id },
+    });
     expect(done.status).toBe('DONE');
     expect(JSON.stringify(done.result)).not.toContain('pinHash');
     expect(JSON.stringify(done.result)).toContain('hasPin');
     // Delivered again (e.g. the answer was lost): not executed twice.
-    await central.db.controlRemoteOp.update({ where: { id: snapshot.id }, data: { status: 'SENT' } });
+    await central.db.controlRemoteOp.update({
+      where: { id: snapshot.id },
+      data: { status: 'SENT' },
+    });
     await beatOk();
     await runtime.runOwnerOps();
-    expect(await install.db.remoteOpReceipt.count({ where: { id: snapshot.id } })).toBe(1);
+    expect(
+      await install.db.remoteOpReceipt.count({ where: { id: snapshot.id } }),
+    ).toBe(1);
     if (write) {
-      expect((await central.db.controlRemoteOp.findUniqueOrThrow({ where: { id: write.id } })).status).toBe('DONE');
-      expect((await install.db.product.findUniqueOrThrow({ where: { id: product.id } })).isActive).toBe(false);
+      expect(
+        (
+          await central.db.controlRemoteOp.findUniqueOrThrow({
+            where: { id: write.id },
+          })
+        ).status,
+      ).toBe('DONE');
+      expect(
+        (
+          await install.db.product.findUniqueOrThrow({
+            where: { id: product.id },
+          })
+        ).isActive,
+      ).toBe(false);
     }
 
     // Owner → Monitoring: the heartbeat carries the print queue and panel state.
     const activation = await central.db.controlActivation.findFirstOrThrow({
       where: { customerId, status: 'ACTIVE' },
     });
-    const facts = (activation.stats as { facts?: Record<string, unknown> }).facts!;
-    expect(facts.printing).toMatchObject({ failed24h: expect.any(Number), pending: expect.any(Number) });
+    const facts = (activation.stats as { facts?: Record<string, unknown> })
+      .facts!;
+    expect(facts.printing).toMatchObject({
+      failed24h: expect.any(Number),
+      pending: expect.any(Number),
+    });
     expect(facts.panels).toHaveProperty('kitchen');
     // No backup folder in this test install: the Owner sees no backup capability.
     expect(activation.capabilities).not.toContain('backups');
   });
+});
+
+describe('off-device backup copies on the central server', () => {
+  it('arrive in signed chunks, are checked, repeated uploads are skipped and the newest two are kept', async () => {
+    const { customerId } = await linkedRestaurant();
+    const folder = await mkdtemp(join(tmpdir(), 'ff-offsite-'));
+    try {
+      const send = async (size: number, tag: string) => {
+        const data = randomBytes(size);
+        const file = join(folder, `${tag}.ffbk`);
+        await writeFile(file, data);
+        const sha256 = createHash('sha256').update(data).digest('hex');
+        await runtime.uploadBackup(file, {
+          name: `fastfood-zaxira-${tag}.ffbk`,
+          sha256,
+          bytes: size,
+        });
+        return { data, sha256 };
+      };
+      // 2.5 MB: three 1 MB chunks, put back together exactly.
+      const first = await send(2_621_440, '20261030a');
+      const row = await central.db.controlBackupUpload.findFirstOrThrow({
+        where: { customerId, sha256: first.sha256 },
+        include: { parts: { orderBy: { index: 'asc' } } },
+      });
+      expect(row).toMatchObject({
+        status: 'COMPLETE',
+        chunks: 3,
+        received: 3,
+        bytes: 2_621_440,
+      });
+      expect(
+        Buffer.concat(row.parts.map((part) => Buffer.from(part.data))).equals(
+          first.data,
+        ),
+      ).toBe(true);
+      // The same file again: recognised, nothing stored twice.
+      await runtime.uploadBackup(join(folder, '20261030a.ffbk'), {
+        name: 'fastfood-zaxira-20261030a.ffbk',
+        sha256: first.sha256,
+        bytes: 2_621_440,
+      });
+      expect(
+        await central.db.controlBackupUpload.count({ where: { customerId } }),
+      ).toBe(1);
+      // A wrong checksum is refused (nothing kept).
+      await writeFile(join(folder, 'bad.ffbk'), randomBytes(1000));
+      await expect(
+        runtime.uploadBackup(join(folder, 'bad.ffbk'), {
+          name: 'fastfood-zaxira-20261030x.ffbk',
+          sha256: 'f'.repeat(64),
+          bytes: 1000,
+        }),
+      ).rejects.toThrow();
+      expect(
+        await central.db.controlBackupUpload.count({
+          where: { customerId, sha256: 'f'.repeat(64) },
+        }),
+      ).toBe(0);
+      // Only the newest two complete copies stay.
+      await send(1000, '20261030b');
+      await send(2000, '20261030c');
+      const kept = await central.db.controlBackupUpload.findMany({
+        where: { customerId, status: 'COMPLETE' },
+      });
+      expect(kept.map((upload) => upload.bytes).sort()).toEqual([1000, 2000]);
+      expect(
+        await central.db.controlBackupChunk.count({
+          where: { uploadId: row.id },
+        }),
+      ).toBe(0);
+      const audit = await central.db.controlAuditLog.count({
+        where: { customerId, action: 'device.backup_upload' },
+      });
+      expect(audit).toBe(3);
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

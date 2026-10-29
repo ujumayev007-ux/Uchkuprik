@@ -1,10 +1,11 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { backupStore } from '../src/lib/backup-store.js';
+import { offsiteBackups } from '../src/lib/backup-offsite.js';
 import { executeOp } from '../src/modules/remote/ops.js';
 import {
   addUser,
@@ -350,5 +351,85 @@ describe('partial restore (Qisman tiklash)', () => {
       dryRun: boolean;
     };
     expect(remote.dryRun).toBe(true);
+  }, 240_000);
+});
+
+describe('off-device copies (Zaxira nusxani boshqa joyga)', () => {
+  it('encrypts the newest backup into a folder with the restaurant password; the copy imports back', async () => {
+    ctx.services.offsite = offsiteBackups({
+      dir: `${dir}/backups`,
+      store: ctx.services.backups!,
+      secrets: ctx.services.secrets,
+    });
+    const target = join(dir, 'fleshka');
+    const tenant = await createTenant(ctx);
+    const owner = ctx.agent();
+    await login(owner, tenant.slug, 'owner').expect(200);
+    await post(owner, '/backups/unlock').expect(200);
+    const put = (body: object) =>
+      owner.put('/api/backups/offsite').set('Origin', ORIGIN).send(body);
+    expect(
+      (
+        await put({
+          folder: 'nisbiy/yol',
+          central: false,
+          password: 'Zaxira-parol-2',
+        }).expect(400)
+      ).body.code,
+    ).toBe('OFFSITE_FOLDER');
+    // A destination needs the password.
+    expect(
+      (await put({ folder: target, central: false }).expect(400)).body.code,
+    ).toBe('BACKUP_PASSWORD');
+    const saved = await put({
+      folder: target,
+      central: true,
+      keep: 2,
+      password: 'Zaxira-parol-2',
+    }).expect(200);
+    expect(saved.body.config).toEqual({
+      folder: target,
+      central: true,
+      keep: 2,
+      hasPassword: true,
+    });
+    // The password is never stored or shown in the clear.
+    const stored = await readFile(`${dir}/backups/offsite.json`, 'utf8');
+    expect(stored).not.toContain('Zaxira-parol-2');
+
+    await post(owner, '/backups').expect(201);
+    const run = await post(owner, '/backups/offsite/run').expect(200);
+    expect(run.body.state.folder).toMatchObject({ ok: true, error: null });
+    // Not linked to the Owner here: the central copy reports why.
+    expect(run.body.state.central).toMatchObject({ ok: false });
+    expect(run.body.state.central.error).toMatch(/Owner/);
+    const copies = (await readdir(target)).filter((name) =>
+      name.endsWith('.ffbk'),
+    );
+    expect(copies).toHaveLength(1);
+    const copy = await readFile(join(target, copies[0]!));
+    expect(copy.subarray(0, 5).toString()).toBe('FFBK1');
+    // Nothing new: the next run does not copy again.
+    await post(owner, '/backups/offsite/run').expect(200);
+    expect(
+      (await readdir(target)).filter((name) => name.endsWith('.ffbk')),
+    ).toHaveLength(1);
+
+    // The copy opens with the password on another computer (import).
+    const uploadId = (
+      await owner
+        .post('/api/backups/upload')
+        .set('Origin', ORIGIN)
+        .set('Content-Type', 'application/octet-stream')
+        .send(copy)
+        .expect(201)
+    ).body.uploadId as string;
+    await post(owner, '/backups/import', {
+      uploadId,
+      password: 'Zaxira-parol-2',
+    }).expect(201);
+    const status = await owner.get('/api/backups/offsite').expect(200);
+    expect(status.body.config.hasPassword).toBe(true);
+    expect(JSON.stringify(status.body)).not.toContain('Zaxira-parol-2');
   }, 240_000);
 });

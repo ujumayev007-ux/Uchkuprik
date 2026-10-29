@@ -2966,6 +2966,31 @@ export const uz = {
     keptHint: 'Tiklashdan oldin ishlatilgan baza shu yerda saqlanadi.',
     rollback: 'Shu bazaga qaytish',
   },
+  offsite: {
+    title: 'Zaxira nusxani boshqa joyga (avtomatik)',
+    hint: 'Eng yangi zaxira nusxa avtomatik ravishda shu kompyuterdan tashqariga ko‘chiriladi: boshqa disk, fleshka, tarmoqdagi umumiy papka va/yoki Owner markaziy serveri. Nusxa chiqib ketishdan oldin sizning parolingiz bilan shifrlanadi (AES-256). Parolsiz uni hech kim, jumladan biz ham ocha olmaydi.',
+    folder: 'Papka (to‘liq yo‘l)',
+    keep: 'Papkada nechta nusxa saqlansin',
+    central: 'Owner markaziy serveriga ham yuborish',
+    centralHint:
+      'Markazda eng yangi 2 ta shifrlangan nusxa saqlanadi (60 MB gacha).',
+    centralUnlinked:
+      'Bu kompyuter Owner’ga ulanmagan: markaziy nusxa ishlamaydi.',
+    password: 'Shifrlash paroli (kamida 8 belgi)',
+    passwordChange: 'Yangi parol (o‘zgartirish uchun)',
+    passwordAgain: 'Parolni takrorlang',
+    passwordHint:
+      'Parolni yozib qo‘ying: yangi kompyuterda nusxani shu parol bilan «Yuklab olingan nusxani qo‘shish» orqali ochasiz.',
+    save: 'Saqlash',
+    saved: 'Sozlama saqlandi',
+    runNow: 'Hozir ko‘chirish',
+    ran: 'Ko‘chirish bajarildi',
+    folderStatus: 'Papkaga oxirgi nusxa',
+    centralStatus: 'Markaziy serverga oxirgi nusxa',
+    ok: 'Muvaffaqiyatli',
+    failed: 'Xato',
+    never: 'hali yo‘q',
+  },
   partialRestore: {
     button: 'Qisman tiklash',
     title: 'Qisman tiklash: {at}',

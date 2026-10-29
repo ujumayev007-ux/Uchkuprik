@@ -2711,6 +2711,7 @@ model ControlCustomer {
   activations ControlActivation[]
   workflows   ControlWorkflow[]
   remoteOps   ControlRemoteOp[]
+  backupUploads ControlBackupUpload[]
   branches    ControlBranch[]
   payments    ControlPayment[]
   policy      ControlPolicy?
@@ -3480,6 +3481,41 @@ model ControlRemoteOp {
   @@index([customerId, status])
   @@index([customerId, kind, doneAt])
   @@map("control_remote_ops")
+}
+
+// Off-device copy of a restaurant backup, encrypted by the restaurant before upload
+// (the centre cannot read it). Stored in chunks; the newest few per customer are kept.
+model ControlBackupUpload {
+  id           String    @id @db.Uuid
+  customerId   String    @db.Uuid
+  activationId String    @db.Uuid
+  name         String
+  sha256       String
+  bytes        Int
+  chunks       Int
+  received     Int       @default(0)
+  // RECEIVING -> COMPLETE
+  status       String    @default("RECEIVING")
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  customer ControlCustomer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  parts    ControlBackupChunk[]
+
+  @@unique([customerId, sha256])
+  @@index([customerId, status, createdAt])
+  @@map("control_backup_uploads")
+}
+
+model ControlBackupChunk {
+  uploadId String @db.Uuid
+  index    Int
+  data     Bytes
+
+  upload ControlBackupUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@id([uploadId, index])
+  @@map("control_backup_chunks")
 }
 
 // Restaurant side: operations from the Owner already executed here (exactly once),

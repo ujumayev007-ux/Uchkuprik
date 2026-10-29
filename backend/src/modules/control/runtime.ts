@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { applyOwnerDecision } from '../devices/approval.js';
 import os from 'node:os';
 import type { Services } from '../../context.js';
@@ -459,6 +460,10 @@ export function createControlRuntime(
       }),
       services.backups?.status().catch(() => null) ?? null,
     ]);
+    // Copies off this computer: where the newest one went, or why it did not.
+    const offsite = services.offsite
+      ? await services.offsite.state().catch(() => null)
+      : null;
     const seen = (panel: string) => ({
       total: panels.filter((row) => row.panel === panel).length,
       online: panels.filter(
@@ -474,7 +479,9 @@ export function createControlRuntime(
         pos: seen('POS'),
         waiter: seen('WAITER'),
       },
-      ...(backup ? { backup } : {}),
+      ...(backup
+        ? { backup: { ...backup, ...(offsite ? { offsite } : {}) } }
+        : {}),
     };
   }
 
@@ -523,6 +530,7 @@ export function createControlRuntime(
         'scheduled',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
         ...(services.backups ? ['backups', 'partial_restore'] : []),
+        ...(services.offsite ? ['offsite_backup'] : []),
         ...(services.backups?.canRestore ? ['restore'] : []),
       ],
       ...(rename
@@ -569,7 +577,7 @@ export function createControlRuntime(
   async function signedPost(
     row: ControlLink,
     pem: string,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result' | 'backup',
     path: string,
     payload: object,
   ) {
@@ -1206,10 +1214,46 @@ export function createControlRuntime(
     };
   }
 
+  /**
+   * Off-device copy for the Owner's server: an already encrypted backup, in 1 MB
+   * signed chunks (a repeated upload of the same file is recognised and skipped).
+   */
+  async function uploadBackup(
+    file: string,
+    meta: { name: string; sha256: string; bytes: number },
+  ) {
+    const data = await readFile(file);
+    const size = 1024 * 1024;
+    const total = Math.max(1, Math.ceil(data.length / size));
+    for (let index = 0; index < total; index++) {
+      const row = await db.controlLink.findUnique({ where: { id: 1 } });
+      const pem = row ? devicePem(row) : null;
+      if (!row || !pem) throw new Error('Owner bilan aloqa yo‘q');
+      const sent = await signedPost(
+        row,
+        pem,
+        'backup',
+        '/control/device/backup-chunk',
+        {
+          ...meta,
+          total,
+          index,
+          data: data
+            .subarray(index * size, (index + 1) * size)
+            .toString('base64'),
+        },
+      );
+      if (sent.status !== 200)
+        throw new Error(`Markaziy server qabul qilmadi (${sent.status})`);
+      if ((sent.data as { complete?: boolean } | null)?.complete) return;
+    }
+  }
+
   return {
     view,
     state,
     activate,
+    uploadBackup,
     register,
     beat,
     runOwnerOps,

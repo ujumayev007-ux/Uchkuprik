@@ -4,6 +4,7 @@ import { Badge, Button, TextField, useToast } from '../components/ui';
 import { t } from '../i18n';
 import { ApiError, api, errorMessage, post } from '../lib/api';
 import { formatDateTime } from '../lib/format';
+import { OffsiteBackupSection } from './OffsiteBackupSection';
 import {
   PartialRestorePanel,
   PartialResultTable,
@@ -388,6 +389,8 @@ export function BackupsCard() {
           ))}
         </ul>
       )}
+
+      <OffsiteBackupSection />
 
       <details>
         <summary>{b.importTitle}</summary>
