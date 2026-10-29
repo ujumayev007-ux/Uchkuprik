@@ -9,6 +9,7 @@ import { messages } from '../../messages.js';
 import { compareVersions, timing } from './grant.js';
 import { issueGrant, loadPolicy } from './issue.js';
 import { activeWorkflow } from './workflow.routes.js';
+import { opsForDevice } from './remote.routes.js';
 import {
   canonicalJson,
   fingerprintOf,
@@ -269,7 +270,7 @@ export function deviceRouter(services: Services) {
   /** Verifies the device signature, freshness and counter; returns the activation. */
   async function authenticateDevice(
     req: Request,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result',
   ) {
     const body = parse(envelope, req.body);
     const at = now();
@@ -620,6 +621,11 @@ export function deviceRouter(services: Services) {
       commands: remaining,
       // The SUPER_OWNER's workflow (older installs ignore it and keep their behaviour).
       workflow: await activeWorkflow(db, activation.customerId),
+      // Owner → Restoran boshqaruvi operations waiting for this restaurant.
+      ops:
+        activation.status === 'ACTIVE'
+          ? await opsForDevice(db, activation.customerId, at)
+          : [],
       // Server migration: the signed answer carries the new address of the centre.
       relocate: services.control?.relocateTo ?? null,
       branding,
@@ -713,6 +719,37 @@ export function deviceRouter(services: Services) {
       return next;
     });
     res.json({ activationId: created.id });
+  });
+
+  /** Result of an Owner operation, signed by the restaurant's device key. */
+  router.post('/control/device/op-result', beatLimiter, async (req, res) => {
+    const { activation, body, at } = await authenticateDevice(req, 'op-result');
+    const input = parse(
+      z.object({
+        id: z.uuid(),
+        ok: z.boolean(),
+        result: z.unknown().optional(),
+        error: z.string().max(100).nullable().optional(),
+      }),
+      body.payload,
+    );
+    const updated = await db.controlRemoteOp.updateMany({
+      // Only this restaurant's own, unfinished operations.
+      where: {
+        id: input.id,
+        customerId: activation.customerId,
+        status: { in: ['QUEUED', 'SENT'] },
+      },
+      data: {
+        status: input.ok ? 'DONE' : 'FAILED',
+        ...(input.ok && input.result !== undefined && input.result !== null
+          ? { result: input.result as Prisma.InputJsonValue }
+          : {}),
+        error: input.ok ? null : (input.error ?? 'FAILED'),
+        doneAt: at,
+      },
+    });
+    res.json({ ok: updated.count === 1 });
   });
 
   /** One branding file for an install; the install verifies it against the signed bundle's sha256. */

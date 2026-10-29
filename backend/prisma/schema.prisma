@@ -2689,6 +2689,7 @@ model ControlCustomer {
   licenses    ControlLicense[]
   activations ControlActivation[]
   workflows   ControlWorkflow[]
+  remoteOps   ControlRemoteOp[]
   branches    ControlBranch[]
   payments    ControlPayment[]
   policy      ControlPolicy?
@@ -3346,4 +3347,43 @@ model ControlWorkflow {
 
   @@unique([customerId, version])
   @@map("control_workflows")
+}
+
+// Owner → Restoran boshqaruvi: an operation for a restaurant that runs on its own
+// computer, delivered with the signed heartbeat answer and executed there exactly once
+// (restaurants hosted on this server execute it at once). Results are kept for the
+// Owner's view (snapshots) and the audit trail.
+model ControlRemoteOp {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  customerId  String    @db.Uuid
+  kind        String
+  payload     Json      @default("{}")
+  // QUEUED -> SENT -> DONE | FAILED
+  status      String    @default("QUEUED")
+  result      Json?
+  error       String?
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  doneAt      DateTime?
+
+  customer ControlCustomer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId, status])
+  @@index([customerId, kind, doneAt])
+  @@map("control_remote_ops")
+}
+
+// Restaurant side: operations from the Owner already executed here (exactly once),
+// with the result kept until the centre has it.
+model RemoteOpReceipt {
+  id         String   @id @db.Uuid
+  kind       String
+  ok         Boolean
+  result     Json?
+  error      String?
+  reported   Boolean  @default(false)
+  executedAt DateTime @default(now())
+
+  @@map("remote_op_receipts")
 }

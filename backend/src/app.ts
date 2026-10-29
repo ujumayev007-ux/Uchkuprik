@@ -41,6 +41,7 @@ import { controlInstallRouter } from './modules/control/install.routes.js';
 import { manageRouter } from './modules/control/manage.routes.js';
 import { registryRouter } from './modules/control/registry.js';
 import { workflowRouter } from './modules/control/workflow.routes.js';
+import { remoteRouter } from './modules/control/remote.routes.js';
 import { ownerRouter } from './modules/control/owner.routes.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
@@ -239,6 +240,8 @@ export function createApp({
     );
     // The merchant QR picture may be larger than ordinary JSON requests.
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
+    // Results of the Owner's remote operations (menu, staff… snapshots) are larger.
+    app.use('/api/control/device/op-result', express.json({ limit: '4mb' }));
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
     // Restaurant operations stay on the restaurant's own network (self-hosted installs).
@@ -298,6 +301,7 @@ export function createApp({
         manageRouter,
         registryRouter,
         workflowRouter,
+        remoteRouter,
         dataRouter,
         brandingOwnerRouter,
         deviceRouter,

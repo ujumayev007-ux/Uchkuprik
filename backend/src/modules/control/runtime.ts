@@ -30,6 +30,8 @@ import type { BrandingBundle } from '../branding/bundle.js';
 import { sha256Of, sniffMedia } from '../branding/media.js';
 import { loadAdminData, unlinkedView, type ControlView } from './view.js';
 import { storeWorkflow } from '../workflow/restaurant.js';
+import { executeOp } from '../remote/ops.js';
+import { AppError } from '../../http/errors.js';
 
 type Transport = typeof fetch;
 
@@ -62,6 +64,7 @@ type BeatResponse = {
   }[];
   update: AvailableUpdate | null;
   workflow?: { version: number; config: unknown } | null;
+  ops?: { id: string; kind: string; payload: unknown }[];
   // Address the centre has moved to (signed with the same key as the grant).
   relocate?: string | null;
   // Design and advertising of this restaurant (only when the install's copy is outdated).
@@ -471,6 +474,7 @@ export function createControlRuntime(
       capabilities: [
         'rekey',
         'workflow',
+        'remote_ops',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
       ],
       ...(rename
@@ -517,7 +521,7 @@ export function createControlRuntime(
   async function signedPost(
     row: ControlLink,
     pem: string,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result',
     path: string,
     payload: object,
   ) {
@@ -630,6 +634,61 @@ export function createControlRuntime(
     // Report it now (the Owner sees the outcome without waiting a minute).
     void beat().catch(() => undefined);
     return true;
+  }
+
+  let pendingOps: { id: string; kind: string; payload: unknown }[] = [];
+
+  /**
+   * Owner → Restoran boshqaruvi on this computer: each operation (verified inside the
+   * signed heartbeat answer) runs once — a receipt keeps its result — and the result is
+   * sent back signed; a result not delivered yet is sent again on the next delivery.
+   */
+  async function runOwnerOps() {
+    const ops = pendingOps;
+    pendingOps = [];
+    if (!ops.length) return;
+    const tenant = await db.tenant.findFirst({
+      where: { kind: 'BUSINESS' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!tenant) return;
+    for (const op of ops) {
+      let receipt = await db.remoteOpReceipt.findUnique({ where: { id: op.id } });
+      if (!receipt) {
+        let ok = true;
+        let result: unknown = null;
+        let error: string | null = null;
+        try {
+          result = await executeOp(db, tenant.id, op.kind, op.payload);
+        } catch (caught) {
+          ok = false;
+          error = caught instanceof AppError ? caught.code : 'FAILED';
+        }
+        receipt = await db.remoteOpReceipt.create({
+          data: {
+            id: op.id,
+            kind: op.kind,
+            ok,
+            ...(result !== null && result !== undefined
+              ? { result: result as Prisma.InputJsonValue }
+              : {}),
+            error,
+          },
+        });
+        if (ok && !op.kind.startsWith('snapshot.')) void announceConfigChange();
+      }
+      const row = await db.controlLink.findUnique({ where: { id: 1 } });
+      const pem = row ? devicePem(row) : null;
+      if (!row || !pem) return;
+      const sent = await signedPost(row, pem, 'op-result', '/control/device/op-result', {
+        id: op.id,
+        ok: receipt.ok,
+        ...(receipt.ok ? { result: receipt.result } : { error: receipt.error }),
+      }).catch(() => null);
+      if (sent?.status === 200)
+        await db.remoteOpReceipt.update({ where: { id: op.id }, data: { reported: true } });
+    }
   }
 
   /** One check-in with the centre. Network failures are recorded, never thrown. */
@@ -889,6 +948,8 @@ export function createControlRuntime(
       // The centre announced a new address: verify it first, then switch.
       if (doc.relocate && trimUrl(doc.relocate) !== row.serverUrl)
         void relocate(doc.relocate);
+      // Owner operations: run each exactly once, then report (after this beat).
+      if (doc.ops?.length) pendingOps = doc.ops;
       // The SUPER_OWNER's workflow: kept for the restaurant (newer versions only).
       if (doc.workflow) {
         const tenant = await db.tenant.findFirst({
@@ -1054,6 +1115,7 @@ export function createControlRuntime(
           return;
         }
         if ((await beat()) === 'ok') {
+          await runOwnerOps().catch(() => undefined);
           await sync().catch(() => undefined);
           if (Date.now() - lastSummaries > 60 * 60_000) {
             lastSummaries = Date.now();
