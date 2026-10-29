@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, FormError, TextField } from '../../components/ui';
 import { useParams } from 'react-router';
 import { LoadingState } from '../../components/ui';
@@ -239,6 +239,17 @@ export function TrackingPage() {
     () => new URLSearchParams(window.location.hash.slice(1)).get('k') ?? '',
   );
   const [typed, setTyped] = useState('');
+  // A link opened in a tab that already shows this order changes only after '#'.
+  useEffect(() => {
+    const read = () => {
+      const fromLink = new URLSearchParams(window.location.hash.slice(1)).get(
+        'k',
+      );
+      if (fromLink) setCode(fromLink);
+    };
+    window.addEventListener('hashchange', read);
+    return () => window.removeEventListener('hashchange', read);
+  }, []);
   const order = useQuery({
     queryKey: ['public', 'tracking', token, code],
     queryFn: () =>

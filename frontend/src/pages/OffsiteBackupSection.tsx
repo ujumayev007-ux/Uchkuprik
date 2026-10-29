@@ -106,8 +106,10 @@ export function OffsiteBackupSection() {
         <strong>{o.title}</strong>
       </summary>
       <p className="muted small">{o.hint}</p>
-      <TargetLine label={o.folderStatus} target={data.state.folder} />
-      <TargetLine label={o.centralStatus} target={data.state.central} />
+      <div className="stack compact">
+        <TargetLine label={o.folderStatus} target={data.state.folder} />
+        <TargetLine label={o.centralStatus} target={data.state.central} />
+      </div>
       <div className="form-grid">
         <TextField
           label={o.folder}
