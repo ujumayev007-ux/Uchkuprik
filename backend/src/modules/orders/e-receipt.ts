@@ -89,16 +89,19 @@ export async function checkReceiptAccess(
       });
     return 'GRANTED';
   }
-  const fails = order.receiptCodeFails + 1;
+  // Counted atomically: parallel guesses cannot all see the same count.
+  const { receiptCodeFails: fails } = await db.order.update({
+    where: { id: order.id },
+    data: { receiptCodeFails: { increment: 1 } },
+    select: { receiptCodeFails: true },
+  });
+  if (fails < MAX_FAILS) return 'WRONG';
   await db.order.update({
     where: { id: order.id },
-    data:
-      fails >= MAX_FAILS
-        ? {
-            receiptCodeFails: 0,
-            receiptLockedUntil: new Date(now.getTime() + LOCK_MS),
-          }
-        : { receiptCodeFails: fails },
+    data: {
+      receiptCodeFails: 0,
+      receiptLockedUntil: new Date(now.getTime() + LOCK_MS),
+    },
   });
-  return fails >= MAX_FAILS ? 'LOCKED' : 'WRONG';
+  return 'LOCKED';
 }
