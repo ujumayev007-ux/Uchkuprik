@@ -122,10 +122,11 @@ function PrinterForm({
     setPinging(true);
     setPingResult(null);
     try {
-      const res = await post<{ online: boolean; latencyMs: number; error?: string }>(
-        '/printers/ping-host',
-        { host, port: form.port },
-      );
+      const res = await post<{
+        online: boolean;
+        latencyMs: number;
+        error?: string;
+      }>('/printers/ping-host', { host, port: form.port });
       setPingResult(res);
       if (res.online) {
         toast(`${p.pingSuccess.replace('{ms}', String(res.latencyMs))}`);
@@ -150,7 +151,7 @@ function PrinterForm({
           ...form,
           host: completeHost(form.host),
           branchId,
-          stationId: form.kind === 'KITCHEN' ? (form.stationId || null) : null,
+          stationId: form.kind === 'KITCHEN' ? form.stationId || null : null,
           fallbackPrinterId: form.fallbackPrinterId || null,
         };
         try {
@@ -213,7 +214,9 @@ function PrinterForm({
             })
           }
         >
-          <option value="80">80 mm (Standart termal qog‘oz — XPrinter XP-Q80AS)</option>
+          <option value="80">
+            80 mm (Standart termal qog‘oz — XPrinter XP-Q80AS)
+          </option>
           <option value="58">58 mm (Kichik kassa qog‘ozi)</option>
           <option value="custom">{t.receiptTpl.custom}</option>
         </SelectField>
@@ -240,7 +243,9 @@ function PrinterForm({
         <div className="stack" style={{ gap: '4px' }}>
           <TextField
             label={p.host}
-            hint={base ? p.hostSubnetHint.replace('{subnet}', base) : p.hostHint}
+            hint={
+              base ? p.hostSubnetHint.replace('{subnet}', base) : p.hostHint
+            }
             value={form.host}
             inputMode="decimal"
             placeholder={base ? `${base}.100` : '192.168.1.100'}
@@ -278,12 +283,17 @@ function PrinterForm({
                   style={{
                     marginLeft: '8px',
                     fontSize: '0.85rem',
-                    color: pingResult.online ? 'var(--color-success, #28a745)' : 'var(--color-danger, #dc3545)',
+                    color: pingResult.online
+                      ? 'var(--color-success, #28a745)'
+                      : 'var(--color-danger, #dc3545)',
                     fontWeight: 600,
                   }}
                 >
                   {pingResult.online
-                    ? p.pingSuccess.replace('{ms}', String(pingResult.latencyMs))
+                    ? p.pingSuccess.replace(
+                        '{ms}',
+                        String(pingResult.latencyMs),
+                      )
                     : `${p.pingFail} (${pingResult.error ?? ''})`}
                 </span>
               )}
@@ -368,7 +378,12 @@ function DiscoveryDialog({
   onPick,
 }: {
   onClose: () => void;
-  onPick: (info: { name: string; host: string; port: number; widthMm: number }) => void;
+  onPick: (info: {
+    name: string;
+    host: string;
+    port: number;
+    widthMm: number;
+  }) => void;
 }) {
   const [scanning, setScanning] = useState(false);
   const [subnet, setSubnet] = useState('');
@@ -383,7 +398,10 @@ function DiscoveryDialog({
   const toast = useToast();
   // This computer's receipt or kitchen printer (the same setting as Kassa → 🖨 Printerlar);
   // switched on for automatic printing, which can be changed there.
-  const chooseLocal = async (deviceName: string, role: 'receipt' | 'kitchen') => {
+  const chooseLocal = async (
+    deviceName: string,
+    role: 'receipt' | 'kitchen',
+  ) => {
     const bridge = terminalPrinter();
     if (!bridge) return;
     try {
@@ -398,7 +416,10 @@ function DiscoveryDialog({
       toast(role === 'receipt' ? p.savedReceipt : p.savedKitchen);
       onClose();
     } catch (caught) {
-      toast(caught instanceof Error ? caught.message : t.common.errorTitle, 'error');
+      toast(
+        caught instanceof Error ? caught.message : t.common.errorTitle,
+        'error',
+      );
     }
   };
 
@@ -413,7 +434,9 @@ function DiscoveryDialog({
     }
   });
 
-  const scanLan = async (target = subnet.trim() || serverSubnets?.[0] || '') => {
+  const scanLan = async (
+    target = subnet.trim() || serverSubnets?.[0] || '',
+  ) => {
     setScanning(true);
     try {
       const res = await post<{
@@ -555,7 +578,11 @@ function DiscoveryDialog({
 }
 
 /** Chop etish qoidalari of this restaurant (12 receipt types). */
-function RulesSection() {
+function RulesSection({
+  printers,
+}: {
+  printers: { id: string; name: string }[] | undefined;
+}) {
   const toast = useToast();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -573,6 +600,7 @@ function RulesSection() {
       <PrintRulesEditor
         rules={rules.data.rules}
         enforced={rules.data.enforced}
+        printers={printers}
         busy={busy}
         onSave={async (next) => {
           setBusy(true);
@@ -654,7 +682,9 @@ export function PrintersPage() {
       }>(`/printers/${printer.id}/ping`);
       setPingStatus((prev) => ({ ...prev, [printer.id]: res }));
       if (res.online) {
-        toast(`${printer.name}: ${p.pingSuccess.replace('{ms}', String(res.latencyMs))}`);
+        toast(
+          `${printer.name}: ${p.pingSuccess.replace('{ms}', String(res.latencyMs))}`,
+        );
       } else {
         toast(`${printer.name}: ${p.pingFail}`, 'error');
       }
@@ -684,7 +714,9 @@ export function PrintersPage() {
   };
 
   const stationMap = new Map((stations.data ?? []).map((s) => [s.id, s.name]));
-  const printerMap = new Map((printers.data ?? []).map((pr) => [pr.id, pr.name]));
+  const printerMap = new Map(
+    (printers.data ?? []).map((pr) => [pr.id, pr.name]),
+  );
 
   return (
     <>
@@ -697,25 +729,25 @@ export function PrintersPage() {
             <TerminalPrinterButton />
             {manage && (
               <>
-            <Button
-              variant="ghost"
-              size="sm"
-              busy={seeding}
-              onClick={seedStandardDepartments}
-              title="Baliqxona, Kabobxona, Fastfud, Ichimliklar bo‘limlarini qo‘shish"
-            >
-              🏢 {p.seedDepartments}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDiscovering(true)}
-            >
-              {p.discover}
-            </Button>
-            <Button variant="primary" onClick={() => setEditing('new')}>
-              + {p.add}
-            </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  busy={seeding}
+                  onClick={seedStandardDepartments}
+                  title="Baliqxona, Kabobxona, Fastfud, Ichimliklar bo‘limlarini qo‘shish"
+                >
+                  🏢 {p.seedDepartments}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDiscovering(true)}
+                >
+                  {p.discover}
+                </Button>
+                <Button variant="primary" onClick={() => setEditing('new')}>
+                  + {p.add}
+                </Button>
               </>
             )}
           </div>
@@ -738,7 +770,9 @@ export function PrintersPage() {
             <thead>
               <tr>
                 <th>{t.common.name}</th>
-                <th>{p.department} / {p.kind}</th>
+                <th>
+                  {p.department} / {p.kind}
+                </th>
                 <th>{p.host}</th>
                 <th>{p.paper}</th>
                 <th>{p.fallback}</th>
@@ -753,10 +787,10 @@ export function PrintersPage() {
                   printer.kind === 'RECEIPT'
                     ? 'Kassa (Chek)'
                     : printer.stationId
-                      ? stationMap.get(printer.stationId) ?? 'Bo‘lim'
+                      ? (stationMap.get(printer.stationId) ?? 'Bo‘lim')
                       : p.allDepartments;
                 const backupName = printer.fallbackPrinterId
-                  ? printerMap.get(printer.fallbackPrinterId) ?? 'Zaxira'
+                  ? (printerMap.get(printer.fallbackPrinterId) ?? 'Zaxira')
                   : '—';
                 return (
                   <tr key={printer.id}>
@@ -778,7 +812,13 @@ export function PrintersPage() {
                     <td>{printer.paperWidth ?? 80} mm</td>
                     <td className="small">{backupName}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
                         {printer.isActive ? (
                           <Badge tone="success">{t.common.active}</Badge>
                         ) : (
@@ -819,30 +859,33 @@ export function PrintersPage() {
                       </Button>{' '}
                       {manage && (
                         <>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditing(printer)}
-                      >
-                        {t.common.edit}
-                      </Button>{' '}
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={async () => {
-                          if (
-                            await confirm(
-                              p.removeConfirm.replace('{name}', printer.name),
-                            )
-                          )
-                            void action(
-                              () => del(`/printers/${printer.id}`),
-                              p.removed,
-                            );
-                        }}
-                      >
-                        {p.remove}
-                      </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditing(printer)}
+                          >
+                            {t.common.edit}
+                          </Button>{' '}
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={async () => {
+                              if (
+                                await confirm(
+                                  p.removeConfirm.replace(
+                                    '{name}',
+                                    printer.name,
+                                  ),
+                                )
+                              )
+                                void action(
+                                  () => del(`/printers/${printer.id}`),
+                                  p.removed,
+                                );
+                            }}
+                          >
+                            {p.remove}
+                          </Button>
                         </>
                       )}
                     </td>
@@ -854,7 +897,7 @@ export function PrintersPage() {
         </div>
       )}
 
-      {can(me, 'settings.manage') && <RulesSection />}
+      {can(me, 'settings.manage') && <RulesSection printers={printers.data} />}
       {manage && <h2 className="section-title">{p.jobs}</h2>}
       {!manage ? null : jobs.data && jobs.data.length > 0 ? (
         <div className="table-wrap">
@@ -906,7 +949,10 @@ export function PrintersPage() {
                           // It may already be on paper: ask before a second copy.
                           const maybeDouble =
                             job.status === 'SENT' || job.status === 'UNKNOWN';
-                          if (maybeDouble && !(await confirm(p.duplicateWarning)))
+                          if (
+                            maybeDouble &&
+                            !(await confirm(p.duplicateWarning))
+                          )
                             return;
                           void action(() =>
                             post(`/print-jobs/${job.id}/retry`, {

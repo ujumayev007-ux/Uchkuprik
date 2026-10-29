@@ -47,6 +47,8 @@ export type ReceiptData = {
   total: number;
   payments: { label: string; amount: number; change?: number | null }[];
   due: number;
+  // Charged to a credit (nasiya) or hotel room account: the guest signs the receipt.
+  credit?: { account: string; amount: number } | null;
 };
 
 const money = (value: number) =>
@@ -285,6 +287,16 @@ export function receiptTicket(
         doc.bold(true);
         pair('QOLDI', money(data.due));
         doc.bold(false);
+      }
+      if (data.credit) {
+        rule();
+        doc.bold(true);
+        pair('QARZGA YOZILDI', money(data.credit.amount));
+        doc.bold(false);
+        line(data.credit.account);
+        doc.feed(2);
+        line('Mijoz imzosi: ______________');
+        lines += 2;
       }
     },
     fiscal: () => {

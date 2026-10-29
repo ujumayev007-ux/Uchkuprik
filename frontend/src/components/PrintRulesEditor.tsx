@@ -9,6 +9,8 @@ export type PrintRule = {
   copies: number;
   trigger: keyof typeof p.triggers;
   showPrices: boolean;
+  // Network printer the server prints this type on by itself (null: from screens).
+  printerId?: string | null;
 };
 export type PrintRules = Partial<Record<ReceiptType, PrintRule>>;
 
@@ -18,6 +20,17 @@ const KITCHEN_TYPES: ReceiptType[] = [
   'BAR',
   'MODIFICATION',
   'CANCELLATION',
+];
+// Types the server can print by itself on a chosen printer; kitchen tickets go to
+// their department's printers.
+const PRINTER_TYPES: ReceiptType[] = [
+  'SALES',
+  'PRELIM_BILL',
+  'PAID',
+  'CREDIT',
+  'DELIVERY',
+  'REFUND',
+  'SHIFT_REPORT',
 ];
 const DEFAULT_RULE: PrintRule = {
   enabled: true,
@@ -33,11 +46,14 @@ const DEFAULT_RULE: PrintRule = {
 export function PrintRulesEditor({
   rules,
   enforced,
+  printers,
   busy,
   onSave,
 }: {
   rules: PrintRules;
+  // Types the restaurant server applies (older servers apply only some).
   enforced: string[];
+  printers?: { id: string; name: string }[] | undefined;
   busy?: boolean;
   onSave: (rules: PrintRules) => void;
 }) {
@@ -50,6 +66,7 @@ export function PrintRulesEditor({
   return (
     <div className="stack">
       <p className="muted small">{p.hint}</p>
+      <p className="muted small">{p.triggerHint}</p>
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -59,6 +76,7 @@ export function PrintRulesEditor({
               <th>{p.copies}</th>
               <th>{p.trigger}</th>
               <th>{p.prices}</th>
+              {printers && <th>{p.printer}</th>}
             </tr>
           </thead>
           <tbody>
@@ -68,11 +86,9 @@ export function PrintRulesEditor({
                 <tr key={type}>
                   <td>
                     {p.types[type]}{' '}
-                    <Badge
-                      tone={enforced.includes(type) ? 'success' : 'neutral'}
-                    >
-                      {enforced.includes(type) ? p.applied : p.stored}
-                    </Badge>
+                    {!enforced.includes(type) && (
+                      <Badge tone="neutral">{p.stored}</Badge>
+                    )}
                   </td>
                   <td>
                     <Checkbox
@@ -126,6 +142,27 @@ export function PrintRulesEditor({
                       />
                     )}
                   </td>
+                  {printers && (
+                    <td>
+                      {PRINTER_TYPES.includes(type) && (
+                        <select
+                          className="input"
+                          aria-label={`${p.types[type]}: ${p.printer}`}
+                          value={rule.printerId ?? ''}
+                          onChange={(event) =>
+                            set(type, { printerId: event.target.value || null })
+                          }
+                        >
+                          <option value="">{p.printerNone}</option>
+                          {printers.map((printer) => (
+                            <option key={printer.id} value={printer.id}>
+                              {printer.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}

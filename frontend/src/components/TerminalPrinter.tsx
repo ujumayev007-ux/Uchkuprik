@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { api } from '../lib/api';
+import { copiesOf, type PrintPlan } from '../lib/print-rules';
 import { useRealtimeEvent } from '../lib/realtime';
 import {
   Button,
@@ -60,8 +62,19 @@ export const terminalPrinter = (): PrinterBridge | undefined => {
 };
 
 /** Prints the order's receipt on this terminal's printer (silently). */
-export const printOnTerminal = (orderId: string) =>
-  terminalPrinter()!.print(`/chek/${orderId}`);
+/** The printing rule of this order's receipt now (bill, paid or credit receipt). */
+const receiptPlan = (orderId: string) =>
+  api<{ printRule?: PrintPlan }>(`/orders/${orderId}/receipt`).then(
+    (data) => data.printRule,
+  );
+
+/** One page per call: the rule's copies are printed one after another. */
+export async function printOnTerminal(orderId: string) {
+  const plan = await receiptPlan(orderId);
+  if (plan?.enabled === false) throw new Error(t.printRules.off);
+  for (const _ of copiesOf(plan?.copies ?? 1))
+    await terminalPrinter()!.print(`/chek/${orderId}`);
+}
 
 /** After a payment: prints by itself when this terminal asked for it. */
 export async function autoPrintReceipt(orderId: string) {
@@ -69,7 +82,12 @@ export async function autoPrintReceipt(orderId: string) {
   if (!bridge) return false;
   const config = await bridge.get();
   if (!config.auto) return false;
-  await bridge.print(`/chek/${orderId}`);
+  // The rule decides: switched off, printed by hand only, or by the server itself.
+  const plan = await receiptPlan(orderId);
+  if (plan && (!plan.enabled || plan.trigger === 'MANUAL' || plan.printerId))
+    return false;
+  for (const _ of copiesOf(plan?.copies ?? 1))
+    await bridge.print(`/chek/${orderId}`);
   return true;
 }
 

@@ -43,6 +43,8 @@ const stationInput = z.object({
   name: z.string().trim().min(1).max(60),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   isActive: z.boolean().default(true),
+  // Printing rule of its tickets (Chop etish qoidalari); left out keeps the current one.
+  printType: z.enum(['KITCHEN', 'KEBAB', 'BAR']).optional(),
 });
 
 const can = (
@@ -95,12 +97,13 @@ export function kitchenRouter(services: Services) {
     });
     res.json({
       stations: stations.map(
-        ({ id, name, sortOrder, isActive, ticketTemplate }) => ({
+        ({ id, name, sortOrder, isActive, ticketTemplate, printType }) => ({
           template: ticketTemplateOf(ticketTemplate),
           id,
           name,
           sortOrder,
           isActive,
+          printType,
         }),
       ),
     });
@@ -116,7 +119,13 @@ export function kitchenRouter(services: Services) {
       try {
         const station = await db.$transaction(async (tx) => {
           const created = await tx.kitchenStation.create({
-            data: { tenantId: auth.tenantId, ...input },
+            data: {
+              tenantId: auth.tenantId,
+              name: input.name,
+              sortOrder: input.sortOrder,
+              isActive: input.isActive,
+              ...(input.printType ? { printType: input.printType } : {}),
+            },
           });
           await audit(tx, req, {
             tenantId: auth.tenantId,
@@ -221,7 +230,12 @@ export function kitchenRouter(services: Services) {
       try {
         const result = await db.kitchenStation.updateMany({
           where: { id, tenantId: auth.tenantId },
-          data: input,
+          data: {
+            name: input.name,
+            sortOrder: input.sortOrder,
+            isActive: input.isActive,
+            ...(input.printType ? { printType: input.printType } : {}),
+          },
         });
         if (result.count === 0) throw errors.notFound();
       } catch (error) {

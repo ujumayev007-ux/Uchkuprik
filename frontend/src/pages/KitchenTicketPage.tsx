@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useParams } from 'react-router';
 import { ErrorState, LoadingState } from '../components/ui';
 import { t } from '../i18n';
@@ -6,6 +7,7 @@ import { api } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import type { Order, OrderItem } from '../lib/orders';
 import { formatOrderNo } from '../lib/uzbek-number';
+import { copiesOf, usePrintRules } from '../lib/print-rules';
 
 // Kitchen ticket printed by the Kassa application on its own kitchen printer. The
 // application says what was printed before (?printed=&cancelled=&known=1&since=), the
@@ -60,6 +62,7 @@ function Ticket({
   gone,
   note,
   data,
+  copies = 1,
 }: {
   widthMm: number;
   number: string;
@@ -69,6 +72,8 @@ function Ticket({
   gone: Line[];
   note: string | null;
   data: Record<string, string>;
+  // Copies of a rule: repeated inside the one ticket the Kassa application prints.
+  copies?: number;
 }) {
   const text = t.kitchenTicket;
   const item = (line: Line) => (
@@ -97,34 +102,39 @@ function Ticket({
           Object.entries(data).map(([key, value]) => [`data-${key}`, value]),
         )}
       >
-        <div className="kt-title">{text.title}</div>
-        <div className="kt-number">{number}</div>
-        {banner && <div className="kt-banner">{banner}</div>}
-        <div className="kt-meta">
-          {meta.map((part) => (
-            <span key={part}>{part}</span>
-          ))}
-        </div>
-        <hr />
-        {fresh.map(item)}
-        {gone.length > 0 && (
-          <>
-            <div className="kt-banner">{text.removed}</div>
-            <div className="kt-gone">{gone.map(item)}</div>
-          </>
-        )}
-        {note && (
-          <>
-            <hr />
-            <div className="kt-note">
-              {text.orderNote}: {note}
+        {copiesOf(copies).map((copy) => (
+          <div key={copy}>
+            {copy > 0 && <hr />}
+            <div className="kt-title">{text.title}</div>
+            <div className="kt-number">{number}</div>
+            {banner && <div className="kt-banner">{banner}</div>}
+            <div className="kt-meta">
+              {meta.map((part) => (
+                <span key={part}>{part}</span>
+              ))}
             </div>
-          </>
-        )}
-        <hr />
-        <div className="kt-foot">
-          {text.printedAt}: {formatDateTime(new Date().toISOString())}
-        </div>
+            <hr />
+            {fresh.map(item)}
+            {gone.length > 0 && (
+              <>
+                <div className="kt-banner">{text.removed}</div>
+                <div className="kt-gone">{gone.map(item)}</div>
+              </>
+            )}
+            {note && (
+              <>
+                <hr />
+                <div className="kt-note">
+                  {text.orderNote}: {note}
+                </div>
+              </>
+            )}
+            <hr />
+            <div className="kt-foot">
+              {text.printedAt}: {formatDateTime(new Date().toISOString())}
+            </div>
+          </div>
+        ))}
       </div>
     </>
   );
@@ -138,13 +148,24 @@ export function KitchenTicketPage() {
     queryFn: () => api<Order>(`/orders/${id}`),
     retry: 1,
   });
+  // Chop etish qoidalari: kitchen, change and cancellation tickets.
+  const rules = usePrintRules();
   // Only the categories the kitchen prepares («Fast Food»); null = every item.
   const filter = useQuery({
     queryKey: ['kitchen-filter'],
     queryFn: () => api<{ variantIds: string[] | null }>('/kitchen/filter'),
     retry: 1,
   });
-  if (order.isPending || filter.isPending) return <LoadingState />;
+  // Opened by a person from the order (?all=1): print dialog once it is drawn.
+  const byHand = params.get('all') === '1' && params.get('silent') !== '1';
+  const drawn = order.isSuccess && filter.isSuccess && !rules.isPending;
+  useEffect(() => {
+    if (!byHand || !drawn) return;
+    const timer = window.setTimeout(() => window.print(), 300);
+    return () => window.clearTimeout(timer);
+  }, [byHand, drawn]);
+  if (order.isPending || filter.isPending || rules.isPending)
+    return <LoadingState />;
   if (order.error) return <ErrorState error={order.error} />;
   if (filter.error) return <ErrorState error={filter.error} />;
   const kitchenIds = filter.data.variantIds
@@ -166,8 +187,20 @@ export function KitchenTicketPage() {
   let fresh: OrderItem[] = [];
   let gone: OrderItem[] = [];
   let baseline = false;
-  if (o.status === 'DRAFT' || o.status === 'PENDING') {
-    // Not sent to the kitchen yet.
+  const ruleSet = rules.data ?? {};
+  const kitchenRule = ruleSet.KITCHEN;
+  // Opened by a person (?all=1, not the Kassa application): everything active.
+  const manual = params.get('all') === '1' && params.get('silent') !== '1';
+  // The rule waits for a manual print or for the full payment.
+  const waiting =
+    !manual &&
+    !!kitchenRule &&
+    (kitchenRule.trigger === 'MANUAL' ||
+      (kitchenRule.trigger === 'AFTER_PAYMENT' && o.due > 0));
+  if (o.status === 'DRAFT' || o.status === 'PENDING' || waiting) {
+    // Not sent to the kitchen yet (or its rule waits): nothing printed, nothing marked.
+  } else if (manual) {
+    fresh = active;
   } else if (
     params.get('known') !== '1' &&
     (!since || new Date(placedAt) < new Date(since))
@@ -187,7 +220,17 @@ export function KitchenTicketPage() {
         !cancelled.has(item.id),
     );
   }
-  const print = !baseline && (fresh.length > 0 || gone.length > 0);
+  // A switched-off type is not printed but counts as handled (no flood later).
+  const update = printed.size > 0;
+  const freshOff = update
+    ? ruleSet.MODIFICATION?.enabled === false
+    : kitchenRule?.enabled === false;
+  const goneOff = ruleSet.CANCELLATION?.enabled === false;
+  const shownFresh = freshOff ? [] : fresh;
+  const shownGone = goneOff ? [] : gone;
+  const copies =
+    (update ? ruleSet.MODIFICATION?.copies : kitchenRule?.copies) ?? 1;
+  const print = !baseline && (shownFresh.length > 0 || shownGone.length > 0);
   const text = t.kitchenTicket;
   const banner =
     o.status === 'CANCELLED'
@@ -205,9 +248,10 @@ export function KitchenTicketPage() {
         formatDateTime(placedAt),
       ]}
       banner={banner}
-      fresh={fresh.map(toLine)}
-      gone={gone.map(toLine)}
+      fresh={shownFresh.map(toLine)}
+      gone={shownGone.map(toLine)}
       note={o.note}
+      copies={copies}
       data={{
         print: print ? '1' : '0',
         number: String(o.number),

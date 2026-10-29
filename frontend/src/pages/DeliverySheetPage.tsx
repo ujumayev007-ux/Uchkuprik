@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { api } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 import type { Order } from '../lib/orders';
+import { copiesOf, planOf, usePrintRules } from '../lib/print-rules';
 
 /**
  * Courier handoff sheet: the only printout with the customer's contact and address
@@ -18,17 +19,23 @@ export function DeliverySheetPage() {
     queryFn: () =>
       api<Order & { deliveryLandmark?: string | null }>(`/orders/${id}`),
   });
+  // Yetkazish cheki rule: on/off and copies.
+  const rules = usePrintRules();
+  const plan = rules.data ? planOf(rules.data, 'DELIVERY') : null;
+  const ready = order.isSuccess && !rules.isPending && plan?.enabled !== false;
   useEffect(() => {
-    if (!order.isSuccess) return;
+    if (!ready) return;
     const timer = setTimeout(() => window.print(), 300);
     return () => clearTimeout(timer);
-  }, [order.isSuccess]);
-  if (order.isPending) return <LoadingState />;
+  }, [ready]);
+  if (order.isPending || rules.isPending) return <LoadingState />;
   if (order.error) return <ErrorState error={order.error} />;
+  if (plan?.enabled === false)
+    return <p className="notice">{t.printRules.off}</p>;
   const o = order.data;
   const d = t.deliverySheet;
-  return (
-    <div className="receipt">
+  return copiesOf(plan?.copies ?? 1).map((index) => (
+    <div className="receipt" key={index}>
       <h1 className="center">! DOSTAVKA !</h1>
       <p className="center">
         <strong>
@@ -84,5 +91,5 @@ export function DeliverySheetPage() {
       </p>
       <p className="muted small">{d.signature}</p>
     </div>
-  );
+  ));
 }

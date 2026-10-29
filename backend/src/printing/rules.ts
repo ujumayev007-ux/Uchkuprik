@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Db, Tx } from '../db.js';
+import { errors } from '../http/errors.js';
 import { EscPos } from './escpos.js';
 
 /**
@@ -23,14 +24,20 @@ export const RECEIPT_TYPES = [
 ] as const;
 export type ReceiptType = (typeof RECEIPT_TYPES)[number];
 
-// Types whose rules the server applies today; the others are kept for the printers
-// and screens that use them.
-export const ENFORCED_TYPES: ReceiptType[] = [
-  'KITCHEN',
-  'MODIFICATION',
-  'CANCELLATION',
-  'PAID',
-];
+// Every type's rule is applied (kept for older screens that ask which ones are).
+export const ENFORCED_TYPES: ReceiptType[] = [...RECEIPT_TYPES];
+
+/**
+ * Where a type without its own rule takes one from: Kabob / Bar tickets follow the
+ * kitchen rule, the bill / paid / credit receipts the sales receipt rule.
+ */
+const FALLBACK: Partial<Record<ReceiptType, ReceiptType>> = {
+  KEBAB: 'KITCHEN',
+  BAR: 'KITCHEN',
+  PRELIM_BILL: 'SALES',
+  PAID: 'SALES',
+  CREDIT: 'SALES',
+};
 
 export const ruleSchema = z.object({
   enabled: z.boolean().default(true),
@@ -40,12 +47,21 @@ export const ruleSchema = z.object({
     .default('AUTO'),
   // Kitchen tickets hide selling prices unless switched on.
   showPrices: z.boolean().default(false),
+  // Network printer the server prints this type on by itself (AUTO / AFTER_APPROVAL /
+  // AFTER_PAYMENT). Without one, receipts print from the screens as before.
+  printerId: z.uuid().nullable().default(null),
 });
 export type PrintRule = z.infer<typeof ruleSchema>;
-export const printRulesSchema = z.partialRecord(z.enum(RECEIPT_TYPES), ruleSchema);
+export const printRulesSchema = z.partialRecord(
+  z.enum(RECEIPT_TYPES),
+  ruleSchema,
+);
 export type PrintRules = z.infer<typeof printRulesSchema>;
 
-export async function loadPrintRules(db: Db | Tx, tenantId: string): Promise<PrintRules> {
+export async function loadPrintRules(
+  db: Db | Tx,
+  tenantId: string,
+): Promise<PrintRules> {
   const profile = await db.tenantProfile.findUnique({
     where: { tenantId },
     select: { printRules: true },
@@ -55,8 +71,25 @@ export async function loadPrintRules(db: Db | Tx, tenantId: string): Promise<Pri
 }
 
 /** A rule only when the restaurant set one (otherwise today's behaviour). */
-export const ruleOf = (rules: PrintRules, type: ReceiptType): PrintRule | null =>
-  rules[type] ?? null;
+export const ruleOf = (
+  rules: PrintRules,
+  type: ReceiptType,
+): PrintRule | null =>
+  rules[type] ?? (FALLBACK[type] ? (rules[FALLBACK[type]] ?? null) : null);
+
+/** What screens need to print a type: switched on, how many copies. */
+export const printPlan = (rules: PrintRules, type: ReceiptType) => {
+  const rule = ruleOf(rules, type);
+  return {
+    type,
+    enabled: rule?.enabled ?? true,
+    copies: rule?.copies ?? 1,
+    trigger: rule?.trigger ?? 'AUTO',
+    showPrices: rule?.showPrices ?? null,
+    // The server prints it by itself there (screens then skip automatic printing).
+    printerId: rule?.printerId ?? null,
+  };
+};
 
 /** The same test page as the printer screen's "Sinov" button. */
 export function testPage(printer: {
@@ -81,4 +114,24 @@ export function testPage(printer: {
     .line(new Date().toISOString().slice(0, 16).replace('T', ' '));
   if (printer.kind === 'RECEIPT') esc.cashDrawer(2);
   return esc.feed(4).cut().build();
+}
+
+/** Rules may name only printers of this restaurant. */
+export async function assertRulePrinters(
+  db: Db | Tx,
+  tenantId: string,
+  rules: PrintRules,
+) {
+  const ids = [
+    ...new Set(
+      Object.values(rules)
+        .map((rule) => rule?.printerId)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  if (ids.length === 0) return;
+  const found = await db.printer.count({
+    where: { tenantId, id: { in: ids } },
+  });
+  if (found !== ids.length) throw errors.validation([{ path: 'printerId' }]);
 }

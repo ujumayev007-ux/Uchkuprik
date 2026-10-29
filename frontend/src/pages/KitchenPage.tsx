@@ -59,6 +59,8 @@ export type Station = {
   sortOrder: number;
   isActive: boolean;
   template?: import('./StationTemplateDialog').TicketTemplate;
+  // Printing rule of its tickets (Chop etish qoidalari).
+  printType?: 'KITCHEN' | 'KEBAB' | 'BAR';
 };
 
 export function useStations(enabled = true) {
@@ -535,26 +537,26 @@ export function KitchenPage() {
             ))}
           </div>
           <div className="kds-board">
-          {STAGES.map((stage) => {
-            const list = tickets.data.tickets.filter(
-              (ticket) => stageOf(ticket) === stage,
-            );
-            // Ustunli: every working column stays on screen, even when empty.
-            const keepEmpty = theme === 'columns' && stage !== 'REJECTED';
-            if (list.length === 0 && !keepEmpty) return null;
-            return (
-              <section key={stage} className="kds-section">
-                <h2
-                  className={`kds-section-title stage-${stage.toLowerCase()}`}
-                >
-                  {t.kitchen.stages[stage]} ({list.length})
-                </h2>
-                <div className="kds-grid">
-                  {list.map((ticket) => renderTicket(ticket, stage))}
-                </div>
-              </section>
-            );
-          })}
+            {STAGES.map((stage) => {
+              const list = tickets.data.tickets.filter(
+                (ticket) => stageOf(ticket) === stage,
+              );
+              // Ustunli: every working column stays on screen, even when empty.
+              const keepEmpty = theme === 'columns' && stage !== 'REJECTED';
+              if (list.length === 0 && !keepEmpty) return null;
+              return (
+                <section key={stage} className="kds-section">
+                  <h2
+                    className={`kds-section-title stage-${stage.toLowerCase()}`}
+                  >
+                    {t.kitchen.stages[stage]} ({list.length})
+                  </h2>
+                  <div className="kds-grid">
+                    {list.map((ticket) => renderTicket(ticket, stage))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </>
       )}

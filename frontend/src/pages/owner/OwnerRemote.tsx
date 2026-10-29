@@ -23,7 +23,12 @@ type Counted = { total: number; online: number };
 type Monitoring = {
   printing?: { failed24h: number; unknown24h: number; pending: number };
   panels?: Partial<Record<keyof typeof r.mon.panel, Counted>>;
-  backup?: { lastAt: string | null; ok: boolean | null; lastName: string | null; count: number };
+  backup?: {
+    lastAt: string | null;
+    ok: boolean | null;
+    lastName: string | null;
+    count: number;
+  };
 };
 type BackupRow = {
   name: string;
@@ -175,7 +180,9 @@ export function RemoteSection({ customerId }: { customerId: string }) {
   const [prices, setPrices] = useState<Record<string, string>>({});
   // A restore or rollback waiting for the typed confirmation word.
   const [pendingRestore, setPendingRestore] = useState<
-    { kind: 'backup.restore'; name: string; title: string } | { kind: 'backup.rollback'; name: string; title: string } | null
+    | { kind: 'backup.restore'; name: string; title: string }
+    | { kind: 'backup.rollback'; name: string; title: string }
+    | null
   >(null);
   const [word, setWord] = useState('');
   const data = useQuery({
@@ -226,7 +233,10 @@ export function RemoteSection({ customerId }: { customerId: string }) {
     : false;
 
   const restorePanel = pendingRestore && (
-    <div className="card stack" style={{ borderColor: 'var(--danger, #c0392b)' }}>
+    <div
+      className="card stack"
+      style={{ borderColor: 'var(--danger, #c0392b)' }}
+    >
       <strong>{pendingRestore.title}</strong>
       <p className="small">{r.bk.restoreWarn}</p>
       <label className="stack" style={{ gap: 4 }}>
@@ -277,8 +287,12 @@ export function RemoteSection({ customerId }: { customerId: string }) {
         Date.now() - new Date(remote.lastContact).getTime() < 5 * 60_000;
       if (remote.hosted) return <p className="muted">{r.mon.hosted}</p>;
       const printing = m?.printing;
-      const printingBad = printing ? printing.failed24h + printing.unknown24h > 0 : false;
-      const backupBad = m?.backup ? m.backup.ok === false || !m.backup.lastAt : false;
+      const printingBad = printing
+        ? printing.failed24h + printing.unknown24h > 0
+        : false;
+      const backupBad = m?.backup
+        ? m.backup.ok === false || !m.backup.lastAt
+        : false;
       return (
         <div className="stack">
           <div>
@@ -287,7 +301,10 @@ export function RemoteSection({ customerId }: { customerId: string }) {
             </Badge>{' '}
             <span className="muted small">
               {remote.lastContact
-                ? r.mon.lastContact.replace('{at}', formatDateTime(remote.lastContact))
+                ? r.mon.lastContact.replace(
+                    '{at}',
+                    formatDateTime(remote.lastContact),
+                  )
                 : r.mon.never}
             </span>
           </div>
@@ -312,7 +329,9 @@ export function RemoteSection({ customerId }: { customerId: string }) {
               <li className="ops-item">
                 <div className="grow">
                   <strong>{r.mon.panels}</strong>
-                  {(Object.keys(r.mon.panel) as (keyof typeof r.mon.panel)[]).map((panel) => {
+                  {(
+                    Object.keys(r.mon.panel) as (keyof typeof r.mon.panel)[]
+                  ).map((panel) => {
                     const counted = m.panels?.[panel];
                     if (!counted || counted.total === 0) return null;
                     return (
@@ -330,7 +349,9 @@ export function RemoteSection({ customerId }: { customerId: string }) {
                 <div className="grow">
                   <strong>{r.mon.backup}</strong>
                   <div className="muted small">
-                    {m.backup?.lastAt ? formatDateTime(m.backup.lastAt) : r.mon.backupNone}
+                    {m.backup?.lastAt
+                      ? formatDateTime(m.backup.lastAt)
+                      : r.mon.backupNone}
                   </div>
                 </div>
                 {m.backup && (
@@ -352,9 +373,15 @@ export function RemoteSection({ customerId }: { customerId: string }) {
         <div className="stack">
           <p className="muted small">{r.bk.hint}</p>
           <p className="muted small">{r.bk.partialNote}</p>
-          {!remote.restore && <p className="notice">{r.bk.restoreUnsupported}</p>}
+          {!remote.restore && (
+            <p className="notice">{r.bk.restoreUnsupported}</p>
+          )}
           <div>
-            <Button size="sm" busy={busy} onClick={() => void send('backup.create')}>
+            <Button
+              size="sm"
+              busy={busy}
+              onClick={() => void send('backup.create')}
+            >
               {r.bk.createNow}
             </Button>
           </div>
@@ -386,7 +413,10 @@ export function RemoteSection({ customerId }: { customerId: string }) {
                           : r.bk.notVerified}
                     </Badge>
                     <div className="muted small">
-                      {r.bk.size.replace('{mb}', (row.bytes / 1024 / 1024).toFixed(1))}
+                      {r.bk.size.replace(
+                        '{mb}',
+                        (row.bytes / 1024 / 1024).toFixed(1),
+                      )}
                       {row.totalRows !== null &&
                         ` · ${r.bk.rows.replace('{n}', String(row.totalRows))}`}
                     </div>
@@ -396,27 +426,34 @@ export function RemoteSection({ customerId }: { customerId: string }) {
                       size="sm"
                       variant="ghost"
                       disabled={busy}
-                      onClick={() => void send('backup.verify', { name: row.name })}
+                      onClick={() =>
+                        void send('backup.verify', { name: row.name })
+                      }
                     >
                       {r.bk.verify}
                     </Button>
-                    {remote.restore && data.canRestore && row.verified !== false && (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={busy}
-                        onClick={() => {
-                          setWord('');
-                          setPendingRestore({
-                            kind: 'backup.restore',
-                            name: row.name,
-                            title: r.bk.restoreTitle.replace('{at}', formatDateTime(row.createdAt)),
-                          });
-                        }}
-                      >
-                        {r.bk.restore}
-                      </Button>
-                    )}
+                    {remote.restore &&
+                      data.canRestore &&
+                      row.verified !== false && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          disabled={busy}
+                          onClick={() => {
+                            setWord('');
+                            setPendingRestore({
+                              kind: 'backup.restore',
+                              name: row.name,
+                              title: r.bk.restoreTitle.replace(
+                                '{at}',
+                                formatDateTime(row.createdAt),
+                              ),
+                            });
+                          }}
+                        >
+                          {r.bk.restore}
+                        </Button>
+                      )}
                   </div>
                 </li>
               ))}
@@ -439,7 +476,10 @@ export function RemoteSection({ customerId }: { customerId: string }) {
                           setPendingRestore({
                             kind: 'backup.rollback',
                             name,
-                            title: r.bk.rollbackTitle.replace('{name}', keptAt(name)),
+                            title: r.bk.rollbackTitle.replace(
+                              '{name}',
+                              keptAt(name),
+                            ),
                           });
                         }}
                       >
@@ -855,6 +895,7 @@ export function RemoteSection({ customerId }: { customerId: string }) {
             key={snapshot.doneAt ?? ''}
             rules={data.rules}
             enforced={data.enforced}
+            printers={data.printers}
             busy={busy}
             onSave={(rules) => void send('print.rules', rules)}
           />

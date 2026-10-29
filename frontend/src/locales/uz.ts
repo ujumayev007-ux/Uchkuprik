@@ -805,6 +805,7 @@ export const uz = {
     reminderMinutes: 'Eslatma har necha daqiqada (0 = eslatmasiz)',
   },
   kitchen: {
+    printType: 'Chek turi (Chop etish qoidalari)',
     title: 'Oshxona ekrani',
     allStations: 'Barcha bo‘limlar',
     noTickets: 'Navbatda buyurtma yo‘q',
@@ -2615,7 +2616,17 @@ export const uz = {
     trigger: 'Qachon',
     prices: 'Narx',
     applied: 'qo‘llanadi',
-    stored: 'saqlanadi',
+    stored: 'bu server versiyasida faqat saqlanadi',
+    off: 'Bu chek turini chop etish o‘chirilgan (Chop etish qoidalari).',
+    kitchenPrint: 'Oshxonaga chop etish',
+    kitchenPrinted: 'Oshxona cheklari printerga yuborildi: {n}',
+    kitchenTicket: 'Oshxona cheki (brauzer)',
+    refundPrint: 'Qaytarish cheki',
+    refundPrinted: 'Qaytarish cheki printerga yuborildi',
+    printer: 'Avtomatik printer',
+    printerNone: 'Yo‘q (ekrandan / Kassa ilovasidan)',
+    triggerHint:
+      'Oshxona, Kabob va Bar cheklari bo‘lim printerlariga chiqadi: «Qo‘lda» — faqat «Oshxonaga chop etish» tugmasi bilan, «To‘lovdan keyin» — buyurtma to‘liq to‘langanda. Boshqa turlarda printer tanlansa, server chekni o‘zi chiqaradi: to‘langan va qarz cheki — to‘lovdan keyin, dastlabki hisob va yetkazish cheki — buyurtma qabul qilinganda, qaytarish cheki — qaytarishdan keyin, smena hisoboti — smena yopilganda. Kabob/Bar qoidasi bo‘lmasa oshxona qoidasi, dastlabki hisob, to‘langan va qarz chekida esa savdo cheki qoidasi qo‘llanadi.',
     save: 'Qoidalarni saqlash',
     saved: 'Chop etish qoidalari saqlandi',
     types: {

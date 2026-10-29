@@ -15,6 +15,7 @@ import { createEventBus } from './realtime/bus.js';
 import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
 import { startScheduleWorker } from './modules/workflow/schedule.js';
+import { autoPrintOrder } from './printing/auto.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { setEntitlementsOverride } from './modules/billing/entitlements.js';
 import {
@@ -141,6 +142,10 @@ async function main(): Promise<void> {
     : () => undefined;
   services.afterOrderChange = async (orderId) => {
     await enqueueKitchenTickets(services, orderId);
+    // Chop etish qoidalari bound to a printer (paid receipt, bill, delivery slip).
+    await autoPrintOrder(services, orderId).catch(() =>
+      logger.warn('Automatic receipt printing failed'),
+    );
     await notifyTelegramCustomer(services, orderId).catch(() =>
       logger.warn('Telegram customer notice failed'),
     );

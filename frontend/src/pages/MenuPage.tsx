@@ -827,6 +827,26 @@ function StationsTab() {
               >
                 🧾 {t.ticketTemplate.button}
               </button>
+              <select
+                aria-label={t.kitchen.printType}
+                value={station.printType ?? 'KITCHEN'}
+                onChange={(event) =>
+                  void save(() =>
+                    patch(`/kitchen/stations/${station.id}`, {
+                      name: station.name,
+                      sortOrder: station.sortOrder,
+                      isActive: station.isActive,
+                      printType: event.target.value,
+                    }),
+                  )
+                }
+              >
+                {(['KITCHEN', 'KEBAB', 'BAR'] as const).map((type) => (
+                  <option key={type} value={type}>
+                    {t.printRules.types[type]}
+                  </option>
+                ))}
+              </select>
             </span>
           ))}
         </div>
@@ -1086,7 +1106,11 @@ export function MenuPage() {
                 onChange={(e) => setQuery(e.target.value)}
               />
               {manage && (
-                <div className="segmented" role="group" aria-label={t.menu.visibleField}>
+                <div
+                  className="segmented"
+                  role="group"
+                  aria-label={t.menu.visibleField}
+                >
                   {(
                     [
                       ['all', t.menu.visibilityAll],

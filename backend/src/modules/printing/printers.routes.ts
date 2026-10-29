@@ -6,16 +6,13 @@ import type { Services } from '../../context.js';
 import { AppError, errors, parse } from '../../http/errors.js';
 import { EscPos } from '../../printing/escpos.js';
 import { audit } from '../audit/audit.js';
-import {
-  getAuth,
-  requireAuth,
-  requireAnyPermission,
-} from '../auth/session.js';
+import { getAuth, requireAuth, requireAnyPermission } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
 import {
   ENFORCED_TYPES,
   loadPrintRules,
   printRulesSchema,
+  assertRulePrinters,
   RECEIPT_TYPES,
 } from '../../printing/rules.js';
 
@@ -289,7 +286,12 @@ export function printersRouter(services: Services) {
     });
     if (!printer) throw errors.notFound();
     const status = await checkPrinterPing(printer.host, printer.port);
-    res.json({ ...status, printerId: printer.id, host: printer.host, port: printer.port });
+    res.json({
+      ...status,
+      printerId: printer.id,
+      host: printer.host,
+      port: printer.port,
+    });
   });
 
   router.post('/printers/ping-host', ...terminalAccess, async (req, res) => {
@@ -318,7 +320,9 @@ export function printersRouter(services: Services) {
       )
       .map((item) => item.address);
     const subnets = [
-      ...new Set(addresses.map((address) => address.split('.').slice(0, 3).join('.'))),
+      ...new Set(
+        addresses.map((address) => address.split('.').slice(0, 3).join('.')),
+      ),
     ];
     res.json({ subnets, addresses });
   });
@@ -337,13 +341,16 @@ export function printersRouter(services: Services) {
     const prefix = input.subnet || '192.168.1';
     const hosts = Array.from({ length: 254 }, (_, i) => `${prefix}.${i + 1}`);
     const batchSize = 32;
-    const discovered: Array<{ host: string; port: number; latencyMs: number }> = [];
+    const discovered: Array<{ host: string; port: number; latencyMs: number }> =
+      [];
     for (let i = 0; i < hosts.length; i += batchSize) {
       const batch = hosts.slice(i, i + batchSize);
       const results = await Promise.all(
         batch.map(async (host) => {
           const ping = await checkPrinterPing(host, 9100, 350);
-          return ping.online ? { host, port: 9100, latencyMs: ping.latencyMs } : null;
+          return ping.online
+            ? { host, port: 9100, latencyMs: ping.latencyMs }
+            : null;
         }),
       );
       for (const r of results) {
@@ -464,24 +471,30 @@ export function printersRouter(services: Services) {
     });
   });
 
-  router.put('/print-rules', requireAuth(), requireAnyPermission('settings.manage'), async (req, res) => {
-    const auth = getAuth(res);
-    const rules = parse(printRulesSchema, req.body?.rules ?? {});
-    await db.tenantProfile.upsert({
-      where: { tenantId: auth.tenantId },
-      create: { tenantId: auth.tenantId, printRules: rules },
-      update: { printRules: rules },
-    });
-    await audit(db, req, {
-      tenantId: auth.tenantId,
-      actorUserId: auth.userId,
-      action: 'print.rules',
-      entityType: 'tenant_profile',
-      entityId: auth.tenantId,
-      data: { types: Object.keys(rules) },
-    });
-    res.json({ ok: true });
-  });
+  router.put(
+    '/print-rules',
+    requireAuth(),
+    requireAnyPermission('settings.manage'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const rules = parse(printRulesSchema, req.body?.rules ?? {});
+      await assertRulePrinters(db, auth.tenantId, rules);
+      await db.tenantProfile.upsert({
+        where: { tenantId: auth.tenantId },
+        create: { tenantId: auth.tenantId, printRules: rules },
+        update: { printRules: rules },
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'print.rules',
+        entityType: 'tenant_profile',
+        entityId: auth.tenantId,
+        data: { types: Object.keys(rules) },
+      });
+      res.json({ ok: true });
+    },
+  );
 
   /**
    * Manual retry. A failed job is sent again. A job that may already have printed

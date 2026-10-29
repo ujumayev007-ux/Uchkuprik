@@ -5,7 +5,7 @@ import { can, useMe } from '../auth/session';
 import { DisplayModeSwitch, OrderBoard } from '../components/OrderBoard';
 import { TableAssignDialog } from '../components/TableAssignDialog';
 import { PaymentDialog } from '../components/PaymentDialog';
-import { PrintReceipt } from '../components/PrintReceipt';
+import { PrintReceipt, RefundPrintButton } from '../components/PrintReceipt';
 import {
   ScheduleDialog,
   ScheduledOrders,
@@ -417,7 +417,8 @@ export function OrderDetail({
                 {o.refunds.map((refundRow) => (
                   <li key={refundRow.id} className="danger-text">
                     {t.orders.refund}: {t.payment.methods[refundRow.method]} · −
-                    {formatMoney(refundRow.amount)} · {refundRow.reason}
+                    {formatMoney(refundRow.amount)} · {refundRow.reason}{' '}
+                    <RefundPrintButton orderId={o.id} refundId={refundRow.id} />
                   </li>
                 ))}
               </ul>
@@ -618,6 +619,42 @@ export function OrderDetail({
                 <Button onClick={() => setScheduling(true)}>
                   {o.scheduledFor ? t.scheduled.edit : t.scheduled.set}
                 </Button>
+              )}
+            {['PLACED', 'PREPARING', 'READY', 'SERVED'].includes(o.status) &&
+              can(me, 'orders.edit') && (
+                <>
+                  {/* Network kitchen printers: also tickets whose rule waits for this. */}
+                  <Button
+                    busy={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const sent = await post<{ jobs: number }>(
+                          `/orders/${o.id}/kitchen-print`,
+                        );
+                        toast(
+                          t.printRules.kitchenPrinted.replace(
+                            '{n}',
+                            String(sent.jobs),
+                          ),
+                        );
+                      })
+                    }
+                  >
+                    {t.printRules.kitchenPrint}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      window.open(
+                        `/oshxona-chek/${o.id}?all=1`,
+                        '_blank',
+                        'noopener,width=420,height=700',
+                      )
+                    }
+                  >
+                    {t.printRules.kitchenTicket}
+                  </Button>
+                </>
               )}
             {open && o.type === 'DINE_IN' && ordering.tableAssign && (
               <Button onClick={() => setTableOpen(true)}>

@@ -54,6 +54,8 @@ export function sendToPrinter(
 export async function enqueueKitchenTickets(
   services: Services,
   orderId: string,
+  // Staff pressed «Oshxonaga chop etish»: rules waiting for a manual print go out too.
+  options: { force?: boolean } = {},
 ) {
   const { db } = services;
   await db.$transaction(async (tx) => {
@@ -154,16 +156,32 @@ export async function enqueueKitchenTickets(
         : nameOf(lastChange?.actorId ?? null);
     // Printing rules (Chop etish qoidalari); without a rule today's behaviour stays.
     const rules = await loadPrintRules(tx, order.tenantId);
-    const kitchenRule = ruleOf(rules, 'KITCHEN');
     const changeRule = ruleOf(rules, 'MODIFICATION');
     const cancelRule = ruleOf(rules, 'CANCELLATION');
-    const showPrices = kitchenRule ? kitchenRule.showPrices : settings.kitchenPrices;
+    const paid =
+      order.status === 'CANCELLED' ||
+      order.paidTotal - order.refundedTotal >= order.total;
+    // Each printer follows the rule of its department's type (Oshxona / Kabob / Bar);
+    // Kabob and Bar without their own rule follow the kitchen one.
+    const ruleFor = (printer: { station: { printType: string } | null }) => {
+      const type = printer.station?.printType;
+      return ruleOf(
+        rules,
+        type === 'KEBAB' || type === 'BAR' ? type : 'KITCHEN',
+      );
+    };
+    // Waits for a manual print, or for the full payment.
+    const deferred = (rule: ReturnType<typeof ruleFor>) =>
+      !options.force &&
+      !!rule &&
+      (rule.trigger === 'MANUAL' ||
+        (rule.trigger === 'AFTER_PAYMENT' && !paid));
     // A switched-off type is marked as handled (no flood of old tickets later).
-    const skipItems =
-      (!printedBefore && kitchenRule?.enabled === false) ||
-      (printedBefore && changeRule?.enabled === false);
     const skipCancelled = cancelRule?.enabled === false;
-    const toLine = (item: (typeof order.items)[number]) => ({
+    const toLine = (
+      item: (typeof order.items)[number],
+      showPrices: boolean,
+    ) => ({
       quantity: item.quantity,
       name: `${item.productName}${item.variantName === 'Standart' ? '' : ` (${item.variantName})`}`,
       modifiers: [
@@ -198,9 +216,24 @@ export async function enqueueKitchenTickets(
           item.stationId === printer.stationId,
       );
     const now = services.now?.() ?? new Date();
+    // Items a printer took care of (printed, or its rule switched printing off).
+    const handled = new Set<string>();
+    const targeted = new Set<string>();
     for (const printer of printers) {
-      const items = skipItems ? [] : forPrinter(printer, fresh);
-      const cancelled = skipCancelled ? [] : forPrinter(printer, removed);
+      const typeRule = ruleFor(printer);
+      const ownItems = forPrinter(printer, fresh);
+      const ownCancelled = forPrinter(printer, removed);
+      for (const item of [...ownItems, ...ownCancelled]) targeted.add(item.id);
+      if (deferred(typeRule)) continue;
+      for (const item of [...ownItems, ...ownCancelled]) handled.add(item.id);
+      const skipItems =
+        (!printedBefore && typeRule?.enabled === false) ||
+        (printedBefore && changeRule?.enabled === false);
+      const showPrices = typeRule
+        ? typeRule.showPrices
+        : settings.kitchenPrices;
+      const items = skipItems ? [] : ownItems;
+      const cancelled = skipCancelled ? [] : ownCancelled;
       if (items.length === 0 && cancelled.length === 0) continue;
       const update = printedBefore;
       const station = ticketTemplateOf(printer.station?.ticketTemplate);
@@ -236,8 +269,8 @@ export async function enqueueKitchenTickets(
         priority: order.priority,
         createdAt: order.placedAt ?? order.createdAt,
         timezone: order.branch.timezone,
-        items: items.map(toLine),
-        cancelled: cancelled.map(toLine),
+        items: items.map((item) => toLine(item, showPrices)),
+        cancelled: cancelled.map((item) => toLine(item, showPrices)),
         delivery: order.type === 'DELIVERY',
         update,
         version: order.version,
@@ -246,7 +279,7 @@ export async function enqueueKitchenTickets(
         changedAt: update ? (lastChange?.createdAt ?? now) : now,
         template: layout,
       });
-      const rule = update ? changeRule : kitchenRule;
+      const rule = update ? changeRule : typeRule;
       const copies = Array.from(
         { length: rule?.copies ?? layout.copies },
         () => single,
@@ -269,14 +302,19 @@ export async function enqueueKitchenTickets(
         },
       });
     }
-    if (fresh.length)
+    // Items waiting only for deferred printers stay unprinted for a later pass.
+    const done = (item: { id: string }) =>
+      handled.has(item.id) || !targeted.has(item.id);
+    const printedNow = fresh.filter(done);
+    const cancelledNow = removed.filter(done);
+    if (printedNow.length)
       await tx.orderItem.updateMany({
-        where: { id: { in: fresh.map((item) => item.id) } },
+        where: { id: { in: printedNow.map((item) => item.id) } },
         data: { kitchenPrintedAt: now },
       });
-    if (removed.length)
+    if (cancelledNow.length)
       await tx.orderItem.updateMany({
-        where: { id: { in: removed.map((item) => item.id) } },
+        where: { id: { in: cancelledNow.map((item) => item.id) } },
         data: { cancelPrintedAt: now },
       });
   });
@@ -292,8 +330,14 @@ export async function processPrintJobs(services: Services, limit = 20) {
   const now = services.now?.() ?? new Date();
   // A send interrupted by a crash or restart: it may have printed — never resent alone.
   await db.printJob.updateMany({
-    where: { status: 'PRINTING', nextTryAt: { lt: new Date(now.getTime() - 60_000) } },
-    data: { status: 'UNKNOWN', lastError: 'Natija noma’lum (ilova qayta ishga tushdi)' },
+    where: {
+      status: 'PRINTING',
+      nextTryAt: { lt: new Date(now.getTime() - 60_000) },
+    },
+    data: {
+      status: 'UNKNOWN',
+      lastError: 'Natija noma’lum (ilova qayta ishga tushdi)',
+    },
   });
   const claimed = await db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<{ id: string }[]>`

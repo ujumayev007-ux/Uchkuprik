@@ -128,6 +128,7 @@ export const featureCatalog: FeatureDef[] = [
       'PATCH /orders/:id/items/:itemId',
       'POST /orders/:id/place',
       'POST /orders/:id/schedule',
+      'POST /orders/:id/kitchen-print',
     ],
   }),
   f({
@@ -182,6 +183,7 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       'GET /orders/:id/receipt',
       'POST /orders/:id/receipt/print',
+      'POST /orders/:id/refunds/:refundId/print',
       'POST /orders/:id/e-receipt',
       'GET /receipt-printers',
     ],

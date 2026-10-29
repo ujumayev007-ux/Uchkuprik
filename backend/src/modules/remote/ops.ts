@@ -8,6 +8,7 @@ import {
   ENFORCED_TYPES,
   loadPrintRules,
   printRulesSchema,
+  assertRulePrinters,
   RECEIPT_TYPES,
   testPage,
 } from '../../printing/rules.js';
@@ -32,14 +33,25 @@ export const OP_PAYLOADS = {
   'snapshot.floor': z.object({}),
   'snapshot.settings': z.object({}),
   'snapshot.inventory': z.object({}),
-  'snapshot.reports': z.object({ days: z.number().int().min(1).max(31).default(7) }),
-  'menu.product.visibility': z.object({ productId: uuid, isActive: z.boolean() }),
+  'snapshot.reports': z.object({
+    days: z.number().int().min(1).max(31).default(7),
+  }),
+  'menu.product.visibility': z.object({
+    productId: uuid,
+    isActive: z.boolean(),
+  }),
   'menu.variant.price': z.object({
     variantId: uuid,
     price: z.number().int().min(0).max(1_000_000_000),
   }),
-  'menu.category.visibility': z.object({ categoryId: uuid, isActive: z.boolean() }),
-  'staff.status': z.object({ userId: uuid, status: z.enum(['ACTIVE', 'DISABLED']) }),
+  'menu.category.visibility': z.object({
+    categoryId: uuid,
+    isActive: z.boolean(),
+  }),
+  'staff.status': z.object({
+    userId: uuid,
+    status: z.enum(['ACTIVE', 'DISABLED']),
+  }),
   'floor.room': z.object({
     roomId: uuid,
     name: z.string().trim().min(1).max(60).optional(),
@@ -71,7 +83,10 @@ export const OP_PAYLOADS = {
   'snapshot.backups': z.object({}),
   'backup.create': z.object({}),
   'backup.verify': z.object({ name: backupName }),
-  'backup.restore': z.object({ name: backupName, confirm: z.literal('TIKLASH') }),
+  'backup.restore': z.object({
+    name: backupName,
+    confirm: z.literal('TIKLASH'),
+  }),
   'backup.rollback': z.object({
     database: z.string().regex(/^fastfood_before_[0-9]{8,20}$/),
     confirm: z.literal('TIKLASH'),
@@ -101,12 +116,19 @@ export async function executeOp(
   local: { backups?: BackupStore | undefined } = {},
 ): Promise<unknown> {
   const backups = () => {
-    if (!local.backups) throw new AppError(409, 'BACKUP_UNAVAILABLE', 'backupUnavailable');
+    if (!local.backups)
+      throw new AppError(409, 'BACKUP_UNAVAILABLE', 'backupUnavailable');
     return local.backups;
   };
-  if (!(kind in OP_PAYLOADS)) throw new AppError(400, 'OP_UNKNOWN', 'validation');
+  if (!(kind in OP_PAYLOADS))
+    throw new AppError(400, 'OP_UNKNOWN', 'validation');
   const owned = { tenantId };
-  const ownerAudit = (action: string, entityType: string, entityId: string, data?: object) =>
+  const ownerAudit = (
+    action: string,
+    entityType: string,
+    entityId: string,
+    data?: object,
+  ) =>
     audit(db, null, {
       tenantId,
       action,
@@ -122,7 +144,13 @@ export async function executeOp(
         db.menuCategory.findMany({
           where: owned,
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-          select: { id: true, name: true, parentId: true, isActive: true, stationId: true },
+          select: {
+            id: true,
+            name: true,
+            parentId: true,
+            isActive: true,
+            stationId: true,
+          },
         }),
         db.product.findMany({
           where: { ...owned, deletedAt: null },
@@ -135,7 +163,13 @@ export async function executeOp(
             imageUrl: true,
             variants: {
               orderBy: { sortOrder: 'asc' },
-              select: { id: true, name: true, price: true, cost: true, isActive: true },
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                cost: true,
+                isActive: true,
+              },
             },
           },
         }),
@@ -154,7 +188,9 @@ export async function executeOp(
           status: true,
           lastLoginAt: true,
           pinHash: true,
-          roles: { select: { role: { select: { name: true, systemKey: true } } } },
+          roles: {
+            select: { role: { select: { name: true, systemKey: true } } },
+          },
         },
       });
       // Only whether a PIN exists — never the hash.
@@ -259,10 +295,23 @@ export async function executeOp(
       const payload = OP_PAYLOADS['snapshot.reports'].parse(rawPayload ?? {});
       const since = new Date(Date.now() - payload.days * 86_400_000);
       const orders = await db.order.findMany({
-        where: { ...owned, createdAt: { gte: since }, status: { not: 'CANCELLED' } },
-        select: { total: true, paidTotal: true, refundedTotal: true, status: true, createdAt: true },
+        where: {
+          ...owned,
+          createdAt: { gte: since },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          total: true,
+          paidTotal: true,
+          refundedTotal: true,
+          status: true,
+          createdAt: true,
+        },
       });
-      const byDay = new Map<string, { orders: number; total: number; paid: number }>();
+      const byDay = new Map<
+        string,
+        { orders: number; total: number; paid: number }
+      >();
       for (const order of orders) {
         const day = order.createdAt.toISOString().slice(0, 10);
         const row = byDay.get(day) ?? { orders: 0, total: 0, paid: 0 };
@@ -279,7 +328,9 @@ export async function executeOp(
       };
     }
     case 'menu.product.visibility': {
-      const payload = OP_PAYLOADS['menu.product.visibility'].parse(rawPayload ?? {});
+      const payload = OP_PAYLOADS['menu.product.visibility'].parse(
+        rawPayload ?? {},
+      );
       const result = await db.product.updateMany({
         where: { ...owned, id: payload.productId, deletedAt: null },
         data: { isActive: payload.isActive, version: { increment: 1 } },
@@ -304,22 +355,34 @@ export async function executeOp(
         where: { id: payload.variantId },
         data: { price: payload.price },
       });
-      await ownerAudit('menu.variant.price', 'product_variant', payload.variantId, {
-        from: variant.price,
-        to: payload.price,
-      });
+      await ownerAudit(
+        'menu.variant.price',
+        'product_variant',
+        payload.variantId,
+        {
+          from: variant.price,
+          to: payload.price,
+        },
+      );
       return { ok: true };
     }
     case 'menu.category.visibility': {
-      const payload = OP_PAYLOADS['menu.category.visibility'].parse(rawPayload ?? {});
+      const payload = OP_PAYLOADS['menu.category.visibility'].parse(
+        rawPayload ?? {},
+      );
       const result = await db.menuCategory.updateMany({
         where: { ...owned, id: payload.categoryId },
         data: { isActive: payload.isActive },
       });
       if (result.count === 0) throw notFound();
-      await ownerAudit('menu.category.update', 'menu_category', payload.categoryId, {
-        isActive: payload.isActive,
-      });
+      await ownerAudit(
+        'menu.category.update',
+        'menu_category',
+        payload.categoryId,
+        {
+          isActive: payload.isActive,
+        },
+      );
       return { ok: true };
     }
     case 'staff.status': {
@@ -335,7 +398,9 @@ export async function executeOp(
           where: { userId: payload.userId, revokedAt: null },
           data: { revokedAt: new Date(), revokeReason: 'owner_disabled' },
         });
-      await ownerAudit('user.status', 'user', payload.userId, { status: payload.status });
+      await ownerAudit('user.status', 'user', payload.userId, {
+        status: payload.status,
+      });
       return { ok: true };
     }
     case 'floor.room': {
@@ -409,21 +474,48 @@ export async function executeOp(
               orderBy: { createdAt: 'desc' },
               select: { status: true, createdAt: true, lastError: true },
             }),
-            db.printJob.count({ where: { printerId: printer.id, status: 'FAILED', createdAt: { gte: since } } }),
-            db.printJob.count({ where: { printerId: printer.id, status: 'UNKNOWN', createdAt: { gte: since } } }),
-            db.printJob.count({ where: { printerId: printer.id, status: { in: ['PENDING', 'PRINTING'] } } }),
+            db.printJob.count({
+              where: {
+                printerId: printer.id,
+                status: 'FAILED',
+                createdAt: { gte: since },
+              },
+            }),
+            db.printJob.count({
+              where: {
+                printerId: printer.id,
+                status: 'UNKNOWN',
+                createdAt: { gte: since },
+              },
+            }),
+            db.printJob.count({
+              where: {
+                printerId: printer.id,
+                status: { in: ['PENDING', 'PRINTING'] },
+              },
+            }),
           ]);
-          return { ...printer, lastJob: last, failed24h: failed, unknown24h: unknown, pending };
+          return {
+            ...printer,
+            lastJob: last,
+            failed24h: failed,
+            unknown24h: unknown,
+            pending,
+          };
         }),
       );
       // Two active printers on one address print each other's tickets.
       const seen = new Map<string, number>();
       for (const printer of printers.filter((p) => p.isActive))
-        seen.set(`${printer.host}:${printer.port}`, (seen.get(`${printer.host}:${printer.port}`) ?? 0) + 1);
+        seen.set(
+          `${printer.host}:${printer.port}`,
+          (seen.get(`${printer.host}:${printer.port}`) ?? 0) + 1,
+        );
       return {
         printers: withStatus.map((printer) => ({
           ...printer,
-          duplicateAddress: (seen.get(`${printer.host}:${printer.port}`) ?? 0) > 1,
+          duplicateAddress:
+            (seen.get(`${printer.host}:${printer.port}`) ?? 0) > 1,
         })),
         stations,
         rules,
@@ -432,16 +524,26 @@ export async function executeOp(
       };
     }
     case 'printer.update': {
-      const { printerId, ...data } = OP_PAYLOADS['printer.update'].parse(rawPayload ?? {});
-      const printer = await db.printer.findFirst({ where: { ...owned, id: printerId } });
+      const { printerId, ...data } = OP_PAYLOADS['printer.update'].parse(
+        rawPayload ?? {},
+      );
+      const printer = await db.printer.findFirst({
+        where: { ...owned, id: printerId },
+      });
       if (!printer) throw notFound();
       if (data.stationId) {
-        const station = await db.kitchenStation.findFirst({ where: { ...owned, id: data.stationId } });
+        const station = await db.kitchenStation.findFirst({
+          where: { ...owned, id: data.stationId },
+        });
         if (!station) throw notFound();
       }
       if (data.fallbackPrinterId) {
         const fallback = await db.printer.findFirst({
-          where: { ...owned, id: data.fallbackPrinterId, NOT: { id: printerId } },
+          where: {
+            ...owned,
+            id: data.fallbackPrinterId,
+            NOT: { id: printerId },
+          },
         });
         if (!fallback) throw notFound();
       }
@@ -457,19 +559,27 @@ export async function executeOp(
       });
       if (!printer) throw notFound();
       const job = await db.printJob.create({
-        data: { tenantId, printerId, kind: printer.kind, payload: testPage(printer) },
+        data: {
+          tenantId,
+          printerId,
+          kind: printer.kind,
+          payload: testPage(printer),
+        },
       });
       await ownerAudit('printer.test', 'printer', printerId);
       return { jobId: job.id };
     }
     case 'print.rules': {
       const rules = OP_PAYLOADS['print.rules'].parse(rawPayload ?? {});
+      await assertRulePrinters(db, tenantId, rules);
       await db.tenantProfile.upsert({
         where: owned,
         create: { tenantId, printRules: rules as Prisma.InputJsonValue },
         update: { printRules: rules as Prisma.InputJsonValue },
       });
-      await ownerAudit('print.rules', 'tenant_profile', tenantId, { types: Object.keys(rules) });
+      await ownerAudit('print.rules', 'tenant_profile', tenantId, {
+        types: Object.keys(rules),
+      });
       return { ok: true };
     }
     case 'inventory.minStock': {
@@ -479,21 +589,38 @@ export async function executeOp(
         data: { minStock: payload.minStock },
       });
       if (result.count === 0) throw notFound();
-      await ownerAudit('inventory.min_stock', 'stock_item', payload.stockItemId, {
-        minStock: payload.minStock,
-      });
+      await ownerAudit(
+        'inventory.min_stock',
+        'stock_item',
+        payload.stockItemId,
+        {
+          minStock: payload.minStock,
+        },
+      );
       return { ok: true };
     }
     case 'snapshot.backups': {
       OP_PAYLOADS['snapshot.backups'].parse(rawPayload ?? {});
       if (!local.backups)
-        return { available: false, canRestore: false, backups: [], kept: [], status: null };
+        return {
+          available: false,
+          canRestore: false,
+          backups: [],
+          kept: [],
+          status: null,
+        };
       const [list, kept, status] = await Promise.all([
         local.backups.list(),
         local.backups.keptDatabases().catch(() => []),
         local.backups.status(),
       ]);
-      return { available: true, canRestore: local.backups.canRestore, backups: list, kept, status };
+      return {
+        available: true,
+        canRestore: local.backups.canRestore,
+        backups: list,
+        kept,
+        status,
+      };
     }
     case 'backup.create': {
       OP_PAYLOADS['backup.create'].parse(rawPayload ?? {});
@@ -504,7 +631,9 @@ export async function executeOp(
     case 'backup.verify': {
       const payload = OP_PAYLOADS['backup.verify'].parse(rawPayload);
       const result = await backups().verify(payload.name);
-      await ownerAudit('backup.verify', 'backup', payload.name, { ok: result.ok });
+      await ownerAudit('backup.verify', 'backup', payload.name, {
+        ok: result.ok,
+      });
       return result;
     }
     case 'backup.restore': {
