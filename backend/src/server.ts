@@ -14,6 +14,7 @@ import { backupStore } from './lib/backup-store.js';
 import { createEventBus } from './realtime/bus.js';
 import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
+import { startScheduleWorker } from './modules/workflow/schedule.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { setEntitlementsOverride } from './modules/billing/entitlements.js';
 import {
@@ -145,6 +146,8 @@ async function main(): Promise<void> {
     );
   };
   const stopPrinting = startPrintWorker(services);
+  // Scheduled orders and banquets reach the kitchen on time.
+  const stopSchedule = startScheduleWorker(services);
   const stopLicenseSync = config.SELF_HOSTED
     ? startLicenseSync(services)
     : () => undefined;
@@ -201,6 +204,7 @@ async function main(): Promise<void> {
     deadline.unref();
     void realtime.close();
     stopPrinting();
+    stopSchedule();
     stopBilling();
     stopMaintenance();
     stopNotifications();

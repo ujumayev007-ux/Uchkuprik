@@ -72,6 +72,10 @@ export const zoneFlowSchema = z.object({
   kitchenPrint: z.enum(['ON_PLACE', 'AFTER_PAYMENT']).default('ON_PLACE'),
   // One kitchen station prepares every item of the zone (food court, VIP kitchen).
   stationId: z.uuid().nullable().default(null),
+  // Orders may be placed for a later time (scheduled orders, banquets): they wait and
+  // reach the kitchen scheduleLeadMinutes before that time.
+  scheduling: z.boolean().default(false),
+  scheduleLeadMinutes: z.number().int().min(0).max(1440).default(30),
 });
 export type ZoneFlow = z.infer<typeof zoneFlowSchema>;
 
@@ -88,8 +92,9 @@ export type WorkflowConfig = z.infer<typeof workflowConfigSchema>;
 export type ActiveWorkflow = { version: number; config: WorkflowConfig };
 export type OrderWorkflow = ZoneFlow & { zone: Zone; version: number };
 
-const flow = (value: Partial<ZoneFlow> & Pick<ZoneFlow, 'sources' | 'approval' | 'payment'>): ZoneFlow =>
-  zoneFlowSchema.parse(value);
+const flow = (
+  value: Partial<ZoneFlow> & Pick<ZoneFlow, 'sources' | 'approval' | 'payment'>,
+): ZoneFlow => zoneFlowSchema.parse(value);
 
 // Building blocks shared by several presets.
 const waiterHall = flow({
@@ -136,7 +141,10 @@ export type Preset = {
   config: () => WorkflowConfig;
 };
 
-const zones = (value: WorkflowConfig['zones'], preset: number): WorkflowConfig => ({
+const zones = (
+  value: WorkflowConfig['zones'],
+  preset: number,
+): WorkflowConfig => ({
   enabled: true,
   preset,
   template: null,
@@ -149,7 +157,18 @@ export const PRESETS: Preset[] = [
     id: 1,
     name: 'An’anaviy restoran',
     steps: 'Ofitsiant → Oshxona → Mijoz → Kassa',
-    config: () => zones({ HALL: waiterHall, COUNTER: { ...counterPrepay, payment: 'POSTPAY', kitchenPrint: 'ON_PLACE' } }, 1),
+    config: () =>
+      zones(
+        {
+          HALL: waiterHall,
+          COUNTER: {
+            ...counterPrepay,
+            payment: 'POSTPAY',
+            kitchenPrint: 'ON_PLACE',
+          },
+        },
+        1,
+      ),
   },
   {
     id: 2,
@@ -161,7 +180,17 @@ export const PRESETS: Preset[] = [
     id: 3,
     name: 'Kassir tasdig‘i',
     steps: 'Ofitsiant → Kassir tasdig‘i → Oshxona',
-    config: () => zones({ HALL: { ...waiterHall, sources: ['WAITER', 'CASHIER'], approval: 'CASHIER' } }, 3),
+    config: () =>
+      zones(
+        {
+          HALL: {
+            ...waiterHall,
+            sources: ['WAITER', 'CASHIER'],
+            approval: 'CASHIER',
+          },
+        },
+        3,
+      ),
   },
   {
     id: 4,
@@ -177,7 +206,11 @@ export const PRESETS: Preset[] = [
       zones(
         {
           HALL: { ...waiterHall, sources: ['WAITER', 'CASHIER'] },
-          COUNTER: { ...counterPrepay, payment: 'MIXED', kitchenPrint: 'ON_PLACE' },
+          COUNTER: {
+            ...counterPrepay,
+            payment: 'MIXED',
+            kitchenPrint: 'ON_PLACE',
+          },
           QR: { ...qrTables, approval: 'AUTO' },
         },
         5,
@@ -187,7 +220,14 @@ export const PRESETS: Preset[] = [
     id: 6,
     name: 'O‘z-o‘ziga xizmat',
     steps: 'Mijoz → Kassa → Oshxona → Navbat TV',
-    config: () => zones({ COUNTER: { ...counterPrepay, queueTv: true }, HALL: { ...counterPrepay, queueTv: true } }, 6),
+    config: () =>
+      zones(
+        {
+          COUNTER: { ...counterPrepay, queueTv: true },
+          HALL: { ...counterPrepay, queueTv: true },
+        },
+        6,
+      ),
   },
   {
     id: 7,
@@ -199,7 +239,11 @@ export const PRESETS: Preset[] = [
     id: 8,
     name: 'Olib ketish',
     steps: 'Kassa → Oshxona → Tayyor → Mijoz',
-    config: () => zones({ COUNTER: { ...counterPrepay, payment: 'PREPAY', queueTv: true } }, 8),
+    config: () =>
+      zones(
+        { COUNTER: { ...counterPrepay, payment: 'PREPAY', queueTv: true } },
+        8,
+      ),
   },
   {
     id: 9,
@@ -211,82 +255,238 @@ export const PRESETS: Preset[] = [
     id: 10,
     name: 'Telegram buyurtma',
     steps: 'Telegram → Tasdiq → Oshxona',
-    config: () => zones({ ONLINE: { ...online, sources: ['TELEGRAM'] }, DELIVERY: { ...delivery, sources: ['TELEGRAM', 'OPERATOR'] } }, 10),
+    config: () =>
+      zones(
+        {
+          ONLINE: { ...online, sources: ['TELEGRAM'] },
+          DELIVERY: { ...delivery, sources: ['TELEGRAM', 'OPERATOR'] },
+        },
+        10,
+      ),
   },
   {
     id: 11,
     name: 'Rejalashtirilgan buyurtma',
     steps: 'Mijoz → Belgilangan vaqtda tayyorlash → Oshxona',
     needs: 'scheduled',
-    config: () => zones({ ONLINE: { ...online, payment: 'ADVANCE' }, DELIVERY: { ...delivery, payment: 'ADVANCE' } }, 11),
+    config: () =>
+      zones(
+        {
+          ONLINE: { ...online, payment: 'ADVANCE', scheduling: true },
+          DELIVERY: { ...delivery, payment: 'ADVANCE', scheduling: true },
+          COUNTER: {
+            ...counterPrepay,
+            payment: 'ADVANCE',
+            kitchenPrint: 'ON_PLACE',
+            scheduling: true,
+          },
+        },
+        11,
+      ),
   },
   {
     id: 12,
     name: 'Banket',
     steps: 'Admin → Bron / buyurtma → Oshxona → Hisob-kitob',
-    config: () => zones({ HALL: { ...waiterHall, sources: ['CASHIER', 'WAITER'], approval: 'ADMIN', payment: 'ADVANCE', advancePercent: 30, discounts: 'MANAGER' } }, 12),
+    needs: 'scheduled',
+    config: () =>
+      zones(
+        {
+          HALL: {
+            ...waiterHall,
+            sources: ['CASHIER', 'WAITER'],
+            approval: 'ADMIN',
+            payment: 'ADVANCE',
+            advancePercent: 30,
+            discounts: 'MANAGER',
+            scheduling: true,
+            scheduleLeadMinutes: 60,
+          },
+          VIP: {
+            ...waiterHall,
+            sources: ['CASHIER', 'WAITER'],
+            approval: 'ADMIN',
+            payment: 'ADVANCE',
+            advancePercent: 30,
+            discounts: 'MANAGER',
+            scheduling: true,
+            scheduleLeadMinutes: 60,
+            queueTv: false,
+          },
+        },
+        12,
+      ),
   },
   {
     id: 13,
     name: 'VIP xona',
     steps: 'Ofitsiant → Biriktirilgan oshxona → VIP xona hisobi',
-    config: () => zones({ VIP: { ...waiterHall, queueTv: false, discounts: 'MANAGER' }, HALL: waiterHall }, 13),
+    config: () =>
+      zones(
+        {
+          VIP: { ...waiterHall, queueTv: false, discounts: 'MANAGER' },
+          HALL: waiterHall,
+        },
+        13,
+      ),
   },
   {
     id: 14,
     name: 'Bir nechta oshxona bo‘limi',
     steps: 'Buyurtma → Osh / Kabob / Salat / Fast food bo‘limlari',
-    config: () => zones({ HALL: waiterHall, COUNTER: { ...counterPrepay, kitchenConfirm: true } }, 14),
+    config: () =>
+      zones(
+        {
+          HALL: waiterHall,
+          COUNTER: { ...counterPrepay, kitchenConfirm: true },
+        },
+        14,
+      ),
   },
   {
     id: 15,
     name: 'Bar xizmati',
     steps: 'Ofitsiant → Bar printeri → Kassa',
-    config: () => zones({ BAR: { ...waiterHall, sources: ['WAITER', 'CASHIER'], kitchenConfirm: false, queueTv: false }, HALL: waiterHall }, 15),
+    config: () =>
+      zones(
+        {
+          BAR: {
+            ...waiterHall,
+            sources: ['WAITER', 'CASHIER'],
+            kitchenConfirm: false,
+            queueTv: false,
+          },
+          HALL: waiterHall,
+        },
+        15,
+      ),
   },
   {
     id: 16,
     name: 'Oldindan to‘lov',
     steps: 'Mijoz → Avans → Oshxona → Qolgan to‘lov',
-    config: () => zones({ COUNTER: { ...counterPrepay, payment: 'ADVANCE', advancePercent: 50, kitchenPrint: 'ON_PLACE' }, HALL: { ...waiterHall, payment: 'ADVANCE', advancePercent: 50 } }, 16),
+    config: () =>
+      zones(
+        {
+          COUNTER: {
+            ...counterPrepay,
+            payment: 'ADVANCE',
+            advancePercent: 50,
+            kitchenPrint: 'ON_PLACE',
+          },
+          HALL: { ...waiterHall, payment: 'ADVANCE', advancePercent: 50 },
+        },
+        16,
+      ),
   },
   {
     id: 17,
     name: 'Mijoz qarzi (nasiya)',
     steps: 'Buyurtma → Oshxona → Mijoz qarz hisobi',
     needs: 'credit',
-    config: () => zones({ HALL: { ...waiterHall, payment: 'CREDIT' }, COUNTER: { ...counterPrepay, payment: 'CREDIT', kitchenPrint: 'ON_PLACE' } }, 17),
+    config: () =>
+      zones(
+        {
+          HALL: { ...waiterHall, payment: 'CREDIT' },
+          COUNTER: {
+            ...counterPrepay,
+            payment: 'CREDIT',
+            kitchenPrint: 'ON_PLACE',
+          },
+        },
+        17,
+      ),
   },
   {
     id: 18,
     name: 'Mehmonxona restorani',
     steps: 'Buyurtma → Oshxona → Mehmonxona xonasi hisobi',
     needs: 'credit',
-    config: () => zones({ HALL: { ...waiterHall, payment: 'CREDIT' }, DELIVERY: { ...delivery, sources: ['OPERATOR', 'CASHIER'], payment: 'CREDIT', deliveryConfirm: false } }, 18),
+    config: () =>
+      zones(
+        {
+          HALL: { ...waiterHall, payment: 'CREDIT' },
+          DELIVERY: {
+            ...delivery,
+            sources: ['OPERATOR', 'CASHIER'],
+            payment: 'CREDIT',
+            deliveryConfirm: false,
+          },
+        },
+        18,
+      ),
   },
   {
     id: 19,
     name: 'Food court',
     steps: 'Kassa → Biriktirilgan oshxona → Umumiy navbat TV',
-    config: () => zones({ COUNTER: { ...counterPrepay, queueTv: true }, HALL: { ...counterPrepay, queueTv: true } }, 19),
+    config: () =>
+      zones(
+        {
+          COUNTER: { ...counterPrepay, queueTv: true },
+          HALL: { ...counterPrepay, queueTv: true },
+        },
+        19,
+      ),
   },
   {
     id: 20,
     name: 'Stolga yetkazish',
     steps: 'Kassa → Oshxona → Ofitsiant stolga olib boradi',
-    config: () => zones({ HALL: { ...counterPrepay, sources: ['CASHIER'], queueTv: false, tableClose: 'MANUAL' }, COUNTER: counterPrepay }, 20),
+    config: () =>
+      zones(
+        {
+          HALL: {
+            ...counterPrepay,
+            sources: ['CASHIER'],
+            queueTv: false,
+            tableClose: 'MANUAL',
+          },
+          COUNTER: counterPrepay,
+        },
+        20,
+      ),
   },
 ];
 
 /** Ready-made restaurant configurations (Owner → Ish rejimlari → Shablonlar). */
-export const TEMPLATES: { key: string; name: string; preset: number; config: () => WorkflowConfig }[] = [
-  { key: 'traditional', name: 'An’anaviy restoran', preset: 1, config: () => PRESETS[0]!.config() },
-  { key: 'fastfood', name: 'Fast food', preset: 2, config: () => PRESETS[1]!.config() },
+export const TEMPLATES: {
+  key: string;
+  name: string;
+  preset: number;
+  config: () => WorkflowConfig;
+}[] = [
+  {
+    key: 'traditional',
+    name: 'An’anaviy restoran',
+    preset: 1,
+    config: () => PRESETS[0]!.config(),
+  },
+  {
+    key: 'fastfood',
+    name: 'Fast food',
+    preset: 2,
+    config: () => PRESETS[1]!.config(),
+  },
   {
     key: 'choyxona',
     name: 'Choyxona',
     preset: 7,
-    config: () => ({ ...zones({ HALL: waiterHall, VIP: { ...waiterHall, queueTv: false }, COUNTER: { ...counterPrepay, payment: 'POSTPAY', kitchenPrint: 'ON_PLACE' } }, 7), template: 'choyxona' }),
+    config: () => ({
+      ...zones(
+        {
+          HALL: waiterHall,
+          VIP: { ...waiterHall, queueTv: false },
+          COUNTER: {
+            ...counterPrepay,
+            payment: 'POSTPAY',
+            kitchenPrint: 'ON_PLACE',
+          },
+        },
+        7,
+      ),
+      template: 'choyxona',
+    }),
   },
   {
     key: 'cafe',
@@ -294,9 +494,24 @@ export const TEMPLATES: { key: string; name: string; preset: number; config: () 
     preset: 5,
     config: () => ({ ...PRESETS[4]!.config(), template: 'cafe' }),
   },
-  { key: 'foodcourt', name: 'Food court', preset: 19, config: () => ({ ...PRESETS[18]!.config(), template: 'foodcourt' }) },
-  { key: 'delivery', name: 'Yetkazib berish oshxonasi', preset: 9, config: () => ({ ...PRESETS[8]!.config(), template: 'delivery' }) },
-  { key: 'vip', name: 'VIP restoran', preset: 13, config: () => ({ ...PRESETS[12]!.config(), template: 'vip' }) },
+  {
+    key: 'foodcourt',
+    name: 'Food court',
+    preset: 19,
+    config: () => ({ ...PRESETS[18]!.config(), template: 'foodcourt' }),
+  },
+  {
+    key: 'delivery',
+    name: 'Yetkazib berish oshxonasi',
+    preset: 9,
+    config: () => ({ ...PRESETS[8]!.config(), template: 'delivery' }),
+  },
+  {
+    key: 'vip',
+    name: 'VIP restoran',
+    preset: 13,
+    config: () => ({ ...PRESETS[12]!.config(), template: 'vip' }),
+  },
   {
     key: 'mixed',
     name: 'Aralash restoran',
@@ -367,6 +582,20 @@ export function readOrderWorkflow(value: unknown): OrderWorkflow | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** A scheduled order that is not due yet: it waits (PENDING) instead of reaching the kitchen. */
+export function heldForSchedule(
+  flowValue: OrderWorkflow | null,
+  scheduledFor: Date | null,
+  now: Date,
+): boolean {
+  return (
+    !!flowValue?.scheduling &&
+    !!scheduledFor &&
+    scheduledFor.getTime() - flowValue.scheduleLeadMinutes * 60_000 >
+      now.getTime()
+  );
+}
+
 /** Money that must be in before the kitchen gets the order (0: none). */
 export function requiredBeforeKitchen(flowValue: OrderWorkflow, total: number) {
   if (flowValue.payment === 'PREPAY') return total;
@@ -404,7 +633,9 @@ export function canApprove(
     case 'ADMIN':
       return false;
     case 'WAITER':
-      return permissions.has('orders.create') || permissions.has('orders.approve');
+      return (
+        permissions.has('orders.create') || permissions.has('orders.approve')
+      );
     case 'CASHIER':
       // The cashier: whoever takes payments (as before workflows).
       return permissions.has('payments.accept');
@@ -439,22 +670,37 @@ export const ZONE_LABEL: Record<Zone, string> = {
 
 /** Step-by-step order route of a zone, for the preview. */
 export function describeZone(flowValue: ZoneFlow): string[] {
-  const steps = [flowValue.sources.map((source) => SOURCE_LABEL[source]).join(' / ')];
+  const steps = [
+    flowValue.sources.map((source) => SOURCE_LABEL[source]).join(' / '),
+  ];
+  if (flowValue.scheduling)
+    steps.push(
+      `Belgilangan vaqt (${flowValue.scheduleLeadMinutes} daq. oldin oshxonaga)`,
+    );
   if (flowValue.payment === 'PREPAY') steps.push('To‘lov');
-  if (flowValue.payment === 'ADVANCE') steps.push(`Avans ${flowValue.advancePercent}%`);
+  if (flowValue.payment === 'ADVANCE')
+    steps.push(`Avans ${flowValue.advancePercent}%`);
   const approval = APPROVAL_LABEL[flowValue.approval];
   if (approval) steps.push(approval);
   steps.push(flowValue.kitchenConfirm ? 'Oshxona (qabul qiladi)' : 'Oshxona');
   if (flowValue.queueTv) steps.push('Navbat TV');
   if (flowValue.deliveryConfirm) steps.push('Kuryer (kod bilan)');
-  if (flowValue.payment === 'POSTPAY' || flowValue.payment === 'MIXED' || flowValue.payment === 'PARTIAL')
+  if (
+    flowValue.payment === 'POSTPAY' ||
+    flowValue.payment === 'MIXED' ||
+    flowValue.payment === 'PARTIAL'
+  )
     steps.push('Kassa (to‘lov)');
   if (flowValue.payment === 'ADVANCE') steps.push('Qolgan to‘lov');
   if (flowValue.payment === 'CREDIT') steps.push('Qarz hisobi');
   return steps;
 }
 
-export type WorkflowIssue = { level: 'error' | 'warning'; zone?: Zone; text: string };
+export type WorkflowIssue = {
+  level: 'error' | 'warning';
+  zone?: Zone;
+  text: string;
+};
 
 /** What the restaurant reported about itself, used to check a configuration. */
 export type RestaurantFacts = {
@@ -473,7 +719,10 @@ export function validateWorkflow(
   const issues: WorkflowIssue[] = [];
   const zoneKeys = Object.keys(config.zones) as Zone[];
   if (config.enabled && zoneKeys.length === 0)
-    issues.push({ level: 'error', text: 'Hech bir zona uchun oqim belgilanmagan.' });
+    issues.push({
+      level: 'error',
+      text: 'Hech bir zona uchun oqim belgilanmagan.',
+    });
   if (!facts?.capabilities.includes('workflow'))
     issues.push({
       level: 'warning',
@@ -481,24 +730,85 @@ export function validateWorkflow(
     });
   for (const zone of zoneKeys) {
     const value = config.zones[zone]!;
-    if (value.payment === 'PREPAY' && !value.sources.some((s) => s === 'CASHIER' || s === 'OPERATOR'))
-      issues.push({ level: 'error', zone, text: 'Oldindan to‘lov tanlangan, lekin bu zonada to‘lov oladigan kassa manbasi yo‘q.' });
+    if (
+      value.payment === 'PREPAY' &&
+      !value.sources.some((s) => s === 'CASHIER' || s === 'OPERATOR')
+    )
+      issues.push({
+        level: 'error',
+        zone,
+        text: 'Oldindan to‘lov tanlangan, lekin bu zonada to‘lov oladigan kassa manbasi yo‘q.',
+      });
     if (value.sources.includes('QR') && value.approval === 'AUTO')
-      issues.push({ level: 'warning', zone, text: 'QR buyurtmalar tasdiqsiz oshxonaga ketadi (soxta buyurtma xavfi).' });
+      issues.push({
+        level: 'warning',
+        zone,
+        text: 'QR buyurtmalar tasdiqsiz oshxonaga ketadi (soxta buyurtma xavfi).',
+      });
+    if (value.scheduling && !facts?.capabilities.includes('scheduled'))
+      issues.push({
+        level: 'warning',
+        zone,
+        text: 'Rejalashtirilgan buyurtmalar bu restoran serverida hali yo‘q: buyurtmalar darhol oshxonaga ketadi.',
+      });
     if (value.payment === 'CREDIT' && !facts?.capabilities.includes('credit'))
-      issues.push({ level: 'warning', zone, text: 'Qarz (nasiya) hisobi bu restoran serverida hali yo‘q: to‘lov kassada odatdagidek olinadi.' });
+      issues.push({
+        level: 'warning',
+        zone,
+        text: 'Qarz (nasiya) hisobi bu restoran serverida hali yo‘q: to‘lov kassada odatdagidek olinadi.',
+      });
     if (value.queueTv && facts?.tv === 0)
-      issues.push({ level: 'warning', zone, text: 'Navbat TV yoqilgan, lekin restoranda TV ulanmagan.' });
-    if (value.stationId && facts?.stations && !facts.stations.some((s) => s.id === value.stationId))
-      issues.push({ level: 'error', zone, text: 'Biriktirilgan oshxona bo‘limi restoranda topilmadi.' });
+      issues.push({
+        level: 'warning',
+        zone,
+        text: 'Navbat TV yoqilgan, lekin restoranda TV ulanmagan.',
+      });
+    if (
+      value.stationId &&
+      facts?.stations &&
+      !facts.stations.some((s) => s.id === value.stationId)
+    )
+      issues.push({
+        level: 'error',
+        zone,
+        text: 'Biriktirilgan oshxona bo‘limi restoranda topilmadi.',
+      });
     if (value.approval === 'WAITER' && facts?.staff && facts.staff.waiter === 0)
-      issues.push({ level: 'error', zone, text: 'Ofitsiant tasdig‘i tanlangan, lekin restoranda ofitsiant yo‘q.' });
-    if ((value.approval === 'CASHIER' || value.payment === 'PREPAY') && facts?.staff && facts.staff.cashier === 0)
-      issues.push({ level: 'error', zone, text: 'Kassir kerak, lekin restoranda kassir yo‘q.' });
-    if (value.sources.includes('WAITER') && facts?.staff && facts.staff.waiter === 0)
-      issues.push({ level: 'warning', zone, text: 'Manba “Ofitsiant”, lekin restoranda ofitsiant yo‘q.' });
-    if (facts?.printers && facts.printers.kitchen === 0 && value.kitchenPrint === 'AFTER_PAYMENT')
-      issues.push({ level: 'warning', zone, text: 'Oshxona printeri yo‘q: oshxona faqat ekrandan ko‘radi.' });
+      issues.push({
+        level: 'error',
+        zone,
+        text: 'Ofitsiant tasdig‘i tanlangan, lekin restoranda ofitsiant yo‘q.',
+      });
+    if (
+      (value.approval === 'CASHIER' || value.payment === 'PREPAY') &&
+      facts?.staff &&
+      facts.staff.cashier === 0
+    )
+      issues.push({
+        level: 'error',
+        zone,
+        text: 'Kassir kerak, lekin restoranda kassir yo‘q.',
+      });
+    if (
+      value.sources.includes('WAITER') &&
+      facts?.staff &&
+      facts.staff.waiter === 0
+    )
+      issues.push({
+        level: 'warning',
+        zone,
+        text: 'Manba “Ofitsiant”, lekin restoranda ofitsiant yo‘q.',
+      });
+    if (
+      facts?.printers &&
+      facts.printers.kitchen === 0 &&
+      value.kitchenPrint === 'AFTER_PAYMENT'
+    )
+      issues.push({
+        level: 'warning',
+        zone,
+        text: 'Oshxona printeri yo‘q: oshxona faqat ekrandan ko‘radi.',
+      });
   }
   return issues;
 }

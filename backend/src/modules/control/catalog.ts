@@ -97,7 +97,14 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Buyurtmalarni ko‘rish',
     permission: 'orders.view',
     menuPath: '/buyurtmalar',
-    routes: ['GET /orders', 'GET /orders/:id', 'GET /orders/:id/events'],
+    routes: [
+      'GET /orders',
+      'GET /orders/:id',
+      'GET /orders/:id/events',
+      // Workflow summary for staff screens; banquets and scheduled orders.
+      'GET /workflow/active',
+      'GET /scheduled-orders',
+    ],
   }),
   f({
     key: 'orders.create',
@@ -120,6 +127,7 @@ export const featureCatalog: FeatureDef[] = [
       'POST /orders/:id/items',
       'PATCH /orders/:id/items/:itemId',
       'POST /orders/:id/place',
+      'POST /orders/:id/schedule',
     ],
   }),
   f({
@@ -150,7 +158,11 @@ export const featureCatalog: FeatureDef[] = [
     group: 'Kassa va buyurtmalar',
     label: 'To‘lov qabul qilish',
     permission: 'payments.accept',
-    routes: ['POST /orders/:id/payments', 'POST /orders/:id/complete'],
+    routes: [
+      'POST /orders/:id/payments',
+      'POST /orders/:id/complete',
+      'POST /credit-accounts/:id/repayments',
+    ],
   }),
   f({
     key: 'payments.refund',
@@ -180,7 +192,11 @@ export const featureCatalog: FeatureDef[] = [
     group: 'Kassa va buyurtmalar',
     label: 'Onlayn buyurtmani tasdiqlash',
     permission: 'orders.approve',
-    routes: ['POST /orders/:id/approve', 'POST /orders/:id/reject'],
+    routes: [
+      'POST /orders/:id/approve',
+      'POST /orders/:id/reject',
+      'POST /orders/:id/release',
+    ],
     offline: 'never',
   }),
   f({
@@ -530,6 +546,9 @@ export const featureCatalog: FeatureDef[] = [
       'GET /customers/:id',
       'GET /feedback',
       'GET /coupons',
+      // Qarz hisoblari (nasiya, hotel room bills).
+      'GET /credit-accounts',
+      'GET /credit-accounts/:id',
     ],
   }),
   f({
@@ -544,6 +563,10 @@ export const featureCatalog: FeatureDef[] = [
       'POST /customers/:id/referrer',
       'POST /orders/:id/customer',
       'POST /feedback/:id/resolve',
+      'POST /credit-accounts',
+      'PATCH /credit-accounts/:id',
+      'POST /credit-accounts/:id/close',
+      'POST /credit-accounts/:id/reopen',
     ],
   }),
   f({

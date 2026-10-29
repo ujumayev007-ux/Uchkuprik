@@ -42,11 +42,18 @@ import {
 import { completeOrder } from './complete.js';
 import {
   approvalStatus,
+  heldForSchedule,
   requiredBeforeKitchen,
   type OrderWorkflow,
 } from '../workflow/engine.js';
-import { isWaiter, orderFlow, snapshotFor } from '../workflow/restaurant.js';
+import {
+  assertSchedule,
+  isWaiter,
+  orderFlow,
+  snapshotFor,
+} from '../workflow/restaurant.js';
 import { loadPrintRules, ruleOf } from '../../printing/rules.js';
+import { accountOfPayment, postCredit } from '../credit/ledger.js';
 
 /** Under a workflow, the kitchen gets the order only when the money it asks for is in. */
 const assertPaidForKitchen = (
@@ -61,6 +68,33 @@ const assertPaidForKitchen = (
         percent: flow.advancePercent,
       });
 };
+// Scheduled orders and banquets: a time only where the zone's workflow schedules.
+export const scheduleFields = {
+  scheduledFor: z.iso.datetime({ offset: true }).nullable().optional(),
+  guests: z.number().int().min(1).max(5000).nullable().optional(),
+  eventName: z.string().trim().max(120).nullable().optional(),
+};
+/**
+ * Fields for an order leaving DRAFT: a scheduled order that is not due yet waits as
+ * PENDING (confirmed when it needed no approval) instead of reaching the kitchen.
+ */
+const placeFields = (
+  flow: OrderWorkflow | null,
+  status: 'PLACED' | 'PENDING',
+  scheduledFor: Date | null,
+  at: Date,
+) =>
+  heldForSchedule(flow, scheduledFor, at)
+    ? {
+        status: 'PENDING' as const,
+        placedAt: null,
+        scheduleConfirmedAt: status === 'PLACED' ? at : null,
+      }
+    : {
+        status,
+        placedAt: status === 'PLACED' ? at : null,
+        ...autoAccept(flow, status, at),
+      };
 // The kitchen needs no confirmation in this zone: the ticket counts as accepted.
 const autoAccept = (flow: OrderWorkflow | null, status: string, at: Date) =>
   flow && !flow.kitchenConfirm && status === 'PLACED'
@@ -88,7 +122,7 @@ const featureOff = () =>
 // Methods accepted at the counter. Online providers (Click, Payme, Uzum) are only
 // accepted through verified provider callbacks (Phase 8), never as manual entries.
 // QR is a merchant QR (e.g. Paynet) confirmed by the cashier; it must be enabled by the owner.
-const counterMethods = ['CASH', 'CARD', 'LOYALTY', 'QR'] as const;
+const counterMethods = ['CASH', 'CARD', 'LOYALTY', 'QR', 'CREDIT'] as const;
 
 type OrderWithRelations = Prisma.OrderGetPayload<{
   include: { items: true; payments: true; refunds: true; table: true };
@@ -132,6 +166,22 @@ function serialize(order: OrderWithRelations, auth: AuthContext) {
     completedAt: order.completedAt,
     cancelledAt: order.cancelledAt,
     cancelReason: order.cancelReason,
+    scheduledFor: order.scheduledFor,
+    scheduleConfirmedAt: order.scheduleConfirmedAt,
+    guests: order.guests,
+    eventName: order.eventName,
+    // What the zone's workflow allows for this order (null: no workflow).
+    workflow: (() => {
+      const flow = orderFlow(order);
+      return flow
+        ? {
+            zone: flow.zone,
+            payment: flow.payment,
+            advancePercent: flow.advancePercent,
+            scheduling: flow.scheduling,
+          }
+        : null;
+    })(),
     kitchen: {
       acceptedAt: order.kitchenAcceptedAt,
       rejectedAt: order.kitchenRejectedAt,
@@ -271,6 +321,11 @@ export function ordersRouter(services: Services) {
         tableId,
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
         ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}),
+        // A booking (banquet) more than three hours ahead leaves the table free today.
+        NOT: {
+          status: 'PENDING',
+          scheduledFor: { gt: new Date(now().getTime() + 3 * 3_600_000) },
+        },
       },
       select: {
         id: true,
@@ -328,6 +383,14 @@ export function ordersRouter(services: Services) {
                     'READY',
                     'SERVED',
                   ],
+                },
+                // Bookings more than three hours ahead are listed under Banket /
+                // rejalashtirilgan and do not occupy their table today.
+                NOT: {
+                  status: 'PENDING',
+                  scheduledFor: {
+                    gt: new Date(now().getTime() + 3 * 3_600_000),
+                  },
                 },
               }
             : query.scope === 'today'
@@ -396,6 +459,7 @@ export function ordersRouter(services: Services) {
             note: z.string().trim().max(300).nullable().optional(),
             items: z.array(itemSchema).max(100).default([]),
             place: z.boolean().default(false),
+            ...scheduleFields,
           })
           .refine(
             (order) =>
@@ -468,12 +532,20 @@ export function ordersRouter(services: Services) {
             tableId,
             waiter: isWaiter(auth),
           });
+          const scheduledFor = input.scheduledFor
+            ? new Date(input.scheduledFor)
+            : null;
+          assertSchedule(flow, scheduledFor, now());
           if (input.place) assertPaidForKitchen(flow, totals.total, 0);
           const placing = input.place
             ? flow
               ? approvalStatus(flow, auth.permissions)
               : await placementStatus(tx, auth.tenantId, auth.permissions)
             : 'DRAFT';
+          const placed =
+            placing === 'DRAFT'
+              ? { status: 'DRAFT' as const, placedAt: null }
+              : placeFields(flow, placing, scheduledFor, now());
           const order = await tx.order.create({
             data: {
               tenantId: auth.tenantId,
@@ -482,10 +554,11 @@ export function ordersRouter(services: Services) {
               businessDate: date,
               type: input.type,
               channel: 'POS',
-              status: placing,
-              placedAt: placing === 'PLACED' ? now() : null,
-              ...autoAccept(flow, placing, now()),
+              ...placed,
               ...(flow ? { workflow: flow } : {}),
+              scheduledFor,
+              guests: input.guests ?? null,
+              eventName: input.eventName ?? null,
               tableId,
               customerName: input.customerName ?? null,
               customerPhone: input.customerPhone ?? null,
@@ -617,7 +690,11 @@ export function ordersRouter(services: Services) {
   const assertCanEditPlaced = async (
     tx: Tx,
     auth: AuthContext,
-    order: { status: string; workflow?: unknown; kitchenAcceptedAt?: Date | null },
+    order: {
+      status: string;
+      workflow?: unknown;
+      kitchenAcceptedAt?: Date | null;
+    },
   ) => {
     if (order.status === 'DRAFT' || order.status === 'PENDING') return;
     // Under a workflow the zone decides (managers may always change).
@@ -1102,7 +1179,10 @@ export function ordersRouter(services: Services) {
           const manager =
             auth.permissions.has('settings.manage') ||
             auth.permissions.has('orders.cancel');
-          if (flow.discounts === 'NONE' || (flow.discounts === 'MANAGER' && !manager))
+          if (
+            flow.discounts === 'NONE' ||
+            (flow.discounts === 'MANAGER' && !manager)
+          )
             throw new AppError(403, 'WORKFLOW_DISCOUNT', 'workflowDiscount');
         }
         await tx.order.update({
@@ -1161,25 +1241,30 @@ export function ordersRouter(services: Services) {
       // cashier first; it reaches the kitchen only after approval. Under a workflow its
       // zone decides (approval rule, money due before the kitchen).
       const flow = orderFlow(order);
-      if (to === 'PLACED') assertPaidForKitchen(flow, order.total, netPaid(order));
+      if (to === 'PLACED')
+        assertPaidForKitchen(flow, order.total, netPaid(order));
       const status =
         to === 'PLACED'
           ? flow
             ? approvalStatus(flow, auth.permissions)
             : await placementStatus(tx, auth.tenantId, auth.permissions)
           : to;
+      const fields =
+        to === 'PLACED'
+          ? placeFields(
+              flow,
+              status as 'PLACED' | 'PENDING',
+              order.scheduledFor,
+              now(),
+            )
+          : { status, completedAt: now() };
       await tx.order.update({
         where: { id },
-        data: {
-          status,
-          ...autoAccept(flow, status, now()),
-          version: { increment: 1 },
-          ...(to === 'PLACED' ? { placedAt: now() } : { completedAt: now() }),
-        },
+        data: { ...fields, version: { increment: 1 } },
       });
       await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
         from: order.status,
-        to: status,
+        to: fields.status,
       });
     });
   };
@@ -1287,15 +1372,23 @@ export function ordersRouter(services: Services) {
               'UZUM',
               'QR',
               'OTHER',
+              'CREDIT',
             ]),
             amount,
             tendered: z.number().int().min(1).max(1_000_000_000).optional(),
             reference: z.string().trim().max(60).nullable().optional(),
+            // CREDIT: the customer credit / hotel room account the order is charged to.
+            creditAccountId: z.uuid().optional(),
           })
           .refine(
             (payment) =>
               payment.method !== 'CASH' || payment.tendered !== undefined,
             { path: ['tendered'] },
+          )
+          .refine(
+            (payment) =>
+              payment.method !== 'CREDIT' || !!payment.creditAccountId,
+            { path: ['creditAccountId'] },
           ),
         req.body,
       );
@@ -1331,7 +1424,8 @@ export function ordersRouter(services: Services) {
           if (!editableStatuses.includes(order.status))
             throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
           // Online orders are approved before money is taken.
-          if (order.status === 'PENDING')
+          // (A scheduled order or banquet waiting for its time still takes money.)
+          if (order.status === 'PENDING' && !order.scheduledFor)
             throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
           const shift = await findOpenShift(tx, auth, order.branchId);
           if (!shift)
@@ -1359,6 +1453,13 @@ export function ordersRouter(services: Services) {
             throw new AppError(400, 'INSUFFICIENT_CASH', 'insufficientCash');
           if (input.method === 'LOYALTY' && !order.customerId)
             throw new AppError(409, 'CUSTOMER_REQUIRED', 'customerRequired');
+          // Charging to an account only where the workflow allows credit (nasiya,
+          // hotel room bill).
+          if (
+            input.method === 'CREDIT' &&
+            orderFlow(order)?.payment !== 'CREDIT'
+          )
+            throw new AppError(409, 'CREDIT_NOT_ALLOWED', 'creditNotAllowed');
           const change =
             input.method === 'CASH' ? input.tendered! - input.amount : null;
           const created = await tx.payment.create({
@@ -1392,20 +1493,29 @@ export function ordersRouter(services: Services) {
             });
             if (items === 0) throw errors.validation([{ path: 'items' }]);
           }
+          const placedFields = placing
+            ? placeFields(flow, placedStatus, order.scheduledFor, now())
+            : null;
           await tx.order.update({
             where: { id },
             data: {
               paidTotal: { increment: input.amount },
               version: { increment: 1 },
-              ...(placing
-                ? {
-                    status: placedStatus,
-                    placedAt: now(),
-                    ...autoAccept(flow, placedStatus, now()),
-                  }
-                : {}),
+              ...(placedFields ?? {}),
             },
           });
+          if (input.method === 'CREDIT')
+            await postCredit(tx, {
+              tenantId: auth.tenantId,
+              accountId: input.creditAccountId!,
+              type: 'CHARGE',
+              amount: input.amount,
+              orderId: id,
+              paymentId: created.id,
+              shiftId: shift.id,
+              note: `Buyurtma №${order.number}`,
+              actorId: auth.userId,
+            });
           // Points are redeemed 1:1 against the bill, under a lock on the customer.
           if (input.method === 'LOYALTY')
             await postLoyalty(tx, {
@@ -1422,11 +1532,14 @@ export function ordersRouter(services: Services) {
             paymentId: created.id,
             method: input.method,
             amount: input.amount,
+            ...(input.creditAccountId
+              ? { creditAccountId: input.creditAccountId }
+              : {}),
           });
-          if (placing)
+          if (placedFields)
             await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
               from: 'DRAFT',
-              to: placedStatus,
+              to: placedFields.status,
             });
           // Zone closes the table on payment: a served order fully paid is done.
           if (
@@ -1506,6 +1619,21 @@ export function ordersRouter(services: Services) {
             version: { increment: 1 },
           },
         });
+        // A refunded credit charge lowers the account's debt (no cash moves).
+        if (payment.method === 'CREDIT') {
+          const accountId = await accountOfPayment(tx, payment.id);
+          if (accountId)
+            await postCredit(tx, {
+              tenantId: auth.tenantId,
+              accountId,
+              type: 'REFUND',
+              amount: -input.amount,
+              orderId: id,
+              paymentId: payment.id,
+              note: input.reason,
+              actorId: auth.userId,
+            });
+        }
         // Refunded loyalty payments return the points to the customer.
         if (payment.method === 'LOYALTY' && order.customerId)
           await postLoyalty(tx, {
@@ -1830,7 +1958,10 @@ export function ordersRouter(services: Services) {
           copy: receipt.copy,
           number: order.number,
           // The branch's local time (not UTC).
-          dateTime: localDateTime(new Date(order.createdAt), receipt.branch.timezone),
+          dateTime: localDateTime(
+            new Date(order.createdAt),
+            receipt.branch.timezone,
+          ),
           typeLabel: typeLabels[order.type],
           table: order.table?.name ?? null,
           items: order.items.map((item) => ({
@@ -1872,7 +2003,8 @@ export function ordersRouter(services: Services) {
           ? single
           : (() => {
               const joined = new Uint8Array(single.length * copies);
-              for (let i = 0; i < copies; i++) joined.set(single, i * single.length);
+              for (let i = 0; i < copies; i++)
+                joined.set(single, i * single.length);
               return joined;
             })();
       const job = await db.printJob.create({

@@ -442,11 +442,18 @@ export function createControlRuntime(
     const day = new Date(at.getTime() - 24 * 3_600_000);
     const recent = new Date(at.getTime() - 10 * 60_000);
     const [failed24h, unknown24h, pending, panels, backup] = await Promise.all([
-      db.printJob.count({ where: { status: 'FAILED', createdAt: { gte: day } } }),
-      db.printJob.count({ where: { status: 'UNKNOWN', createdAt: { gte: day } } }),
+      db.printJob.count({
+        where: { status: 'FAILED', createdAt: { gte: day } },
+      }),
+      db.printJob.count({
+        where: { status: 'UNKNOWN', createdAt: { gte: day } },
+      }),
       db.printJob.count({ where: { status: { in: ['PENDING', 'PRINTING'] } } }),
       db.device.findMany({
-        where: { status: 'ACTIVE', panel: { in: ['KITCHEN', 'DISPLAY', 'POS', 'WAITER'] } },
+        where: {
+          status: 'ACTIVE',
+          panel: { in: ['KITCHEN', 'DISPLAY', 'POS', 'WAITER'] },
+        },
         select: { panel: true, lastSeenAt: true },
         take: 200,
       }),
@@ -454,7 +461,10 @@ export function createControlRuntime(
     ]);
     const seen = (panel: string) => ({
       total: panels.filter((row) => row.panel === panel).length,
-      online: panels.filter((row) => row.panel === panel && row.lastSeenAt && row.lastSeenAt >= recent).length,
+      online: panels.filter(
+        (row) =>
+          row.panel === panel && row.lastSeenAt && row.lastSeenAt >= recent,
+      ).length,
     });
     return {
       printing: { failed24h, unknown24h, pending },
@@ -508,6 +518,9 @@ export function createControlRuntime(
         'rekey',
         'workflow',
         'remote_ops',
+        // Workflow parts this server runs: nasiya / hotel room bills, scheduled orders.
+        'credit',
+        'scheduled',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
         ...(services.backups ? ['backups'] : []),
         ...(services.backups?.canRestore ? ['restore'] : []),
@@ -689,7 +702,9 @@ export function createControlRuntime(
     });
     if (!tenant) return;
     for (const op of ops) {
-      let receipt = await db.remoteOpReceipt.findUnique({ where: { id: op.id } });
+      let receipt = await db.remoteOpReceipt.findUnique({
+        where: { id: op.id },
+      });
       if (!receipt) {
         let ok = true;
         let result: unknown = null;
@@ -718,13 +733,24 @@ export function createControlRuntime(
       const row = await db.controlLink.findUnique({ where: { id: 1 } });
       const pem = row ? devicePem(row) : null;
       if (!row || !pem) return;
-      const sent = await signedPost(row, pem, 'op-result', '/control/device/op-result', {
-        id: op.id,
-        ok: receipt.ok,
-        ...(receipt.ok ? { result: receipt.result } : { error: receipt.error }),
-      }).catch(() => null);
+      const sent = await signedPost(
+        row,
+        pem,
+        'op-result',
+        '/control/device/op-result',
+        {
+          id: op.id,
+          ok: receipt.ok,
+          ...(receipt.ok
+            ? { result: receipt.result }
+            : { error: receipt.error }),
+        },
+      ).catch(() => null);
       if (sent?.status === 200)
-        await db.remoteOpReceipt.update({ where: { id: op.id }, data: { reported: true } });
+        await db.remoteOpReceipt.update({
+          where: { id: op.id },
+          data: { reported: true },
+        });
       // A prepared restore: nothing more runs on this database; the launcher swaps it.
       // (The receipt moves to the restored database, so the operation never runs twice.)
       if (receipt.ok && RESTART_OPS.includes(op.kind)) {

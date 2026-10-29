@@ -7,6 +7,12 @@ import { TableAssignDialog } from '../components/TableAssignDialog';
 import { PaymentDialog } from '../components/PaymentDialog';
 import { PrintReceipt } from '../components/PrintReceipt';
 import {
+  ScheduleDialog,
+  ScheduledOrders,
+  schedulingOn,
+  useActiveWorkflow,
+} from '../components/ScheduledOrders';
+import {
   printForKitchen,
   receiptAfterPayment,
 } from '../components/TerminalPrinter';
@@ -45,7 +51,16 @@ const tone: Record<
   CANCELLED: 'danger',
 };
 
-export function StatusBadge({ status }: { status: OrderStatus }) {
+export function StatusBadge({
+  status,
+  scheduledFor,
+}: {
+  status: OrderStatus;
+  scheduledFor?: string | null | undefined;
+}) {
+  // A banquet / scheduled order waiting for its time (not for the cashier).
+  if (status === 'PENDING' && scheduledFor)
+    return <Badge tone="accent">{t.orders.statuses.SCHEDULED}</Badge>;
   return <Badge tone={tone[status]}>{t.orders.statuses[status]}</Badge>;
 }
 
@@ -82,6 +97,8 @@ export function OrderDetail({
   const ordering = useOrdering();
   const navigate = useNavigate();
   const [tableOpen, setTableOpen] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const workflow = useActiveWorkflow();
   const [note, setNote] = useState<string | null>(null);
   const client = useQueryClient();
   const toast = useToast();
@@ -199,7 +216,18 @@ export function OrderDetail({
       >
         <div className="stack">
           <div className="badges">
-            <StatusBadge status={o.status} /> <PaymentBadge order={o} />
+            <StatusBadge status={o.status} scheduledFor={o.scheduledFor} />{' '}
+            <PaymentBadge order={o} />
+            {o.scheduledFor && (
+              <div className="muted small">
+                {t.scheduled.badge.replace(
+                  '{at}',
+                  formatDateTime(o.scheduledFor),
+                )}
+                {o.guests ? ` · ${t.scheduled.guests}: ${o.guests}` : ''}
+                {o.eventName ? ` · ${o.eventName}` : ''}
+              </div>
+            )}
             {o.kitchen?.rejectedAt ? (
               <Badge tone="danger">
                 {t.orders.kitchenRejected}: {o.kitchen.rejectReason}
@@ -584,6 +612,13 @@ export function OrderDetail({
                 {t.orders.place}
               </Button>
             )}
+            {o.workflow?.scheduling &&
+              (o.status === 'DRAFT' || o.status === 'PENDING') &&
+              can(me, 'orders.edit') && (
+                <Button onClick={() => setScheduling(true)}>
+                  {o.scheduledFor ? t.scheduled.edit : t.scheduled.set}
+                </Button>
+              )}
             {open && o.type === 'DINE_IN' && ordering.tableAssign && (
               <Button onClick={() => setTableOpen(true)}>
                 {o.table ? t.ordering.changeTable : t.ordering.assignTable}
@@ -677,6 +712,17 @@ export function OrderDetail({
           onDone={() => toast(t.ordering.tableSaved)}
         />
       )}
+      {scheduling && (
+        <ScheduleDialog
+          order={o}
+          leadMinutes={
+            (o.workflow &&
+              workflow.data?.zones[o.workflow.zone]?.scheduleLeadMinutes) ??
+            30
+          }
+          onClose={() => setScheduling(false)}
+        />
+      )}
       {action === 'pay' && (
         <PaymentDialog
           order={o}
@@ -701,7 +747,11 @@ export function OrdersPage() {
   const ordering = useOrdering();
   const navigate = useNavigate();
   const view = useOrderDisplayMode();
-  const [scope, setScope] = useState<'active' | 'today' | 'history'>('active');
+  const [scope, setScope] = useState<
+    'active' | 'today' | 'history' | 'scheduled'
+  >('active');
+  const workflow = useActiveWorkflow();
+  const scheduled = schedulingOn(workflow.data);
   // Order history: business-date range (default: the last 7 days) and a search.
   // Local calendar day (the restaurant's day), not the UTC one.
   const day = (offset: number) => {
@@ -726,7 +776,7 @@ export function OrdersPage() {
           ? `/orders?branchId=${me?.activeBranchId}&scope=all&limit=200&from=${range.from}&to=${range.to}${range.q.trim() ? `&q=${encodeURIComponent(range.q.trim())}` : ''}`
           : `/orders?branchId=${me?.activeBranchId}&scope=${scope}`,
       ).then((data) => data.orders),
-    enabled: !!me?.activeBranchId,
+    enabled: !!me?.activeBranchId && scope !== 'scheduled',
     refetchInterval: 15_000,
   });
   // «Mijoz»: a guest orders at the cashier before choosing a table.
@@ -756,6 +806,16 @@ export function OrdersPage() {
               {t.orders[value]}
             </button>
           ))}
+          {scheduled && (
+            <button
+              role="tab"
+              aria-selected={scope === 'scheduled'}
+              className={`tab ${scope === 'scheduled' ? 'active' : ''}`}
+              onClick={() => setScope('scheduled')}
+            >
+              {t.scheduled.tab}
+            </button>
+          )}
         </div>
         {scope === 'history' && (
           <>
@@ -796,7 +856,9 @@ export function OrdersPage() {
           </Button>
         )}
       </div>
-      {orders.isPending ? (
+      {scope === 'scheduled' ? (
+        <ScheduledOrders onSelect={setSelected} />
+      ) : orders.isPending ? (
         <LoadingState />
       ) : orders.error ? (
         <ErrorState

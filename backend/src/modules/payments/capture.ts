@@ -2,6 +2,7 @@ import type { Services } from '../../context.js';
 import type { Tx } from '../../db.js';
 import type { PaymentProvider } from '../../generated/prisma/client.js';
 import { addEvent, lockOrder, netPaid } from '../orders/engine.js';
+import { heldForSchedule, readOrderWorkflow } from '../workflow/engine.js';
 
 export class CaptureError extends Error {
   constructor(
@@ -73,14 +74,22 @@ export async function captureProviderPayment(
       createdById: null,
     },
   });
-  // Verified online payment: paid online orders are accepted automatically.
-  const accept = order.status === 'PENDING';
+  // Verified online payment: paid online orders are accepted automatically; a
+  // scheduled one is confirmed and waits for its time.
+  const held = heldForSchedule(
+    readOrderWorkflow(order.workflow),
+    order.scheduledFor,
+    now,
+  );
+  const accept = order.status === 'PENDING' && !held;
+  const confirm = order.status === 'PENDING' && held;
   await tx.order.update({
     where: { id: order.id },
     data: {
       paidTotal: { increment: input.amount },
       version: { increment: 1 },
       ...(accept ? { status: 'PLACED', placedAt: now } : {}),
+      ...(confirm ? { scheduleConfirmedAt: now } : {}),
     },
   });
   await addEvent(tx, input.tenantId, order.id, null, 'payment', {

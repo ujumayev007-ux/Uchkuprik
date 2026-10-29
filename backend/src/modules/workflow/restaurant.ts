@@ -1,5 +1,5 @@
 import type { Db, Tx } from '../../db.js';
-import { AppError } from '../../http/errors.js';
+import { AppError, errors } from '../../http/errors.js';
 import {
   orderWorkflow,
   readOrderWorkflow,
@@ -98,4 +98,21 @@ export const orderFlow = (order: { workflow?: unknown }) =>
 export const isWaiter = (auth: {
   permissions: Set<string>;
   roleKeys: readonly string[];
-}) => auth.roleKeys.includes('waiter') || !auth.permissions.has('payments.accept');
+}) =>
+  auth.roleKeys.includes('waiter') || !auth.permissions.has('payments.accept');
+
+/** A time for the order only where the zone's workflow schedules (orders, banquets). */
+export function assertSchedule(
+  flow: OrderWorkflow | null,
+  scheduledFor: Date | null,
+  at: Date,
+) {
+  if (!scheduledFor) return;
+  if (!flow?.scheduling)
+    throw new AppError(409, 'WORKFLOW_SCHEDULE', 'workflowSchedule');
+  if (
+    scheduledFor.getTime() <= at.getTime() ||
+    scheduledFor.getTime() > at.getTime() + 366 * 86_400_000
+  )
+    throw errors.validation([{ path: 'scheduledFor' }]);
+}

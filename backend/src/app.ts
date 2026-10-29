@@ -56,6 +56,8 @@ import { enforceNetwork, networkStatus } from './modules/control/network.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
 import { receiptTemplatesRouter } from './modules/printing/receipt-templates.routes.js';
+import { creditRouter } from './modules/credit/credit.routes.js';
+import { restaurantWorkflowRouter } from './modules/workflow/workflow.routes.js';
 import { backupsRouter } from './modules/backups/backups.routes.js';
 import { menuRouter } from './modules/menu/menu.routes.js';
 import { onlineRouter } from './modules/online/online.routes.js';
@@ -278,6 +280,8 @@ export function createApp({
       printersRouter,
       receiptTemplatesRouter,
       backupsRouter,
+      creditRouter,
+      restaurantWorkflowRouter,
       brandingRouter,
       inventoryRouter,
       stockAlertsRouter,

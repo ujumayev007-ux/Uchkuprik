@@ -221,9 +221,15 @@ export const owner = {
       noFacts:
         'Restoran serveri monitoring maʼlumotini hali yubormaydi (yangi versiya kerak).',
       printing: 'Chop etish',
-      printingLine: '24 soatda xato: {failed}, natija noma’lum: {unknown}, navbatda: {pending}',
+      printingLine:
+        '24 soatda xato: {failed}, natija noma’lum: {unknown}, navbatda: {pending}',
       panels: 'Ulangan panellar (oxirgi 10 daqiqa)',
-      panel: { kitchen: 'Oshxona ekranlari', tv: 'Navbat TV', pos: 'Kassa', waiter: 'Ofitsiant' },
+      panel: {
+        kitchen: 'Oshxona ekranlari',
+        tv: 'Navbat TV',
+        pos: 'Kassa',
+        waiter: 'Ofitsiant',
+      },
       onlineOf: '{online} / {total} aloqada',
       backup: 'Oxirgi zaxira nusxa',
       backupOk: 'Tekshirildi',
@@ -233,9 +239,9 @@ export const owner = {
       attention: 'Eʼtibor bering',
     },
     bk: {
-      hint:
-        'Restoran kompyuteridagi zaxira nusxalar. Har bir nusxa vaqtinchalik bazaga tiklab tekshiriladi. Tiklash to‘liq bajariladi: avval hozirgi holatdan zaxira olinadi, nusxa yangi bazaga yuklanadi va server qayta ishga tushganda almashtiriladi — hozirgi baza o‘chirilmaydi va orqaga qaytarish mumkin.',
-      hosted: 'Bu restoran bulutda ishlaydi: zaxira nusxalarni Render saqlaydi.',
+      hint: 'Restoran kompyuteridagi zaxira nusxalar. Har bir nusxa vaqtinchalik bazaga tiklab tekshiriladi. Tiklash to‘liq bajariladi: avval hozirgi holatdan zaxira olinadi, nusxa yangi bazaga yuklanadi va server qayta ishga tushganda almashtiriladi — hozirgi baza o‘chirilmaydi va orqaga qaytarish mumkin.',
+      hosted:
+        'Bu restoran bulutda ishlaydi: zaxira nusxalarni Render saqlaydi.',
       needsUpdate:
         'Restoran serveri bu imkoniyatni hali qo‘llamaydi. Server yangilangach ishlaydi.',
       restoreUnsupported:
@@ -261,11 +267,13 @@ export const owner = {
       confirmRestore: 'Tiklashni boshlash',
       cancel: 'Bekor qilish',
       kept: 'Oldingi bazalar (tiklashdan oldingi holat)',
-      keptHint: 'Tiklashdan oldin ishlatilgan baza shu yerda saqlanadi. Kerak bo‘lsa unga qaytish mumkin.',
+      keptHint:
+        'Tiklashdan oldin ishlatilgan baza shu yerda saqlanadi. Kerak bo‘lsa unga qaytish mumkin.',
       rollback: 'Shu bazaga qaytish',
       rollbackTitle: 'Orqaga qaytish: {name}',
       none: 'Zaxira nusxalar topilmadi',
-      partialNote: 'Qisman tiklash (faqat menyu yoki faqat sozlamalar) hozircha yo‘q.',
+      partialNote:
+        'Qisman tiklash (faqat menyu yoki faqat sozlamalar) hozircha yo‘q.',
     },
     show: 'Ko‘rsatish',
     hide: 'Yashirish',
@@ -275,7 +283,8 @@ export const owner = {
     failed24h: '24 soatda xato: {n}',
     unknown24h: 'natija noma’lum: {n}',
     pending: 'navbatda: {n}',
-    duplicateAddress: 'Bu IP manzilda boshqa printer ham bor — cheklar aralashib ketadi',
+    duplicateAddress:
+      'Bu IP manzilda boshqa printer ham bor — cheklar aralashib ketadi',
     test: 'Sinov chop etish',
     paper: 'Qog‘oz',
     station: 'Bo‘lim',
@@ -308,7 +317,12 @@ export const owner = {
     paid: 'To‘langan',
     openOrders: 'Ochiq buyurtmalar: {n}',
     orderSettings: 'Buyurtma jarayoni',
-    status: { QUEUED: 'Navbatda', SENT: 'Yuborildi', DONE: 'Bajarildi', FAILED: 'Xato' },
+    status: {
+      QUEUED: 'Navbatda',
+      SENT: 'Yuborildi',
+      DONE: 'Bajarildi',
+      FAILED: 'Xato',
+    },
     kinds: {
       'snapshot.menu': 'Menyu olindi',
       'snapshot.staff': 'Xodimlar olindi',
@@ -357,6 +371,8 @@ export const owner = {
     kitchenConfirm: 'Oshxona qabul qilishi shart',
     queueTv: 'Navbat TV’da ko‘rsatish',
     deliveryConfirm: 'Yetkazishni kod bilan tasdiqlash',
+    scheduling: 'Belgilangan vaqtga buyurtma / banket',
+    scheduleLead: 'Oshxonaga necha daqiqa oldin yuborilsin',
     edit: 'Oshxonaga ketgandan keyin o‘zgartirish',
     cancel: 'Bekor qilish',
     discounts: 'Chegirma',
@@ -379,7 +395,8 @@ export const owner = {
       'Ish rejimi o‘chirilsinmi? Restoran yangi buyurtmalarda hozirgi (eski) tartibga qaytadi.',
     history: 'Versiyalar tarixi',
     rollback: 'Shu versiyaga qaytish',
-    rollbackConfirm: 'v{version} qayta faollashtirilsinmi (yangi versiya sifatida)?',
+    rollbackConfirm:
+      'v{version} qayta faollashtirilsinmi (yangi versiya sifatida)?',
     rolledBack: 'Oldingi versiya qayta faollashtirildi (v{version}).',
     enabledShort: 'yoqilgan',
     disabledShort: 'o‘chirilgan',
@@ -483,7 +500,8 @@ export const owner = {
     hostRenameTitle: 'Windows kompyuter nomi',
     hostRenameHint:
       'So‘rov restoran kompyuteriga yuboriladi. Administrator u yerda rozilik berishi va Windows administrator ruxsatini tasdiqlashi kerak. Yangi nom kompyuter qayta ishga tushirilgandan keyin qo‘llanadi. Faqat lotin harflari, raqamlar va “-”, 15 belgigacha.',
-    hostRenameSent: 'So‘rov yuborildi. Restoran administratori roziligini kutmoqda.',
+    hostRenameSent:
+      'So‘rov yuborildi. Restoran administratori roziligini kutmoqda.',
     hostRenameState: {
       REQUESTED: 'Windows nomi “{name}”: restoran roziligi kutilmoqda',
       REJECTED: 'Windows nomi “{name}”: restoran rad etdi',

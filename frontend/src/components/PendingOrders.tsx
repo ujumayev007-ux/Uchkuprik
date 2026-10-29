@@ -21,7 +21,10 @@ export function PendingOrders({ branchId }: { branchId: string }) {
       api<{ orders: Order[] }>(
         `/orders?branchId=${branchId}&scope=active`,
       ).then((data) =>
-        data.orders.filter((order) => order.status === 'PENDING'),
+        data.orders.filter(
+          // A confirmed banquet / scheduled order waits for its time, not for approval.
+          (order) => order.status === 'PENDING' && !order.scheduleConfirmedAt,
+        ),
       ),
     refetchInterval: 30_000,
   });

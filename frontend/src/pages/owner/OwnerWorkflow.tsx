@@ -31,6 +31,9 @@ type ZoneFlow = {
   tableClose: keyof typeof w.tableCloseLabels;
   kitchenPrint: keyof typeof w.kitchenPrintLabels;
   stationId: string | null;
+  // Scheduled orders and banquets (older saved configurations lack them).
+  scheduling?: boolean;
+  scheduleLeadMinutes?: number;
 };
 type Config = {
   enabled: boolean;
@@ -188,7 +191,27 @@ function ZoneEditor({
           checked={flow.deliveryConfirm}
           onChange={(on) => set('deliveryConfirm', on)}
         />
+        <Checkbox
+          label={w.scheduling}
+          checked={!!flow.scheduling}
+          onChange={(on) => set('scheduling', on)}
+        />
       </div>
+      {flow.scheduling && (
+        <TextField
+          label={w.scheduleLead}
+          type="number"
+          min={0}
+          max={1440}
+          value={flow.scheduleLeadMinutes ?? 30}
+          onChange={(event) =>
+            set(
+              'scheduleLeadMinutes',
+              Math.min(1440, Math.max(0, Number(event.target.value) || 0)),
+            )
+          }
+        />
+      )}
     </div>
   );
 }

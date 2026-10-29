@@ -581,6 +581,8 @@ enum PaymentMethod {
   // Merchant QR (e.g. Paynet) confirmed by the cashier after the payment arrives.
   QR
   OTHER
+  // Charged to a customer credit (nasiya) or hotel room account; paid back later.
+  CREDIT
 }
 
 enum ShiftStatus {
@@ -713,6 +715,12 @@ model Order {
   // Snapshot of the zone flow this order follows (null: no workflow); later changes
   // of the restaurant's workflow never alter it.
   workflow           Json?
+  // Scheduled order / banquet: the kitchen gets it shortly before this time. It waits
+  // as PENDING; scheduleConfirmedAt marks it approved (released automatically when due).
+  scheduledFor        DateTime?
+  scheduleConfirmedAt DateTime?
+  guests              Int?
+  eventName           String?
   placedAt           DateTime?
   completedAt        DateTime?
   cancelledAt        DateTime?
@@ -734,6 +742,7 @@ model Order {
   @@index([tenantId, branchId, createdAt])
   @@index([tenantId, customerId])
   @@index([tenantId, courierId, deliveryStatus])
+  @@index([tenantId, status, scheduledFor])
   @@map("orders")
 }
 
@@ -881,6 +890,8 @@ model KitchenStation {
   isActive       Boolean  @default(true)
   // Ticket layout for this department (header/footer, large items, copies...).
   ticketTemplate Json     @default("{}")
+  // Printing rule its tickets follow: KITCHEN, KEBAB or BAR (Chop etish qoidalari).
+  printType      String   @default("KITCHEN")
   createdAt      DateTime @default(now())
 
   categories MenuCategory[]
@@ -3065,6 +3076,74 @@ model ReceiptTemplate {
 
 // Earlier states of a receipt template, kept on every save (restore, history).
 // templateId null: the restaurant default receipt (TenantProfile.receiptSettings).
+enum CreditAccountKind {
+  CUSTOMER
+  HOTEL_ROOM
+}
+
+enum CreditEntryType {
+  CHARGE
+  REPAYMENT
+  REFUND
+  ADJUSTMENT
+}
+
+// Customer credit (nasiya) or a hotel room's bill: orders are charged to it and paid
+// back later. balance = what the account owes.
+model CreditAccount {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  tenantId    String            @db.Uuid
+  kind        CreditAccountKind
+  name        String
+  phone       String?
+  room        String?
+  customerId  String?           @db.Uuid
+  // null: no limit.
+  creditLimit Int?
+  balance     Int               @default(0)
+  isOpen      Boolean           @default(true)
+  note        String?
+  checkoutAt  DateTime?
+  createdById String?           @db.Uuid
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  closedAt    DateTime?
+  closedById  String?           @db.Uuid
+
+  entries CreditEntry[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, isOpen])
+  @@map("credit_accounts")
+}
+
+// Append-only ledger of a credit account.
+model CreditEntry {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  tenantId       String          @db.Uuid
+  accountId      String          @db.Uuid
+  type           CreditEntryType
+  // Positive raises the debt (CHARGE), negative lowers it (REPAYMENT, REFUND).
+  amount         Int
+  balanceAfter   Int
+  orderId        String?         @db.Uuid
+  paymentId      String?         @db.Uuid
+  // How a repayment was made (CASH, CARD...).
+  method         String?
+  shiftId        String?         @db.Uuid
+  note           String?
+  idempotencyKey String?
+  createdById    String?         @db.Uuid
+  createdAt      DateTime        @default(now())
+
+  account CreditAccount @relation(fields: [tenantId, accountId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([accountId, createdAt])
+  @@index([paymentId])
+  @@map("credit_entries")
+}
+
 model ReceiptTemplateVersion {
   id          String   @id @default(uuid(7)) @db.Uuid
   tenantId    String   @db.Uuid
