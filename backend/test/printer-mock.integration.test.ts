@@ -213,7 +213,7 @@ describe('printing to simulated network printers', () => {
     await waitFor(() => spareMock.received().includes('Osh'));
     expect(spareMock.received()).toContain('1 x Osh');
     const copy = await ctx.db.printJob.findFirstOrThrow({
-      where: { printerId: spare.id },
+      where: { printerId: spare.id, fallbackFromId: failedJob.id },
     });
     expect(copy).toMatchObject({
       fallbackFromId: failedJob.id,
