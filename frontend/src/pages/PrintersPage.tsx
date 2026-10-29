@@ -45,7 +45,7 @@ type Job = {
   kind: string;
   purpose: string;
   fallback: boolean;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'PRINTING' | 'UNKNOWN';
   attempts: number;
   lastError: string | null;
   createdAt: string;
@@ -841,7 +841,7 @@ export function PrintersPage() {
                       tone={
                         job.status === 'SENT'
                           ? 'success'
-                          : job.status === 'FAILED'
+                          : job.status === 'FAILED' || job.status === 'UNKNOWN'
                             ? 'danger'
                             : 'warning'
                       }
@@ -854,14 +854,23 @@ export function PrintersPage() {
                   </td>
                   <td>{job.attempts}</td>
                   <td className="right">
-                    {job.status !== 'SENT' && (
+                    {job.status !== 'PRINTING' && (
                       <Button
                         size="sm"
-                        onClick={() =>
-                          void action(() => post(`/print-jobs/${job.id}/retry`))
-                        }
+                        onClick={async () => {
+                          // It may already be on paper: ask before a second copy.
+                          const maybeDouble =
+                            job.status === 'SENT' || job.status === 'UNKNOWN';
+                          if (maybeDouble && !(await confirm(p.duplicateWarning)))
+                            return;
+                          void action(() =>
+                            post(`/print-jobs/${job.id}/retry`, {
+                              confirmDuplicate: maybeDouble,
+                            }),
+                          );
+                        }}
                       >
-                        {p.retry}
+                        {job.status === 'SENT' ? p.reprint : p.retry}
                       </Button>
                     )}
                   </td>

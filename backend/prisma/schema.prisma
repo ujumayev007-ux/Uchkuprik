@@ -297,6 +297,8 @@ model AuditLog {
 
 model TenantProfile {
   tenantId                String   @id @db.Uuid
+  // Printing rules per receipt type (copies, trigger, on/off); null = defaults.
+  printRules              Json?
   // Workflow configuration activated by the SUPER_OWNER (null: existing behaviour).
   workflow                Json?
   workflowVersion         Int      @default(0)
@@ -861,8 +863,14 @@ enum PrinterKind {
 
 enum PrintJobStatus {
   PENDING
+  // Handed to the printer (a raw network printer gives no confirmation of paper).
   SENT
   FAILED
+  // Being sent right now.
+  PRINTING
+  // The connection broke after the data started to go out: it may have printed.
+  // Never retried automatically (a retry could print the receipt twice).
+  UNKNOWN
 }
 
 model KitchenStation {
@@ -924,6 +932,8 @@ model PrintJob {
   // NEW (first ticket), UPDATE (changed order), REPRINT or a fallback copy.
   purpose        String         @default("NEW")
   fallbackFromId String?        @db.Uuid
+  // Reprints point to the job they copy (history is never rewritten).
+  reprintOfId    String?        @db.Uuid
 
   printer Printer @relation(fields: [tenantId, printerId], references: [tenantId, id], onDelete: Cascade)
 

@@ -12,6 +12,9 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  printMayDuplicate:
+    'Bu chek allaqachon chop etilgan bo‘lishi mumkin. Qayta yuborsangiz, ikkinchi chek chiqishi mumkin — tasdiqlang.',
+  printInProgress: 'Chek hozir printerga yuborilmoqda. Biroz kuting.',
   workflowInvalid:
     'Ish rejimida xatolar bor. Tekshiruv natijasini ko‘rib, tuzating.',
   workflowSource:

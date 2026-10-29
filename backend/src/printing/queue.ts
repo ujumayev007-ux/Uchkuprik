@@ -17,6 +17,9 @@ const typeLabels = {
   DELIVERY: 'Yetkazib berish',
 } as const;
 
+/** A send that failed after the data started to go out: the paper may have printed. */
+export class PrintOutcomeUnknown extends Error {}
+
 /** Sends raw bytes to a network printer (JetDirect/raw port 9100). */
 export function sendToPrinter(
   host: string,
@@ -26,13 +29,15 @@ export function sendToPrinter(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new Socket();
+    let connected = false;
     const fail = (error: Error) => {
       socket.destroy();
-      reject(error);
+      reject(connected ? new PrintOutcomeUnknown(error.message) : error);
     };
     socket.setTimeout(timeoutMs, () => fail(new Error('Printer timeout')));
     socket.once('error', fail);
     socket.connect(port, host, () => {
+      connected = true;
       socket.end(payload, () => resolve());
     });
   });
@@ -269,6 +274,11 @@ export async function enqueueKitchenTickets(
 export async function processPrintJobs(services: Services, limit = 20) {
   const { db } = services;
   const now = services.now?.() ?? new Date();
+  // A send interrupted by a crash or restart: it may have printed — never resent alone.
+  await db.printJob.updateMany({
+    where: { status: 'PRINTING', nextTryAt: { lt: new Date(now.getTime() - 60_000) } },
+    data: { status: 'UNKNOWN', lastError: 'Natija noma’lum (ilova qayta ishga tushdi)' },
+  });
   const claimed = await db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM print_jobs
@@ -276,10 +286,10 @@ export async function processPrintJobs(services: Services, limit = 20) {
       ORDER BY "createdAt" LIMIT ${limit} FOR UPDATE SKIP LOCKED`;
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.id);
-    // Push nextTryAt forward while this worker owns the jobs.
+    // Being sent now; nextTryAt marks how long this worker owns them.
     await tx.printJob.updateMany({
       where: { id: { in: ids } },
-      data: { nextTryAt: new Date(now.getTime() + 60_000) },
+      data: { status: 'PRINTING', nextTryAt: new Date(now.getTime() + 60_000) },
     });
     return tx.printJob.findMany({
       where: { id: { in: ids } },
@@ -303,6 +313,18 @@ export async function processPrintJobs(services: Services, limit = 20) {
       sent++;
     } catch (error) {
       const attempts = job.attempts + 1;
+      // It may already be on paper: no automatic retry and no fallback copy.
+      if (error instanceof PrintOutcomeUnknown) {
+        await db.printJob.update({
+          where: { id: job.id },
+          data: {
+            attempts,
+            status: 'UNKNOWN',
+            lastError: `Natija noma’lum: ${error.message}`.slice(0, 200),
+          },
+        });
+        continue;
+      }
       if (
         attempts === FALLBACK_AFTER &&
         job.printer.fallbackPrinterId &&

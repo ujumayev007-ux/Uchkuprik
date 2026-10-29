@@ -448,15 +448,52 @@ export function printersRouter(services: Services) {
     });
   });
 
+  /**
+   * Manual retry. A failed job is sent again. A job that may already have printed
+   * (UNKNOWN) or was handed to the printer (SENT) is printed again only after the
+   * person confirms that a second paper may come out — as a new job (REPRINT), so the
+   * history of the first one stays.
+   */
   router.post('/print-jobs/:id/retry', ...manage, async (req, res) => {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
-    const result = await db.printJob.updateMany({
-      where: {
-        id,
+    const { confirmDuplicate } = parse(
+      z.object({ confirmDuplicate: z.boolean().default(false) }),
+      req.body ?? {},
+    );
+    const job = await db.printJob.findFirst({
+      where: { id, tenantId: auth.tenantId },
+    });
+    if (!job) throw errors.notFound();
+    if (job.status === 'PRINTING')
+      throw new AppError(409, 'PRINT_IN_PROGRESS', 'printInProgress');
+    if (job.status === 'UNKNOWN' || job.status === 'SENT') {
+      if (!confirmDuplicate)
+        throw new AppError(409, 'PRINT_MAY_DUPLICATE', 'printMayDuplicate');
+      const copy = await db.printJob.create({
+        data: {
+          tenantId: job.tenantId,
+          printerId: job.printerId,
+          orderId: job.orderId,
+          kind: job.kind,
+          payload: job.payload,
+          purpose: 'REPRINT',
+          reprintOfId: job.id,
+        },
+      });
+      await audit(db, req, {
         tenantId: auth.tenantId,
-        status: { in: ['FAILED', 'PENDING'] },
-      },
+        actorUserId: auth.userId,
+        action: 'print.reprint',
+        entityType: 'print_job',
+        entityId: copy.id,
+        data: { of: job.id, previous: job.status },
+      });
+      res.json({ ok: true, id: copy.id });
+      return;
+    }
+    await db.printJob.update({
+      where: { id },
       data: {
         status: 'PENDING',
         attempts: 0,
@@ -464,7 +501,6 @@ export function printersRouter(services: Services) {
         lastError: null,
       },
     });
-    if (result.count === 0) throw errors.notFound();
     await audit(db, req, {
       tenantId: auth.tenantId,
       actorUserId: auth.userId,
@@ -472,7 +508,7 @@ export function printersRouter(services: Services) {
       entityType: 'print_job',
       entityId: id,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, id });
   });
 
   return router;

@@ -877,7 +877,16 @@ export const uz = {
     savedKitchen:
       'Shu kompyuterning oshxona printeri sifatida saqlandi (Kassa → 🖨 Printerlar).',
     jobs: 'Chop etish navbati',
-    statuses: { PENDING: 'Kutilmoqda', SENT: 'Yuborildi', FAILED: 'Xato' },
+    statuses: {
+      PENDING: 'Kutilmoqda',
+      SENT: 'Printerga yuborildi',
+      FAILED: 'Xato',
+      PRINTING: 'Yuborilmoqda',
+      UNKNOWN: 'Natija noma’lum',
+    },
+    reprint: 'Qayta chop etish',
+    duplicateWarning:
+      'Bu chek printerga yetib borgan bo‘lishi mumkin. Qayta yuborilsa, ikkinchi chek chiqishi mumkin. Davom etasizmi?',
     attempts: 'Urinishlar',
     retry: 'Qayta yuborish',
     fallback: 'Zaxira printer',
