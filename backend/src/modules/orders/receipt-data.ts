@@ -105,6 +105,7 @@ export async function receiptData(
       ).receiptPrints - 1
     : 0;
   const data = serialize(order, noCost);
+  const receiptType = customerReceiptType(data);
   // Credit (nasiya) / hotel room charges name the account the guest signs for.
   const creditPayments = order.payments.filter(
     (payment) => payment.method === 'CREDIT',
@@ -159,13 +160,14 @@ export async function receiptData(
     copy,
     credit,
     // Which printing rule applies (Chop etish qoidalari).
-    receiptType: customerReceiptType(data),
+    receiptType,
     // Template of the printer (or the one picked), else the restaurant default.
     layout: (
       await resolveTemplate(db, tenantId, {
         kind: 'CUSTOMER',
         printerId: pick.printerId ?? null,
         templateId: pick.templateId ?? null,
+        receiptType,
       })
     ).settings,
     // Fiscal sign/QR exist only after a certified fiscal provider registers the receipt.

@@ -6,6 +6,7 @@ import { kitchenTicket } from './escpos.js';
 import { columnsForWidth } from './receipt-template.js';
 import { resolveTemplate } from './resolve-template.js';
 import { ticketTemplateOf } from './template.js';
+import { kitchenLayoutOf } from './kitchen-design.js';
 import { readOrderWorkflow } from '../modules/workflow/engine.js';
 import { loadPrintRules, ruleOf } from './rules.js';
 
@@ -244,16 +245,7 @@ export async function enqueueKitchenTickets(
         stationId: printer.stationId,
       });
       const custom = named.source === 'DEFAULT' ? null : named.settings;
-      const layout = custom
-        ? {
-            ...station,
-            header: custom.title || station.header,
-            footer: custom.thankYou || station.footer,
-            largeItems: custom.largeItems,
-            showWaiter: custom.showWaiter,
-            showNotes: custom.showNotes,
-          }
-        : station;
+      const layout = custom ? kitchenLayoutOf(custom, station) : station;
       const single = kitchenTicket({
         stationName: printer.station?.name ?? null,
         columns: custom

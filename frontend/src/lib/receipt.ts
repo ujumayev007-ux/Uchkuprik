@@ -58,6 +58,10 @@ export type ReceiptLayout = {
   wifiPassword: string;
   wifiQr: boolean;
   showCopyMark: boolean;
+  // Kitchen tickets: item size, the order number in double size, the department.
+  kitchenItemSize?: 'normal' | 'tall' | 'big';
+  kitchenLargeNumber?: boolean;
+  showStation?: boolean;
   presetKey?: string;
   sectionOrder?: string[];
   /** Order of the receipt parts; absent: the usual order. */
@@ -88,7 +92,10 @@ export function blockOrder(chosen: readonly string[]): ReceiptBlock[] {
     (RECEIPT_BLOCKS as readonly string[]).includes(name),
   );
   const unique = [...new Set(known)];
-  return [...unique, ...RECEIPT_BLOCKS.filter((name) => !unique.includes(name))];
+  return [
+    ...unique,
+    ...RECEIPT_BLOCKS.filter((name) => !unique.includes(name)),
+  ];
 }
 
 export const defaultLayout: ReceiptLayout = {

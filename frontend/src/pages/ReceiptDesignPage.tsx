@@ -3,6 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMe } from '../auth/session';
 import { ReceiptSheet, sampleSheet } from '../components/ReceiptSheet';
 import {
+  KITCHEN_BLOCKS,
+  KitchenTicketPreview,
+  kitchenBlockOrder,
+} from '../components/KitchenTicketPreview';
+import {
   Button,
   Checkbox,
   ErrorState,
@@ -31,7 +36,23 @@ const r = t.receiptDesign;
 const k = t.receiptTpl;
 
 type Kind = 'CUSTOMER' | 'KITCHEN';
-type Assignment = { type: 'PRINTER' | 'STATION' | 'TYPE'; targetId: string };
+type Assignment = {
+  type: 'PRINTER' | 'STATION' | 'TYPE' | 'RECEIPT_TYPE';
+  targetId: string;
+};
+// Customer receipt types a template can be given to (bill / paid / credit).
+const RECEIPT_TYPES = ['PRELIM_BILL', 'PAID', 'CREDIT'] as const;
+// Fields a kitchen ticket has.
+const kitchenVisibility = [
+  'showStation',
+  'showOrderNumber',
+  'showOrderType',
+  'showTable',
+  'showDateTime',
+  'showModifiers',
+  'showWaiter',
+  'showNotes',
+] as const;
 type Template = {
   id: string;
   name: string;
@@ -189,7 +210,12 @@ export function ReceiptDesignPage() {
     field: K,
     value: ReceiptLayout[K],
   ) => change({ ...form, [field]: value });
-  const sequence = blockOrder(form.layoutOrder ?? RECEIPT_BLOCKS);
+  const sequence: string[] =
+    kind === 'KITCHEN'
+      ? kitchenBlockOrder(form.layoutOrder ?? KITCHEN_BLOCKS)
+      : blockOrder(form.layoutOrder ?? RECEIPT_BLOCKS);
+  const blockLabel = (block: string) =>
+    (kind === 'KITCHEN' ? k.kitchenBlocks[block] : k.blocks[block]) ?? block;
   const move = (index: number, step: number) => {
     const next = [...sequence];
     const other = next[index + step];
@@ -246,7 +272,10 @@ export function ReceiptDesignPage() {
       change(normalizeLayout(parsed.settings));
       if (key === 'new' && !name && typeof parsed.name === 'string')
         setName(parsed.name.slice(0, 60));
-      if (key !== 'default' && (parsed.kind === 'CUSTOMER' || parsed.kind === 'KITCHEN'))
+      if (
+        key !== 'default' &&
+        (parsed.kind === 'CUSTOMER' || parsed.kind === 'KITCHEN')
+      )
         setKind(parsed.kind);
       toast(k.imported);
     } catch {
@@ -413,8 +442,7 @@ export function ReceiptDesignPage() {
                 padding: '10px 12px',
                 borderRadius: '8px',
                 height: 'auto',
-                background:
-                  form.presetKey === presetKey ? '#eff6ff' : '#fff',
+                background: form.presetKey === presetKey ? '#eff6ff' : '#fff',
                 borderColor:
                   form.presetKey === presetKey ? '#3b82f6' : '#cbd5e1',
                 boxShadow:
@@ -553,7 +581,9 @@ export function ReceiptDesignPage() {
                 onChange={(event) =>
                   set(
                     'pageSize',
-                    event.target.value as NonNullable<ReceiptLayout['pageSize']>,
+                    event.target.value as NonNullable<
+                      ReceiptLayout['pageSize']
+                    >,
                   )
                 }
               >
@@ -761,22 +791,51 @@ export function ReceiptDesignPage() {
           <fieldset className="stack compact">
             <legend>{k.fields}</legend>
             <div className="check-grid">
-              {visibility.map((field) => (
-                <Checkbox
-                  key={field}
-                  label={label(field)}
-                  checked={form[field]}
-                  onChange={(value) => set(field, value)}
-                />
-              ))}
+              {kind === 'KITCHEN'
+                ? kitchenVisibility.map((field) => (
+                    <Checkbox
+                      key={field}
+                      label={label(field)}
+                      checked={form[field] !== false}
+                      onChange={(value) => set(field, value)}
+                    />
+                  ))
+                : visibility.map((field) => (
+                    <Checkbox
+                      key={field}
+                      label={label(field)}
+                      checked={form[field]}
+                      onChange={(value) => set(field, value)}
+                    />
+                  ))}
               {kind === 'KITCHEN' && (
                 <Checkbox
-                  label={k.largeItems}
-                  checked={form.largeItems}
-                  onChange={(value) => set('largeItems', value)}
+                  label={k.kitchenLargeNumber}
+                  checked={form.kitchenLargeNumber !== false}
+                  onChange={(value) => set('kitchenLargeNumber', value)}
                 />
               )}
             </div>
+            {kind === 'KITCHEN' && (
+              <SelectField
+                label={k.kitchenItemSize}
+                value={
+                  form.kitchenItemSize ?? (form.largeItems ? 'tall' : 'normal')
+                }
+                onChange={(event) =>
+                  set(
+                    'kitchenItemSize',
+                    event.target.value as NonNullable<
+                      ReceiptLayout['kitchenItemSize']
+                    >,
+                  )
+                }
+              >
+                <option value="normal">{k.itemSizes.normal}</option>
+                <option value="tall">{k.itemSizes.tall}</option>
+                <option value="big">{k.itemSizes.big}</option>
+              </SelectField>
+            )}
             {form.showQrCode && (
               <div
                 className="form-grid"
@@ -805,7 +864,16 @@ export function ReceiptDesignPage() {
               </div>
             )}
             {form.showVat && (
-              <div className="form-grid" style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+              <div
+                className="form-grid"
+                style={{
+                  marginTop: '8px',
+                  padding: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                }}
+              >
                 <TextField
                   label={k.vatPercent}
                   type="number"
@@ -813,12 +881,29 @@ export function ReceiptDesignPage() {
                   max={30}
                   step={1}
                   value={String(form.vatPercent ?? 12)}
-                  onChange={(event) => set('vatPercent', Math.min(30, Math.max(0, Number(event.target.value) || 0)))}
+                  onChange={(event) =>
+                    set(
+                      'vatPercent',
+                      Math.min(
+                        30,
+                        Math.max(0, Number(event.target.value) || 0),
+                      ),
+                    )
+                  }
                 />
               </div>
             )}
             {form.showWifi && (
-              <div className="form-grid" style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+              <div
+                className="form-grid"
+                style={{
+                  marginTop: '8px',
+                  padding: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                }}
+              >
                 <TextField
                   label={k.wifiName}
                   value={form.wifiName || ''}
@@ -864,19 +949,22 @@ export function ReceiptDesignPage() {
           <fieldset className="stack compact">
             <legend>{k.order}</legend>
             <p className="muted small">{k.orderHint}</p>
-            <ol className="stack compact" style={{ margin: 0, paddingLeft: 20 }}>
+            <ol
+              className="stack compact"
+              style={{ margin: 0, paddingLeft: 20 }}
+            >
               {sequence.map((block, index) => (
                 <li key={block}>
                   <div
                     className="toolbar small"
                     style={{ justifyContent: 'space-between' }}
                   >
-                    <span>{k.blocks[block]}</span>
+                    <span>{blockLabel(block)}</span>
                     <span>
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label={`${k.blocks[block]}: ${k.up}`}
+                        aria-label={`${blockLabel(block)}: ${k.up}`}
                         disabled={index === 0}
                         onClick={() => move(index, -1)}
                       >
@@ -885,7 +973,7 @@ export function ReceiptDesignPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label={`${k.blocks[block]}: ${k.down}`}
+                        aria-label={`${blockLabel(block)}: ${k.down}`}
                         disabled={index === sequence.length - 1}
                         onClick={() => move(index, 1)}
                       >
@@ -963,7 +1051,11 @@ export function ReceiptDesignPage() {
             <p className="muted small">{k.previewHint}</p>
             <div className="receipt-preview-scroll">
               <style>{`.receipt-preview-scroll .receipt-sheet{box-shadow:0 2px 10px #0002}`}</style>
-              <ReceiptSheet layout={form} data={sampleSheet()} />
+              {kind === 'KITCHEN' ? (
+                <KitchenTicketPreview layout={form} />
+              ) : (
+                <ReceiptSheet layout={form} data={sampleSheet()} />
+              )}
             </div>
             <div
               className="form-actions"
@@ -1101,6 +1193,19 @@ export function ReceiptDesignPage() {
                 checked={has('TYPE', kind)}
                 onChange={() => toggle('TYPE', kind)}
               />
+              {kind === 'CUSTOMER' && (
+                <>
+                  <strong className="small">{k.assignReceiptTypes}</strong>
+                  {RECEIPT_TYPES.map((type) => (
+                    <Checkbox
+                      key={type}
+                      label={t.printRules.types[type]}
+                      checked={has('RECEIPT_TYPE', type)}
+                      onChange={() => toggle('RECEIPT_TYPE', type)}
+                    />
+                  ))}
+                </>
+              )}
               <strong className="small">{k.assignPrinters}</strong>
               {matching.length === 0 ? (
                 <p className="muted small">{k.noPrinters}</p>

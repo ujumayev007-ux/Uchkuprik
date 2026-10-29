@@ -8,6 +8,10 @@ import { formatDateTime } from '../lib/format';
 import type { Order, OrderItem } from '../lib/orders';
 import { formatOrderNo } from '../lib/uzbek-number';
 import { copiesOf, usePrintRules } from '../lib/print-rules';
+import type { ReceiptLayout } from '../lib/receipt';
+
+/** A named KITCHEN template from the receipt designer (fields, texts, sizes). */
+type Design = Partial<ReceiptLayout>;
 
 // Kitchen ticket printed by the Kassa application on its own kitchen printer. The
 // application says what was printed before (?printed=&cancelled=&known=1&since=), the
@@ -63,6 +67,7 @@ function Ticket({
   note,
   data,
   copies = 1,
+  design,
 }: {
   widthMm: number;
   number: string;
@@ -74,19 +79,31 @@ function Ticket({
   data: Record<string, string>;
   // Copies of a rule: repeated inside the one ticket the Kassa application prints.
   copies?: number;
+  design?: Design | null;
 }) {
   const text = t.kitchenTicket;
+  const on = (value: boolean | undefined) => value !== false;
+  const itemSize =
+    design?.kitchenItemSize ?? (design?.largeItems === false ? 'normal' : null);
+  const nameStyle =
+    itemSize === 'normal'
+      ? { fontSize: '1em', fontWeight: 700 }
+      : itemSize === 'big'
+        ? { fontSize: '1.9em' }
+        : undefined;
   const item = (line: Line) => (
     <div key={line.id} className="kt-item">
-      <div className="kt-name">
+      <div className="kt-name" style={nameStyle}>
         {line.quantity} × {line.name}
       </div>
-      {line.extras.map((extra) => (
-        <div key={extra} className="kt-extra">
-          {extra}
-        </div>
-      ))}
-      {line.note && (
+      {line.extras
+        .filter((extra) => on(design?.showModifiers) || !extra.startsWith('+ '))
+        .map((extra) => (
+          <div key={extra} className="kt-extra">
+            {extra}
+          </div>
+        ))}
+      {line.note && on(design?.showNotes) && (
         <div className="kt-note">
           {text.note}: {line.note}
         </div>
@@ -105,8 +122,19 @@ function Ticket({
         {copiesOf(copies).map((copy) => (
           <div key={copy}>
             {copy > 0 && <hr />}
-            <div className="kt-title">{text.title}</div>
-            <div className="kt-number">{number}</div>
+            <div className="kt-title">{design?.title || text.title}</div>
+            {on(design?.showOrderNumber) && (
+              <div
+                className="kt-number"
+                style={
+                  design?.kitchenLargeNumber === false
+                    ? { fontSize: '1.3em' }
+                    : undefined
+                }
+              >
+                {number}
+              </div>
+            )}
             {banner && <div className="kt-banner">{banner}</div>}
             <div className="kt-meta">
               {meta.map((part) => (
@@ -121,13 +149,26 @@ function Ticket({
                 <div className="kt-gone">{gone.map(item)}</div>
               </>
             )}
-            {note && (
+            {note && on(design?.showNotes) && (
               <>
                 <hr />
                 <div className="kt-note">
                   {text.orderNote}: {note}
                 </div>
               </>
+            )}
+            {design?.extraLines && (
+              <>
+                <hr />
+                {design.extraLines.split('\n').map((line) => (
+                  <div key={line} className="kt-foot">
+                    {line}
+                  </div>
+                ))}
+              </>
+            )}
+            {design?.thankYou && (
+              <div className="kt-foot">{design.thankYou}</div>
             )}
             <hr />
             <div className="kt-foot">
@@ -150,6 +191,19 @@ export function KitchenTicketPage() {
   });
   // Chop etish qoidalari: kitchen, change and cancellation tickets.
   const rules = usePrintRules();
+  // The restaurant's KITCHEN template from the receipt designer, when it has one.
+  const template = useQuery({
+    queryKey: ['receipt-templates', 'resolve', 'KITCHEN'],
+    queryFn: () =>
+      api<{ settings: Design; source: string }>(
+        '/receipt-templates/resolve?kind=KITCHEN',
+      ),
+    retry: 1,
+  });
+  const design =
+    template.data && template.data.source !== 'DEFAULT'
+      ? template.data.settings
+      : null;
   // Only the categories the kitchen prepares («Fast Food»); null = every item.
   const filter = useQuery({
     queryKey: ['kitchen-filter'],
@@ -158,13 +212,22 @@ export function KitchenTicketPage() {
   });
   // Opened by a person from the order (?all=1): print dialog once it is drawn.
   const byHand = params.get('all') === '1' && params.get('silent') !== '1';
-  const drawn = order.isSuccess && filter.isSuccess && !rules.isPending;
+  const drawn =
+    order.isSuccess &&
+    filter.isSuccess &&
+    !rules.isPending &&
+    !template.isPending;
   useEffect(() => {
     if (!byHand || !drawn) return;
     const timer = window.setTimeout(() => window.print(), 300);
     return () => window.clearTimeout(timer);
   }, [byHand, drawn]);
-  if (order.isPending || filter.isPending || rules.isPending)
+  if (
+    order.isPending ||
+    filter.isPending ||
+    rules.isPending ||
+    template.isPending
+  )
     return <LoadingState />;
   if (order.error) return <ErrorState error={order.error} />;
   if (filter.error) return <ErrorState error={filter.error} />;
@@ -243,10 +306,13 @@ export function KitchenTicketPage() {
       widthMm={widthOf(params)}
       number={formatOrderNo(o.number)}
       meta={[
-        t.pos.types[o.type],
-        ...(o.table ? [`${t.pos.table}: ${o.table.name}`] : []),
-        formatDateTime(placedAt),
+        ...(design?.showOrderType === false ? [] : [t.pos.types[o.type]]),
+        ...(o.table && design?.showTable !== false
+          ? [`${t.pos.table}: ${o.table.name}`]
+          : []),
+        ...(design?.showDateTime === false ? [] : [formatDateTime(placedAt)]),
       ]}
+      design={design}
       banner={banner}
       fresh={shownFresh.map(toLine)}
       gone={shownGone.map(toLine)}

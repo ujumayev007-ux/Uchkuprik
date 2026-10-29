@@ -3,9 +3,10 @@ import { z } from 'zod';
 import type { Services } from '../../context.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { errors, isUniqueViolation, parse } from '../../http/errors.js';
-import { EscPos } from '../../printing/escpos.js';
+import { sampleKitchenTicket } from '../../printing/kitchen-design.js';
 import {
   ASSIGNMENT_TARGETS,
+  CUSTOMER_RECEIPT_TYPES,
   fromLegacyLayout,
   receiptTemplateSchema,
   TEMPLATE_KINDS,
@@ -182,25 +183,29 @@ export function receiptTemplatesRouter(services: Services) {
   });
 
   // Saved versions of a template, newest first ("default": the restaurant default receipt).
-  router.get('/receipt-templates/:key/versions', ...manage, async (req, res) => {
-    const auth = getAuth(res);
-    const key = parse(templateKey, req.params.key);
-    const templateId = key === 'default' ? null : key;
-    const versions = await db.receiptTemplateVersion.findMany({
-      where: { tenantId: auth.tenantId, templateId },
-      orderBy: { createdAt: 'desc' },
-      take: KEEP_VERSIONS,
-    });
-    res.json({
-      versions: versions.map((row) => ({
-        id: row.id,
-        name: row.name,
-        kind: row.kind,
-        createdAt: row.createdAt,
-        settings: templateSettingsOf(row.settings),
-      })),
-    });
-  });
+  router.get(
+    '/receipt-templates/:key/versions',
+    ...manage,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const key = parse(templateKey, req.params.key);
+      const templateId = key === 'default' ? null : key;
+      const versions = await db.receiptTemplateVersion.findMany({
+        where: { tenantId: auth.tenantId, templateId },
+        orderBy: { createdAt: 'desc' },
+        take: KEEP_VERSIONS,
+      });
+      res.json({
+        versions: versions.map((row) => ({
+          id: row.id,
+          name: row.name,
+          kind: row.kind,
+          createdAt: row.createdAt,
+          settings: templateSettingsOf(row.settings),
+        })),
+      });
+    },
+  );
 
   // Puts a saved version back; the state being replaced becomes a version itself.
   router.post(
@@ -266,52 +271,56 @@ export function receiptTemplatesRouter(services: Services) {
   );
 
   // A copy under a new name, without the original's printer assignments.
-  router.post('/receipt-templates/:key/duplicate', ...manage, async (req, res) => {
-    const auth = getAuth(res);
-    const key = parse(templateKey, req.params.key);
-    const { name } = parse(
-      z.object({ name: z.string().trim().min(1).max(60) }),
-      req.body,
-    );
-    let kind = 'CUSTOMER';
-    let settings: unknown;
-    if (key === 'default') {
-      const profile = await db.tenantProfile.findUnique({
-        where: { tenantId: auth.tenantId },
-        select: { receiptSettings: true },
-      });
-      settings = fromLegacyLayout(profile?.receiptSettings);
-    } else {
-      const source = await db.receiptTemplate.findFirst({
-        where: { id: key, tenantId: auth.tenantId },
-      });
-      if (!source) throw errors.notFound();
-      kind = source.kind;
-      settings = templateSettingsOf(source.settings);
-    }
-    try {
-      const created = await db.receiptTemplate.create({
-        data: {
+  router.post(
+    '/receipt-templates/:key/duplicate',
+    ...manage,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const key = parse(templateKey, req.params.key);
+      const { name } = parse(
+        z.object({ name: z.string().trim().min(1).max(60) }),
+        req.body,
+      );
+      let kind = 'CUSTOMER';
+      let settings: unknown;
+      if (key === 'default') {
+        const profile = await db.tenantProfile.findUnique({
+          where: { tenantId: auth.tenantId },
+          select: { receiptSettings: true },
+        });
+        settings = fromLegacyLayout(profile?.receiptSettings);
+      } else {
+        const source = await db.receiptTemplate.findFirst({
+          where: { id: key, tenantId: auth.tenantId },
+        });
+        if (!source) throw errors.notFound();
+        kind = source.kind;
+        settings = templateSettingsOf(source.settings);
+      }
+      try {
+        const created = await db.receiptTemplate.create({
+          data: {
+            tenantId: auth.tenantId,
+            name,
+            kind,
+            settings: settings as Prisma.InputJsonValue,
+          },
+        });
+        await audit(db, req, {
           tenantId: auth.tenantId,
-          name,
-          kind,
-          settings: settings as Prisma.InputJsonValue,
-        },
-      });
-      await audit(db, req, {
-        tenantId: auth.tenantId,
-        actorUserId: auth.userId,
-        action: 'receipt.template.duplicate',
-        entityType: 'receipt_template',
-        entityId: created.id,
-        data: { from: key, name },
-      });
-      res.status(201).json({ id: created.id });
-    } catch (error) {
-      if (isUniqueViolation(error)) throw errors.conflict();
-      throw error;
-    }
-  });
+          actorUserId: auth.userId,
+          action: 'receipt.template.duplicate',
+          entityType: 'receipt_template',
+          entityId: created.id,
+          data: { from: key, name },
+        });
+        res.status(201).json({ id: created.id });
+      } catch (error) {
+        if (isUniqueViolation(error)) throw errors.conflict();
+        throw error;
+      }
+    },
+  );
 
   // Replaces where one template applies (printers, departments, receipt type default).
   router.put(
@@ -342,6 +351,14 @@ export function receiptTemplatesRouter(services: Services) {
             select: { id: true },
           });
           if (!ok) throw errors.validation([{ path: 'targets' }]);
+        } else if (target.type === 'RECEIPT_TYPE') {
+          if (
+            template.kind !== 'CUSTOMER' ||
+            !(CUSTOMER_RECEIPT_TYPES as readonly string[]).includes(
+              target.targetId,
+            )
+          )
+            throw errors.validation([{ path: 'targets' }]);
         } else if (
           !(TEMPLATE_KINDS as readonly string[]).includes(target.targetId)
         )
@@ -425,16 +442,8 @@ export function receiptTemplatesRouter(services: Services) {
     const payload =
       input.kind === 'CUSTOMER'
         ? receiptTicket(sampleReceipt(tenant.name, new Date()), input.settings)
-        : new EscPos()
-            .align('center')
-            .bold(true)
-            .line(input.settings.title || tenant.name)
-            .bold(false)
-            .line(`Sinov: ${printer.name}`)
-            .line(`${input.settings.widthMm} mm`)
-            .feed(4)
-            .cut()
-            .build();
+        : // A sample ticket exactly as the kitchen will get it.
+          sampleKitchenTicket(input.settings, printer.name);
     const job = await db.printJob.create({
       data: {
         tenantId: auth.tenantId,

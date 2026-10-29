@@ -10,7 +10,18 @@ import { z } from 'zod';
 
 export const TEMPLATE_KINDS = ['CUSTOMER', 'KITCHEN'] as const;
 export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
-export const ASSIGNMENT_TARGETS = ['PRINTER', 'STATION', 'TYPE'] as const;
+export const ASSIGNMENT_TARGETS = [
+  'PRINTER',
+  'STATION',
+  'TYPE',
+  // A customer receipt type: preliminary bill, paid receipt or credit receipt.
+  'RECEIPT_TYPE',
+] as const;
+export const CUSTOMER_RECEIPT_TYPES = [
+  'PRELIM_BILL',
+  'PAID',
+  'CREDIT',
+] as const;
 export type AssignmentTarget = (typeof ASSIGNMENT_TARGETS)[number];
 
 const dataImage = z
@@ -68,6 +79,11 @@ export const receiptTemplateSchema = z.object({
   showChange: z.boolean().default(true),
   // Kitchen tickets: items in double-height letters.
   largeItems: z.boolean().default(true),
+  // Kitchen tickets: items 1x1 / 1x2 / 2x2 (left out: largeItems decides), the order
+  // number in double size, the department name.
+  kitchenItemSize: z.enum(['normal', 'tall', 'big']).optional(),
+  kitchenLargeNumber: z.boolean().default(true),
+  showStation: z.boolean().default(true),
   title: z.string().trim().max(60).default(''),
   extraLines: z.string().trim().max(500).default(''),
   thankYou: z.string().trim().max(120).default('Xaridingiz uchun rahmat!'),
