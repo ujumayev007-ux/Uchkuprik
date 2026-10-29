@@ -33,6 +33,8 @@ export type Room = {
   name: string;
   sortOrder: number;
   isActive: boolean;
+  // Workflow zone of the room's tables.
+  kind?: 'HALL' | 'VIP' | 'BAR';
   tables: Table[];
 };
 
@@ -61,6 +63,7 @@ function RoomForm({
   const [name, setName] = useState(room?.name ?? '');
   const [sortOrder, setSortOrder] = useState(room?.sortOrder ?? 0);
   const [isActive, setActive] = useState(room?.isActive ?? true);
+  const [kind, setKind] = useState(room?.kind ?? 'HALL');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -72,8 +75,9 @@ function RoomForm({
         setError(null);
         try {
           if (room)
-            await patch(`/rooms/${room.id}`, { name, sortOrder, isActive });
-          else await post('/rooms', { branchId, name, sortOrder, isActive });
+            await patch(`/rooms/${room.id}`, { name, sortOrder, isActive, kind });
+          else
+            await post('/rooms', { branchId, name, sortOrder, isActive, kind });
           onDone();
         } catch (caught) {
           setError(caught);
@@ -96,6 +100,16 @@ function RoomForm({
         value={sortOrder}
         onChange={(e) => setSortOrder(Number(e.target.value))}
       />
+      <SelectField
+        label={t.floor.roomKind}
+        hint={t.floor.roomKindHint}
+        value={kind}
+        onChange={(e) => setKind(e.target.value as 'HALL' | 'VIP' | 'BAR')}
+      >
+        <option value="HALL">{t.floor.kindHall}</option>
+        <option value="VIP">{t.floor.kindVip}</option>
+        <option value="BAR">{t.floor.kindBar}</option>
+      </SelectField>
       <Checkbox
         label={t.common.active}
         checked={isActive}

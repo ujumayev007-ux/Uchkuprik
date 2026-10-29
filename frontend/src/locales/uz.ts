@@ -438,6 +438,12 @@ export const uz = {
     subtitle: 'Filialdagi zallar, stollar va QR-kodlar',
     addRoom: 'Zal qo‘shish',
     addTable: 'Stol qo‘shish',
+    roomKind: 'Xona turi',
+    roomKindHint:
+      'Ish rejimi shu turga qarab tanlanadi (masalan, VIP xonada buyurtma boshqacha yurishi mumkin).',
+    kindHall: 'Zal',
+    kindVip: 'VIP xona',
+    kindBar: 'Bar',
     roomName: 'Zal nomi',
     tableName: 'Stol nomi yoki raqami',
     seats: 'O‘rinlar soni',
