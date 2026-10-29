@@ -26,6 +26,10 @@ import pg from 'pg';
 import { AppError } from '../http/errors.js';
 import { partialRestore, type PartialGroup } from './backup-partial.js';
 import {
+  reconcileTerminals,
+  type TerminalReconcile,
+} from './backup-terminals.js';
+import {
   createBackup,
   loadBackup,
   verifyBackup,
@@ -433,6 +437,12 @@ export function backupStore(options: {
         await migrated.end();
       }
       const restored = await loadBackup(target, file);
+      let terminals: TerminalReconcile = {
+        kept: 0,
+        revoked: 0,
+        needRepair: 0,
+        sessions: 0,
+      };
       const check = new pg.Client({ connectionString: target });
       await check.connect();
       try {
@@ -468,6 +478,7 @@ export function backupStore(options: {
                 [JSON.stringify(row.r)],
               );
           }
+          terminals = await reconcileTerminals(check, live);
           await check.query('COMMIT');
         } finally {
           await live.end();
@@ -491,6 +502,7 @@ export function backupStore(options: {
         backup: name,
         preRestore: before.name,
         rows: restored.totalRows,
+        terminals,
       };
     } catch (error) {
       await admin((client) =>

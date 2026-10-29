@@ -433,3 +433,87 @@ describe('off-device copies (Zaxira nusxani boshqa joyga)', () => {
     expect(JSON.stringify(status.body)).not.toContain('Zaxira-parol-2');
   }, 240_000);
 });
+
+describe('terminals after a full restore', () => {
+  it('stay as they are today: Owner approvals kept, removed or blocked ones never come back', async () => {
+    const tenant = await createTenant(ctx);
+    const tenantId = tenant.tenant.id;
+    const owner = ctx.agent();
+    await login(owner, tenant.slug, 'owner').expect(200);
+    const user = await ctx.db.user.findFirstOrThrow({ where: { tenantId } });
+    const device = (
+      name: string,
+      status: 'ACTIVE' | 'PENDING',
+      branchId = tenant.branch.id,
+    ) =>
+      ctx.db.device.create({
+        data: {
+          tenantId,
+          branchId,
+          name,
+          tokenHash: `test-${name}-${Math.random().toString(36).slice(2)}`,
+          status,
+          registeredById: user.id,
+          panel: 'KITCHEN',
+        },
+      });
+    const blocked = await device('Bloklanadi', 'ACTIVE');
+    const approved = await device('Tasdiqlanadi', 'PENDING');
+    const removed = await device('Ochiriladi', 'ACTIVE');
+    await post(owner, '/backups/unlock').expect(200);
+    const name = (await post(owner, '/backups').expect(201)).body
+      .name as string;
+
+    // After the backup: the Owner blocks one and approves one, one is removed, two added.
+    await ctx.db.device.update({
+      where: { id: blocked.id },
+      data: { status: 'REVOKED', revokedAt: new Date() },
+    });
+    await ctx.db.device.update({
+      where: { id: approved.id },
+      data: { status: 'ACTIVE' },
+    });
+    await ctx.db.device.delete({ where: { id: removed.id } });
+    const added = await device('Yangi', 'ACTIVE');
+    const branch = await ctx.db.branch.create({
+      data: { tenantId, code: `F${Date.now() % 100000}`, name: 'Yangi filial' },
+    });
+    await device('Yangi filialda', 'ACTIVE', branch.id);
+    const pendingNew = await device('Kutmoqda', 'PENDING');
+
+    const prepared = await ctx.services.backups!.prepareRestore(name);
+    created.push(prepared.database);
+    expect(prepared.terminals.needRepair).toBeGreaterThanOrEqual(1);
+    expect(prepared.terminals.sessions).toBeGreaterThanOrEqual(1);
+    const restored = new pg.Client({
+      connectionString: (() => {
+        const url = new URL(config.DATABASE_URL);
+        url.pathname = `/${prepared.database}`;
+        return url.toString();
+      })(),
+    });
+    await restored.connect();
+    try {
+      const status = async (id: string) =>
+        (
+          await restored.query<{ status: string }>(
+            'SELECT status FROM devices WHERE id = $1',
+            [id],
+          )
+        ).rows[0]?.status;
+      expect(await status(blocked.id)).toBe('REVOKED');
+      expect(await status(approved.id)).toBe('ACTIVE');
+      expect(await status(removed.id)).toBe('REVOKED');
+      expect(await status(added.id)).toBe('ACTIVE');
+      // Nothing is approved by a restore.
+      expect(await status(pendingNew.id)).toBe('PENDING');
+    } finally {
+      await restored.end();
+    }
+    // The live database is untouched.
+    expect(
+      (await ctx.db.device.findUniqueOrThrow({ where: { id: approved.id } }))
+        .status,
+    ).toBe('ACTIVE');
+  }, 240_000);
+});

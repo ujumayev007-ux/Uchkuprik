@@ -2956,7 +2956,7 @@ export const uz = {
     restoreTitle: 'Tiklash: {at}',
     rollbackTitle: 'Oldingi bazaga qaytish: {at}',
     restoreWarn:
-      'Avval hozirgi holatdan zaxira olinadi. Server qayta ishga tushadi (1–2 daqiqa), shu vaqtda kassa va panellar ishlamaydi. Shu nusxadan keyingi o‘zgarishlar yangi bazada bo‘lmaydi, lekin eski baza o‘chirilmaydi va unga qaytish mumkin. Litsenziya va qurilma ulanishi o‘zgarmaydi.',
+      'Avval hozirgi holatdan zaxira olinadi. Server qayta ishga tushadi (1–2 daqiqa), shu vaqtda kassa va panellar ishlamaydi. Shu nusxadan keyingi o‘zgarishlar yangi bazada bo‘lmaydi, lekin eski baza o‘chirilmaydi va unga qaytish mumkin. Litsenziya, qurilma ulanishi va terminallar hozirgi holicha qoladi (Owner tasdig‘i o‘zgarmaydi, bloklangan terminal ochilmaydi). Faqat zaxiradan keyin ochilgan filial terminallarini qayta ulash kerak.',
     typeWord: 'Tasdiqlash uchun TIKLASH deb yozing',
     confirmRestore: 'Tiklashni boshlash',
     cancel: 'Bekor qilish',

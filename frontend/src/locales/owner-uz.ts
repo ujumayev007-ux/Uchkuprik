@@ -266,7 +266,7 @@ export const owner = {
       } as Record<string, string>,
       restoreTitle: 'Tiklash: {at}',
       restoreWarn:
-        'Restoran serveri qayta ishga tushadi (1–2 daqiqa). Shu nusxadan keyingi buyurtmalar va o‘zgarishlar yangi bazada bo‘lmaydi (eski bazada saqlanib qoladi). Litsenziya va qurilma ulanishi o‘zgarmaydi.',
+        'Restoran serveri qayta ishga tushadi (1–2 daqiqa). Shu nusxadan keyingi buyurtmalar va o‘zgarishlar yangi bazada bo‘lmaydi (eski bazada saqlanib qoladi). Litsenziya, qurilma ulanishi va terminallar hozirgi holicha qoladi: siz tasdiqlaganlari ishlaydi, bloklanganlari ochilmaydi. Faqat zaxiradan keyin ochilgan filial terminallarini qayta ulash kerak.',
       typeWord: 'Tasdiqlash uchun TIKLASH deb yozing',
       confirmRestore: 'Tiklashni boshlash',
       cancel: 'Bekor qilish',
