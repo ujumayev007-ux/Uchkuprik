@@ -751,6 +751,9 @@ model Order {
   @@index([tenantId, customerId])
   @@index([tenantId, courierId, deliveryStatus])
   @@index([tenantId, status, scheduledFor])
+  // Also, by migration 20261102130000 (Prisma cannot express it): partial index
+  // orders_scheduled_release_idx on (scheduledFor) WHERE status = PENDING AND
+  // scheduleConfirmedAt IS NOT NULL, for the scheduled-order release worker.
   @@map("orders")
 }
 
