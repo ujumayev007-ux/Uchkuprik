@@ -484,6 +484,23 @@ async function applyPendingRestore(password) {
     return true;
   } catch (error) {
     log(`restore FAILED: ${error.message}`);
+    // Never start without the restaurant's database: if neither rename stuck, put the
+    // kept one back (otherwise the next step would create an empty database).
+    try {
+      const live = await admin.query(
+        "SELECT 1 FROM pg_database WHERE datname = 'fastfood'",
+      );
+      const before = await admin.query(
+        'SELECT 1 FROM pg_database WHERE datname = $1',
+        [kept],
+      );
+      if (live.rowCount === 0 && before.rowCount === 1) {
+        await admin.query(`ALTER DATABASE "${kept}" RENAME TO fastfood`);
+        log(`restore: ${kept} put back as fastfood`);
+      }
+    } catch (recovery) {
+      log(`restore: recovery FAILED: ${recovery.message}`);
+    }
     fs.renameSync(file, `${file}.failed`);
     return false;
   } finally {

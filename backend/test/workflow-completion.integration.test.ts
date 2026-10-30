@@ -407,20 +407,27 @@ describe('banquets (workflow 12)', () => {
         leadMinutes: 60,
       }),
     ]);
-    // Moving the time: allowed until the kitchen has it.
+    // An approved booking is moved or sent early only by whoever may approve it
+    // (Admin for banquets), not by the cashier or a waiter.
     await post(s.cashier, `/orders/${id}/schedule`, {
+      scheduledFor: inHours(1),
+    }).expect(403);
+    await post(s.waiter, `/orders/${id}/release`).expect(403);
+    await post(s.cashier, `/orders/${id}/release`).expect(403);
+    // Moving the time: allowed until the kitchen has it.
+    await post(s.owner, `/orders/${id}/schedule`, {
       scheduledFor: inHours(50),
       guests: 45,
     }).expect(200);
     expect(
       (await ctx.db.order.findUniqueOrThrow({ where: { id } })).guests,
     ).toBe(45);
-    // Staff send it now.
-    await post(s.cashier, `/orders/${id}/release`).expect(200);
+    // The Admin sends it now.
+    await post(s.owner, `/orders/${id}/release`).expect(200);
     row = await ctx.db.order.findUniqueOrThrow({ where: { id } });
     expect(row.status).toBe('PLACED');
-    await post(s.cashier, `/orders/${id}/release`).expect(409);
-    await post(s.cashier, `/orders/${id}/schedule`, {
+    await post(s.owner, `/orders/${id}/release`).expect(409);
+    await post(s.owner, `/orders/${id}/schedule`, {
       scheduledFor: inHours(60),
     }).expect(409);
     const active = await s.waiter.get('/api/workflow/active').expect(200);

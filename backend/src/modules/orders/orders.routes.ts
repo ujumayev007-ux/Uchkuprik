@@ -86,6 +86,9 @@ const placeFields = (
   status: 'PLACED' | 'PENDING',
   scheduledFor: Date | null,
   at: Date,
+  // Placing an existing order stamps placedAt even when it waits for the cashier (as
+  // before); a new order only when it is placed.
+  stampPending = true,
 ) =>
   heldForSchedule(flow, scheduledFor, at)
     ? {
@@ -95,7 +98,7 @@ const placeFields = (
       }
     : {
         status,
-        placedAt: status === 'PLACED' ? at : null,
+        placedAt: status === 'PLACED' || stampPending ? at : null,
         ...autoAccept(flow, status, at),
       };
 // The kitchen needs no confirmation in this zone: the ticket counts as accepted.
@@ -443,7 +446,7 @@ export function ordersRouter(services: Services) {
           const placed =
             placing === 'DRAFT'
               ? { status: 'DRAFT' as const, placedAt: null }
-              : placeFields(flow, placing, scheduledFor, now());
+              : placeFields(flow, placing, scheduledFor, now(), false);
           const order = await tx.order.create({
             data: {
               tenantId: auth.tenantId,

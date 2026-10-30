@@ -13,6 +13,15 @@ import { resolveBranch } from '../branches/access.js';
 import { addEvent, lockOrder } from '../orders/engine.js';
 import { assertSchedule, loadWorkflow, orderFlow } from './restaurant.js';
 import { releaseOrder } from './schedule.js';
+import { canApprove } from './engine.js';
+
+const assertMayApprove = (
+  order: { workflow?: unknown },
+  permissions: Set<string>,
+) => {
+  if (!canApprove(orderFlow(order), permissions))
+    throw new AppError(403, 'WORKFLOW_APPROVAL', 'workflowApproval');
+};
 
 /**
  * The restaurant's side of the active workflow for staff screens: what each zone
@@ -120,6 +129,9 @@ export function restaurantWorkflowRouter(services: Services) {
         await resolveBranch(tx, auth, order.branchId);
         if (order.status !== 'DRAFT' && order.status !== 'PENDING')
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+        // An approved booking is moved only by those who may approve it.
+        if (order.scheduleConfirmedAt)
+          assertMayApprove(order, auth.permissions);
         const scheduledFor = input.scheduledFor
           ? new Date(input.scheduledFor)
           : null;
@@ -187,6 +199,8 @@ export function restaurantWorkflowRouter(services: Services) {
       });
       if (!order) throw errors.notFound();
       await resolveBranch(db, auth, order.branchId);
+      // Sending a booking early is the approver's decision (e.g. Admin for banquets).
+      assertMayApprove(order, auth.permissions);
       if (
         !(await releaseOrder(
           services,

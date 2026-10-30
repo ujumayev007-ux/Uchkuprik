@@ -63,10 +63,11 @@ export const terminalPrinter = (): PrinterBridge | undefined => {
 
 /** Prints the order's receipt on this terminal's printer (silently). */
 /** The printing rule of this order's receipt now (bill, paid or credit receipt). */
+// Unreachable rules never stop printing: the receipt then prints as before the rules.
 const receiptPlan = (orderId: string) =>
-  api<{ printRule?: PrintPlan }>(`/orders/${orderId}/receipt`).then(
-    (data) => data.printRule,
-  );
+  api<{ printRule?: PrintPlan }>(`/orders/${orderId}/receipt`)
+    .then((data) => data.printRule)
+    .catch(() => undefined);
 
 /** One page per call: the rule's copies are printed one after another. */
 export async function printOnTerminal(orderId: string) {
