@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useMe } from '../auth/session';
+import { can, useMe } from '../auth/session';
 import {
   Badge,
   Button,
@@ -16,9 +16,16 @@ import {
   useConfirm,
   useToast,
 } from '../components/ui';
-import { terminalPrinter } from '../components/TerminalPrinter';
+import {
+  terminalPrinter,
+  TerminalPrinterButton,
+} from '../components/TerminalPrinter';
 import { t } from '../i18n';
 import { api, del, patch, post } from '../lib/api';
+import {
+  PrintRulesEditor,
+  type PrintRules,
+} from '../components/PrintRulesEditor';
 import { formatDateTime } from '../lib/format';
 import { useStations } from './KitchenPage';
 
@@ -42,7 +49,7 @@ type Job = {
   kind: string;
   purpose: string;
   fallback: boolean;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'PRINTING' | 'UNKNOWN';
   attempts: number;
   lastError: string | null;
   createdAt: string;
@@ -115,10 +122,11 @@ function PrinterForm({
     setPinging(true);
     setPingResult(null);
     try {
-      const res = await post<{ online: boolean; latencyMs: number; error?: string }>(
-        '/printers/ping-host',
-        { host, port: form.port },
-      );
+      const res = await post<{
+        online: boolean;
+        latencyMs: number;
+        error?: string;
+      }>('/printers/ping-host', { host, port: form.port });
       setPingResult(res);
       if (res.online) {
         toast(`${p.pingSuccess.replace('{ms}', String(res.latencyMs))}`);
@@ -143,7 +151,7 @@ function PrinterForm({
           ...form,
           host: completeHost(form.host),
           branchId,
-          stationId: form.kind === 'KITCHEN' ? (form.stationId || null) : null,
+          stationId: form.kind === 'KITCHEN' ? form.stationId || null : null,
           fallbackPrinterId: form.fallbackPrinterId || null,
         };
         try {
@@ -206,7 +214,9 @@ function PrinterForm({
             })
           }
         >
-          <option value="80">80 mm (Standart termal qog‘oz — XPrinter XP-Q80AS)</option>
+          <option value="80">
+            80 mm (Standart termal qog‘oz — XPrinter XP-Q80AS)
+          </option>
           <option value="58">58 mm (Kichik kassa qog‘ozi)</option>
           <option value="custom">{t.receiptTpl.custom}</option>
         </SelectField>
@@ -233,7 +243,9 @@ function PrinterForm({
         <div className="stack" style={{ gap: '4px' }}>
           <TextField
             label={p.host}
-            hint={base ? p.hostSubnetHint.replace('{subnet}', base) : p.hostHint}
+            hint={
+              base ? p.hostSubnetHint.replace('{subnet}', base) : p.hostHint
+            }
             value={form.host}
             inputMode="decimal"
             placeholder={base ? `${base}.100` : '192.168.1.100'}
@@ -271,12 +283,17 @@ function PrinterForm({
                   style={{
                     marginLeft: '8px',
                     fontSize: '0.85rem',
-                    color: pingResult.online ? 'var(--color-success, #28a745)' : 'var(--color-danger, #dc3545)',
+                    color: pingResult.online
+                      ? 'var(--color-success, #28a745)'
+                      : 'var(--color-danger, #dc3545)',
                     fontWeight: 600,
                   }}
                 >
                   {pingResult.online
-                    ? p.pingSuccess.replace('{ms}', String(pingResult.latencyMs))
+                    ? p.pingSuccess.replace(
+                        '{ms}',
+                        String(pingResult.latencyMs),
+                      )
                     : `${p.pingFail} (${pingResult.error ?? ''})`}
                 </span>
               )}
@@ -361,7 +378,12 @@ function DiscoveryDialog({
   onPick,
 }: {
   onClose: () => void;
-  onPick: (info: { name: string; host: string; port: number; widthMm: number }) => void;
+  onPick: (info: {
+    name: string;
+    host: string;
+    port: number;
+    widthMm: number;
+  }) => void;
 }) {
   const [scanning, setScanning] = useState(false);
   const [subnet, setSubnet] = useState('');
@@ -376,7 +398,10 @@ function DiscoveryDialog({
   const toast = useToast();
   // This computer's receipt or kitchen printer (the same setting as Kassa → 🖨 Printerlar);
   // switched on for automatic printing, which can be changed there.
-  const chooseLocal = async (deviceName: string, role: 'receipt' | 'kitchen') => {
+  const chooseLocal = async (
+    deviceName: string,
+    role: 'receipt' | 'kitchen',
+  ) => {
     const bridge = terminalPrinter();
     if (!bridge) return;
     try {
@@ -391,7 +416,10 @@ function DiscoveryDialog({
       toast(role === 'receipt' ? p.savedReceipt : p.savedKitchen);
       onClose();
     } catch (caught) {
-      toast(caught instanceof Error ? caught.message : t.common.errorTitle, 'error');
+      toast(
+        caught instanceof Error ? caught.message : t.common.errorTitle,
+        'error',
+      );
     }
   };
 
@@ -406,7 +434,9 @@ function DiscoveryDialog({
     }
   });
 
-  const scanLan = async (target = subnet.trim() || serverSubnets?.[0] || '') => {
+  const scanLan = async (
+    target = subnet.trim() || serverSubnets?.[0] || '',
+  ) => {
     setScanning(true);
     try {
       const res = await post<{
@@ -547,6 +577,51 @@ function DiscoveryDialog({
   );
 }
 
+/** Chop etish qoidalari of this restaurant (12 receipt types). */
+function RulesSection({
+  printers,
+}: {
+  printers: { id: string; name: string }[] | undefined;
+}) {
+  const toast = useToast();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const rules = useQuery({
+    queryKey: ['print-rules'],
+    queryFn: () =>
+      api<{ rules: PrintRules; enforced: string[] }>('/print-rules'),
+  });
+  if (!rules.data) return null;
+  return (
+    <details className="card">
+      <summary>
+        <strong>{t.printRules.title}</strong>
+      </summary>
+      <PrintRulesEditor
+        rules={rules.data.rules}
+        enforced={rules.data.enforced}
+        printers={printers}
+        busy={busy}
+        onSave={async (next) => {
+          setBusy(true);
+          try {
+            await api('/print-rules', { method: 'PUT', body: { rules: next } });
+            toast(t.printRules.saved);
+            await client.invalidateQueries({ queryKey: ['print-rules'] });
+          } catch (caught) {
+            toast(
+              caught instanceof Error ? caught.message : t.common.errorTitle,
+              'error',
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </details>
+  );
+}
+
 export function PrintersPage() {
   const { data: me } = useMe();
   const client = useQueryClient();
@@ -554,6 +629,8 @@ export function PrintersPage() {
   const { confirm, element: confirmDialog } = useConfirm();
   const stations = useStations();
   const branchId = me?.activeBranchId ?? '';
+  // Oshxona and Ofitsiant: this device's printer, status and test print only.
+  const manage = can(me, 'settings.manage') || can(me, 'pos.access');
   const [editing, setEditing] = useState<Printer | 'new' | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -576,7 +653,7 @@ export function PrintersPage() {
       api<{ jobs: Job[] }>(`/print-jobs?branchId=${branchId}`).then(
         (data) => data.jobs,
       ),
-    enabled: !!branchId,
+    enabled: !!branchId && manage,
     refetchInterval: 5_000,
   });
 
@@ -605,7 +682,9 @@ export function PrintersPage() {
       }>(`/printers/${printer.id}/ping`);
       setPingStatus((prev) => ({ ...prev, [printer.id]: res }));
       if (res.online) {
-        toast(`${printer.name}: ${p.pingSuccess.replace('{ms}', String(res.latencyMs))}`);
+        toast(
+          `${printer.name}: ${p.pingSuccess.replace('{ms}', String(res.latencyMs))}`,
+        );
       } else {
         toast(`${printer.name}: ${p.pingFail}`, 'error');
       }
@@ -635,7 +714,9 @@ export function PrintersPage() {
   };
 
   const stationMap = new Map((stations.data ?? []).map((s) => [s.id, s.name]));
-  const printerMap = new Map((printers.data ?? []).map((pr) => [pr.id, pr.name]));
+  const printerMap = new Map(
+    (printers.data ?? []).map((pr) => [pr.id, pr.name]),
+  );
 
   return (
     <>
@@ -645,25 +726,30 @@ export function PrintersPage() {
         subtitle={p.subtitle}
         actions={
           <div className="toolbar">
-            <Button
-              variant="ghost"
-              size="sm"
-              busy={seeding}
-              onClick={seedStandardDepartments}
-              title="Baliqxona, Kabobxona, Fastfud, Ichimliklar bo‘limlarini qo‘shish"
-            >
-              🏢 {p.seedDepartments}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDiscovering(true)}
-            >
-              {p.discover}
-            </Button>
-            <Button variant="primary" onClick={() => setEditing('new')}>
-              + {p.add}
-            </Button>
+            <TerminalPrinterButton />
+            {manage && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  busy={seeding}
+                  onClick={seedStandardDepartments}
+                  title="Baliqxona, Kabobxona, Fastfud, Ichimliklar bo‘limlarini qo‘shish"
+                >
+                  🏢 {p.seedDepartments}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDiscovering(true)}
+                >
+                  {p.discover}
+                </Button>
+                <Button variant="primary" onClick={() => setEditing('new')}>
+                  + {p.add}
+                </Button>
+              </>
+            )}
           </div>
         }
       />
@@ -684,7 +770,9 @@ export function PrintersPage() {
             <thead>
               <tr>
                 <th>{t.common.name}</th>
-                <th>{p.department} / {p.kind}</th>
+                <th>
+                  {p.department} / {p.kind}
+                </th>
                 <th>{p.host}</th>
                 <th>{p.paper}</th>
                 <th>{p.fallback}</th>
@@ -699,10 +787,10 @@ export function PrintersPage() {
                   printer.kind === 'RECEIPT'
                     ? 'Kassa (Chek)'
                     : printer.stationId
-                      ? stationMap.get(printer.stationId) ?? 'Bo‘lim'
+                      ? (stationMap.get(printer.stationId) ?? 'Bo‘lim')
                       : p.allDepartments;
                 const backupName = printer.fallbackPrinterId
-                  ? printerMap.get(printer.fallbackPrinterId) ?? 'Zaxira'
+                  ? (printerMap.get(printer.fallbackPrinterId) ?? 'Zaxira')
                   : '—';
                 return (
                   <tr key={printer.id}>
@@ -724,7 +812,13 @@ export function PrintersPage() {
                     <td>{printer.paperWidth ?? 80} mm</td>
                     <td className="small">{backupName}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
                         {printer.isActive ? (
                           <Badge tone="success">{t.common.active}</Badge>
                         ) : (
@@ -763,30 +857,37 @@ export function PrintersPage() {
                       >
                         {p.test}
                       </Button>{' '}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditing(printer)}
-                      >
-                        {t.common.edit}
-                      </Button>{' '}
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={async () => {
-                          if (
-                            await confirm(
-                              p.removeConfirm.replace('{name}', printer.name),
-                            )
-                          )
-                            void action(
-                              () => del(`/printers/${printer.id}`),
-                              p.removed,
-                            );
-                        }}
-                      >
-                        {p.remove}
-                      </Button>
+                      {manage && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditing(printer)}
+                          >
+                            {t.common.edit}
+                          </Button>{' '}
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={async () => {
+                              if (
+                                await confirm(
+                                  p.removeConfirm.replace(
+                                    '{name}',
+                                    printer.name,
+                                  ),
+                                )
+                              )
+                                void action(
+                                  () => del(`/printers/${printer.id}`),
+                                  p.removed,
+                                );
+                            }}
+                          >
+                            {p.remove}
+                          </Button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -796,8 +897,9 @@ export function PrintersPage() {
         </div>
       )}
 
-      <h2 className="section-title">{p.jobs}</h2>
-      {jobs.data && jobs.data.length > 0 ? (
+      {can(me, 'settings.manage') && <RulesSection printers={printers.data} />}
+      {manage && <h2 className="section-title">{p.jobs}</h2>}
+      {!manage ? null : jobs.data && jobs.data.length > 0 ? (
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -827,7 +929,7 @@ export function PrintersPage() {
                       tone={
                         job.status === 'SENT'
                           ? 'success'
-                          : job.status === 'FAILED'
+                          : job.status === 'FAILED' || job.status === 'UNKNOWN'
                             ? 'danger'
                             : 'warning'
                       }
@@ -840,14 +942,26 @@ export function PrintersPage() {
                   </td>
                   <td>{job.attempts}</td>
                   <td className="right">
-                    {job.status !== 'SENT' && (
+                    {job.status !== 'PRINTING' && (
                       <Button
                         size="sm"
-                        onClick={() =>
-                          void action(() => post(`/print-jobs/${job.id}/retry`))
-                        }
+                        onClick={async () => {
+                          // It may already be on paper: ask before a second copy.
+                          const maybeDouble =
+                            job.status === 'SENT' || job.status === 'UNKNOWN';
+                          if (
+                            maybeDouble &&
+                            !(await confirm(p.duplicateWarning))
+                          )
+                            return;
+                          void action(() =>
+                            post(`/print-jobs/${job.id}/retry`, {
+                              confirmDuplicate: maybeDouble,
+                            }),
+                          );
+                        }}
                       >
-                        {p.retry}
+                        {job.status === 'SENT' ? p.reprint : p.retry}
                       </Button>
                     )}
                   </td>

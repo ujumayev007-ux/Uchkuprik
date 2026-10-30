@@ -1,8 +1,27 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { formatDateTime, formatMoney } from '../lib/format';
 import type { Order } from '../lib/orders';
-import { sheetStyle, type ReceiptLayout } from '../lib/receipt';
+import {
+  blockOrder,
+  sheetStyle,
+  type ReceiptBlock,
+  type ReceiptLayout,
+} from '../lib/receipt';
+
+const PREVIEW_BLOCKS: ReceiptBlock[] = [
+  'logo',
+  'header',
+  'meta',
+  'delivery',
+  'items',
+  'totals',
+  'wifi',
+  'qr',
+  'barcode',
+  'fiscal',
+  'footer',
+];
 
 /** A real, scannable QR code (SVG), made in the browser. */
 function QrCode({ text, size = 96 }: { text: string; size?: number }) {
@@ -182,11 +201,9 @@ export function ReceiptSheet({
       : 0;
   const fiscalSign = data.fiscal?.fiscalSign ?? null;
 
-  return (
-    <div
-      className={`receipt receipt-sheet ${className}`}
-      style={sheetStyle(layout)}
-    >
+  const blocks: Record<ReceiptBlock, ReactNode> = {
+    logo: (
+      <>
       {layout.showLogo && layout.logo && (
         <img
           className="receipt-logo"
@@ -200,6 +217,10 @@ export function ReceiptSheet({
           }}
         />
       )}
+      </>
+    ),
+    header: (
+      <>
       {layout.title && <strong className="center block" style={{ fontSize: '1.1em', margin: '4px 0' }}>{layout.title}</strong>}
 
       <header className="receipt-header">
@@ -238,7 +259,10 @@ export function ReceiptSheet({
       )}
 
       <Separator style={layout.separatorStyle} />
-
+      </>
+    ),
+    meta: (
+      <>
       {bigNumber && (
         <div
           className="center"
@@ -282,7 +306,10 @@ export function ReceiptSheet({
           </span>
         )}
       </div>
-
+      </>
+    ),
+    delivery: (
+      <>
       {layout.showDeliveryDetails && order.deliveryAddress && (
         <div
           style={{
@@ -302,7 +329,10 @@ export function ReceiptSheet({
           )}
         </div>
       )}
-
+      </>
+    ),
+    items: (
+      <>
       <Separator style={layout.separatorStyle} />
 
       <table>
@@ -352,7 +382,10 @@ export function ReceiptSheet({
       )}
 
       <Separator style={layout.separatorStyle} />
-
+      </>
+    ),
+    totals: (
+      <>
       <dl className="totals">
         {layout.showDiscount && order.discountTotal > 0 && (
           <>
@@ -394,7 +427,10 @@ export function ReceiptSheet({
           </>
         )}
       </dl>
-
+      </>
+    ),
+    wifi: (
+      <>
       {layout.showWifi && layout.wifiName && (
         <div style={{ textAlign: 'center', margin: '8px 0' }}>
           <div style={{ fontWeight: 600 }}>📶 Wi-Fi: {layout.wifiName}</div>
@@ -406,7 +442,10 @@ export function ReceiptSheet({
           )}
         </div>
       )}
-
+      </>
+    ),
+    qr: (
+      <>
       {layout.showQrCode && layout.qrContent && (
         <div style={{ textAlign: 'center', margin: '8px 0' }}>
           <QrCode text={layout.qrContent} />
@@ -417,14 +456,20 @@ export function ReceiptSheet({
           )}
         </div>
       )}
-
+      </>
+    ),
+    barcode: (
+      <>
       {layout.showBarcode && (
         <div style={{ textAlign: 'center', margin: '6px 0' }}>
           <Barcode value={String(order.number).padStart(8, '0')} />
           <div style={{ fontSize: '0.75em' }}>{String(order.number).padStart(8, '0')}</div>
         </div>
       )}
-
+      </>
+    ),
+    fiscal: (
+      <>
       {/* Real fiscal data only: a receipt the fiscal provider has not registered shows none. */}
       {layout.showFiscalData && fiscalSign && (
         <div
@@ -446,7 +491,10 @@ export function ReceiptSheet({
           )}
         </div>
       )}
-
+      </>
+    ),
+    footer: (
+      <>
       <Separator style={layout.separatorStyle} />
 
       <footer className="receipt-footer">
@@ -460,6 +508,22 @@ export function ReceiptSheet({
           <div className="small">{t.receipt.notFiscal}</div>
         )}
       </footer>
+      </>
+    ),
+  };
+  // Without a chosen order the preview keeps its usual order.
+  const sequence = layout.layoutOrder
+    ? blockOrder(layout.layoutOrder)
+    : PREVIEW_BLOCKS;
+
+  return (
+    <div
+      className={`receipt receipt-sheet ${className}`}
+      style={sheetStyle(layout)}
+    >
+      {sequence.map((name) => (
+        <Fragment key={name}>{blocks[name]}</Fragment>
+      ))}
     </div>
   );
 }

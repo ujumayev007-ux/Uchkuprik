@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Router, type Request } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
@@ -8,6 +8,8 @@ import { AppError, errors, parse } from '../../http/errors.js';
 import { messages } from '../../messages.js';
 import { compareVersions, timing } from './grant.js';
 import { issueGrant, loadPolicy } from './issue.js';
+import { activeWorkflow } from './workflow.routes.js';
+import { opsForDevice } from './remote.routes.js';
 import {
   canonicalJson,
   fingerprintOf,
@@ -51,6 +53,13 @@ const hashOf = (value: unknown) =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
 
 /** Device-facing channel: activation, signed heartbeats and synchronisation. */
+const offsiteTarget = z.object({
+  name: z.string().max(100).nullable(),
+  at: z.string().max(40).nullable(),
+  ok: z.boolean().nullable(),
+  error: z.string().max(200).nullable(),
+});
+
 export function deviceRouter(services: Services) {
   const { db } = services;
   const router = Router();
@@ -268,7 +277,7 @@ export function deviceRouter(services: Services) {
   /** Verifies the device signature, freshness and counter; returns the activation. */
   async function authenticateDevice(
     req: Request,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result' | 'backup',
   ) {
     const body = parse(envelope, req.body);
     const at = now();
@@ -333,6 +342,67 @@ export function deviceRouter(services: Services) {
     hostname: text(80).optional(),
     // What the installed agent can do for the Owner.
     capabilities: z.array(z.string().max(40)).max(20).optional(),
+    // The restaurant's own facts for checking a workflow before activation.
+    facts: z
+      .object({
+        stations: z
+          .array(z.object({ id: z.uuid(), name: z.string().max(80) }))
+          .max(100)
+          .default([]),
+        printers: z
+          .object({
+            kitchen: z.number().int().min(0),
+            receipt: z.number().int().min(0),
+          })
+          .optional(),
+        staff: z
+          .object({
+            cashier: z.number().int().min(0),
+            waiter: z.number().int().min(0),
+            kitchen: z.number().int().min(0),
+          })
+          .optional(),
+        tv: z.number().int().min(0).optional(),
+        // Owner → Monitoring.
+        printing: z
+          .object({
+            failed24h: z.number().int().min(0),
+            unknown24h: z.number().int().min(0),
+            pending: z.number().int().min(0),
+          })
+          .optional(),
+        panels: z
+          .object(
+            Object.fromEntries(
+              ['kitchen', 'tv', 'pos', 'waiter'].map((panel) => [
+                panel,
+                z
+                  .object({
+                    total: z.number().int().min(0),
+                    online: z.number().int().min(0),
+                  })
+                  .optional(),
+              ]),
+            ),
+          )
+          .optional(),
+        backup: z
+          .object({
+            lastAt: z.string().max(40).nullable(),
+            ok: z.boolean().nullable(),
+            lastName: z.string().max(100).nullable(),
+            count: z.number().int().min(0),
+            // Where the newest copy went off the computer (folder / central server).
+            offsite: z
+              .object({
+                folder: offsiteTarget,
+                central: offsiteTarget,
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
     // Outcome of the Owner's Windows-name request on the restaurant side.
     hostRename: z
       .object({
@@ -452,7 +522,10 @@ export function deviceRouter(services: Services) {
           model: beat.model ?? activation.model,
           os: beat.os ?? activation.os,
           branchName: beat.branches[0]?.name ?? activation.branchName,
-          stats: beat.stats as Prisma.InputJsonValue,
+          stats: {
+            ...(beat.stats as object),
+            ...(beat.facts ? { facts: beat.facts } : {}),
+          } as Prisma.InputJsonValue,
           pendingCommands: remaining as unknown as Prisma.InputJsonValue,
         },
       });
@@ -594,6 +667,13 @@ export function deviceRouter(services: Services) {
       serverTime: at.toISOString(),
       grant: document,
       commands: remaining,
+      // The SUPER_OWNER's workflow (older installs ignore it and keep their behaviour).
+      workflow: await activeWorkflow(db, activation.customerId),
+      // Owner → Restoran boshqaruvi operations waiting for this restaurant.
+      ops:
+        activation.status === 'ACTIVE'
+          ? await opsForDevice(db, activation.customerId, at)
+          : [],
       // Server migration: the signed answer carries the new address of the centre.
       relocate: services.control?.relocateTo ?? null,
       branding,
@@ -687,6 +767,160 @@ export function deviceRouter(services: Services) {
       return next;
     });
     res.json({ activationId: created.id });
+  });
+
+  /** Result of an Owner operation, signed by the restaurant's device key. */
+  router.post('/control/device/op-result', beatLimiter, async (req, res) => {
+    const { activation, body, at } = await authenticateDevice(req, 'op-result');
+    const input = parse(
+      z.object({
+        id: z.uuid(),
+        ok: z.boolean(),
+        result: z.unknown().optional(),
+        error: z.string().max(100).nullable().optional(),
+      }),
+      body.payload,
+    );
+    const updated = await db.controlRemoteOp.updateMany({
+      // Only this restaurant's own, unfinished operations.
+      where: {
+        id: input.id,
+        customerId: activation.customerId,
+        status: { in: ['QUEUED', 'SENT'] },
+      },
+      data: {
+        status: input.ok ? 'DONE' : 'FAILED',
+        ...(input.ok && input.result !== undefined && input.result !== null
+          ? { result: input.result as Prisma.InputJsonValue }
+          : {}),
+        error: input.ok ? null : (input.error ?? 'FAILED'),
+        doneAt: at,
+      },
+    });
+    res.json({ ok: updated.count === 1 });
+  });
+
+  /**
+   * Off-device backup copy from a restaurant computer: encrypted there with the
+   * restaurant's own password (the centre cannot read it), sent in 1 MB chunks.
+   * The newest KEEP complete copies per customer are kept.
+   */
+  router.post('/control/device/backup-chunk', beatLimiter, async (req, res) => {
+    const { activation } = await authenticateDevice(req, 'backup');
+    if (
+      activation.status !== 'ACTIVE' ||
+      activation.customer.status !== 'ACTIVE'
+    )
+      throw new AppError(403, 'DEVICE_BLOCKED', 'deviceBlocked');
+    const input = parse(
+      z.object({
+        name: z.string().regex(/^fastfood-zaxira-[0-9A-Za-z-]{4,40}\.ffbk$/),
+        sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        bytes: z
+          .number()
+          .int()
+          .min(1)
+          .max(60 * 1024 * 1024),
+        total: z.number().int().min(1).max(64),
+        index: z.number().int().min(0).max(63),
+        data: z.string().max(1_500_000),
+      }),
+      (req.body as { payload?: unknown }).payload,
+    );
+    if (input.index >= input.total)
+      throw errors.validation([{ path: 'index' }]);
+    const KEEP = 2;
+    const result = await db.$transaction(async (tx) => {
+      let upload = await tx.controlBackupUpload.findUnique({
+        where: {
+          customerId_sha256: {
+            customerId: activation.customerId,
+            sha256: input.sha256,
+          },
+        },
+      });
+      // Already here (a repeated upload): nothing more to store.
+      if (upload?.status === 'COMPLETE')
+        return { complete: true, stored: false };
+      upload ??= await tx.controlBackupUpload.create({
+        data: {
+          id: randomUUID(),
+          customerId: activation.customerId,
+          activationId: activation.id,
+          name: input.name,
+          sha256: input.sha256,
+          bytes: input.bytes,
+          chunks: input.total,
+        },
+      });
+      if (upload.chunks !== input.total || upload.bytes !== input.bytes)
+        throw errors.validation([{ path: 'total' }]);
+      await tx.controlBackupChunk.upsert({
+        where: { uploadId_index: { uploadId: upload.id, index: input.index } },
+        create: {
+          uploadId: upload.id,
+          index: input.index,
+          data: Buffer.from(input.data, 'base64'),
+        },
+        update: { data: Buffer.from(input.data, 'base64') },
+      });
+      const received = await tx.controlBackupChunk.count({
+        where: { uploadId: upload.id },
+      });
+      if (received < upload.chunks) {
+        await tx.controlBackupUpload.update({
+          where: { id: upload.id },
+          data: { received },
+        });
+        return { complete: false, stored: false };
+      }
+      // All parts are here: the whole file must match what the restaurant announced.
+      const parts = await tx.controlBackupChunk.findMany({
+        where: { uploadId: upload.id },
+        orderBy: { index: 'asc' },
+      });
+      const whole = Buffer.concat(parts.map((part) => Buffer.from(part.data)));
+      if (
+        whole.length !== upload.bytes ||
+        createHash('sha256').update(whole).digest('hex') !== upload.sha256
+      ) {
+        await tx.controlBackupUpload.delete({ where: { id: upload.id } });
+        throw errors.validation([{ path: 'sha256' }]);
+      }
+      await tx.controlBackupUpload.update({
+        where: { id: upload.id },
+        data: { received, status: 'COMPLETE', completedAt: now() },
+      });
+      // Older copies (and unfinished ones older than a day) go.
+      const complete = await tx.controlBackupUpload.findMany({
+        where: { customerId: activation.customerId, status: 'COMPLETE' },
+        orderBy: { completedAt: 'desc' },
+        select: { id: true },
+      });
+      await tx.controlBackupUpload.deleteMany({
+        where: {
+          customerId: activation.customerId,
+          OR: [
+            { id: { in: complete.slice(KEEP).map((row) => row.id) } },
+            {
+              status: 'RECEIVING',
+              createdAt: { lt: new Date(now().getTime() - 86_400_000) },
+            },
+          ],
+        },
+      });
+      return { complete: true, stored: true };
+    });
+    if (result.stored)
+      await controlAudit(db, req, {
+        customerId: activation.customerId,
+        action: 'device.backup_upload',
+        outcome: 'SUCCESS',
+        entityType: 'device',
+        entityId: activation.id,
+        data: { name: input.name, bytes: input.bytes },
+      });
+    res.json({ complete: result.complete });
   });
 
   /** One branding file for an install; the install verifies it against the signed bundle's sha256. */

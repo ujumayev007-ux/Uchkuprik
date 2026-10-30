@@ -50,6 +50,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
       isActive: config?.isActive ?? false,
       dailySummaryHour: config?.dailySummaryHour ?? null,
       ordersEnabled: config?.ordersEnabled ?? false,
+      receiptsEnabled: config?.receiptsEnabled ?? false,
       orderBranchId: config?.orderBranchId ?? null,
       webhookUrl: `${appOrigin}/api/webhooks/telegram/${auth.tenantId}`,
       events: notificationEvents,
@@ -80,6 +81,8 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             .default(22),
           // Customers order through the bot (Telegram buyurtmalar).
           ordersEnabled: z.boolean().default(false),
+          // Elektron chek sent by the bot once an order is paid.
+          receiptsEnabled: z.boolean().default(false),
           orderBranchId: z.uuid().nullable().default(null),
         }),
         req.body,
@@ -122,7 +125,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
       if (
         !input.botToken &&
         existing &&
-        input.ordersEnabled &&
+        (input.ordersEnabled || input.receiptsEnabled) &&
         appOrigin.startsWith('https://')
       ) {
         secret = randomToken();
@@ -139,6 +142,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
           isActive: input.isActive,
           dailySummaryHour: input.dailySummaryHour,
           ordersEnabled: input.ordersEnabled,
+          receiptsEnabled: input.receiptsEnabled,
           orderBranchId: input.orderBranchId,
           botUsername,
           ...(secret && !input.botToken
@@ -161,6 +165,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             isActive: input.isActive,
             dailySummaryHour: input.dailySummaryHour,
             ordersEnabled: input.ordersEnabled,
+            receiptsEnabled: input.receiptsEnabled,
             orderBranchId: input.orderBranchId,
             botUsername,
           },
@@ -174,6 +179,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             tokenChanged: !!input.botToken,
             isActive: input.isActive,
             ordersEnabled: input.ordersEnabled,
+            receiptsEnabled: input.receiptsEnabled,
           },
         });
       });

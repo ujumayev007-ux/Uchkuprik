@@ -235,6 +235,7 @@ const methodLabels: Record<string, string> = {
   UZUM: 'Uzum',
   QR: 'QR (Paynet)',
   LOYALTY: 'Sodiqlik ballari',
+  CREDIT: 'Qarzga (nasiya / xona hisobi)',
 };
 
 const stockStatus: Record<string, string> = {

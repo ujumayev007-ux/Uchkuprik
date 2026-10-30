@@ -15,6 +15,16 @@ import {
 
 export type OrderDisplayMode = 'compact' | 'detailed' | 'grid';
 
+export const KITCHEN_THEMES = [
+  'classic',
+  'dark',
+  'columns',
+  'compact',
+  'smart',
+  'minimal',
+] as const;
+export type KitchenTheme = (typeof KITCHEN_THEMES)[number];
+
 export type OrderingConfig = {
   types: { DINE_IN: boolean; TAKEAWAY: boolean; DELIVERY: boolean };
   // «Mijoz»: an order without a table, assigned a table after the guest sits down.
@@ -42,7 +52,15 @@ export type OrderingConfig = {
     };
   };
   // Kitchen screen: current workflow, all active orders, or automatic.
-  kitchen: { mode: 'current' | 'all' | 'auto' };
+  kitchen: {
+    mode: 'current' | 'all' | 'auto';
+    // Kitchen screen design: off = the standard design only.
+    design: {
+      enabled: boolean;
+      defaultTheme: KitchenTheme;
+      whoCanChange: 'all' | 'admin';
+    };
+  };
   waiterAlerts: {
     enabled: boolean;
     sound: boolean;
@@ -86,6 +104,8 @@ export function buildOrdering(input: Input): OrderingConfig {
   const voice = params('tv.voice');
   const alerts = params('waiter.notify');
   const kitchen = params('kitchen.mode');
+  const design = params('kitchen.design');
+  const designOn = on('kitchen.design');
 
   // Waiters are the audience of «new guest» alerts; other roles only when SUPER_OWNER
   // explicitly switched the alert on for them.
@@ -135,6 +155,15 @@ export function buildOrdering(input: Input): OrderingConfig {
         (kitchen.mode === 'all' || kitchen.mode === 'auto')
           ? kitchen.mode
           : 'current',
+      design: {
+        enabled: designOn,
+        defaultTheme:
+          designOn &&
+          (KITCHEN_THEMES as readonly unknown[]).includes(design.defaultTheme)
+            ? (design.defaultTheme as KitchenTheme)
+            : 'classic',
+        whoCanChange: design.whoCanChange === 'admin' ? 'admin' : 'all',
+      },
     },
     waiterAlerts: {
       enabled: alertsOn,

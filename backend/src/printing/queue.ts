@@ -6,6 +6,9 @@ import { kitchenTicket } from './escpos.js';
 import { columnsForWidth } from './receipt-template.js';
 import { resolveTemplate } from './resolve-template.js';
 import { ticketTemplateOf } from './template.js';
+import { kitchenLayoutOf } from './kitchen-design.js';
+import { readOrderWorkflow } from '../modules/workflow/engine.js';
+import { loadPrintRules, ruleOf } from './rules.js';
 
 const MAX_ATTEMPTS = 6;
 // Failed attempts before a copy of the ticket goes to the fallback printer.
@@ -16,6 +19,9 @@ const typeLabels = {
   DELIVERY: 'Yetkazib berish',
 } as const;
 
+/** A send that failed after the data started to go out: the paper may have printed. */
+export class PrintOutcomeUnknown extends Error {}
+
 /** Sends raw bytes to a network printer (JetDirect/raw port 9100). */
 export function sendToPrinter(
   host: string,
@@ -25,13 +31,15 @@ export function sendToPrinter(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new Socket();
+    let connected = false;
     const fail = (error: Error) => {
       socket.destroy();
-      reject(error);
+      reject(connected ? new PrintOutcomeUnknown(error.message) : error);
     };
     socket.setTimeout(timeoutMs, () => fail(new Error('Printer timeout')));
     socket.once('error', fail);
     socket.connect(port, host, () => {
+      connected = true;
       socket.end(payload, () => resolve());
     });
   });
@@ -47,6 +55,8 @@ export function sendToPrinter(
 export async function enqueueKitchenTickets(
   services: Services,
   orderId: string,
+  // Staff pressed «Oshxonaga chop etish»: rules waiting for a manual print go out too.
+  options: { force?: boolean } = {},
 ) {
   const { db } = services;
   await db.$transaction(async (tx) => {
@@ -85,6 +95,24 @@ export async function enqueueKitchenTickets(
       order.items.length === 0
     )
       return;
+    // Workflow: tickets wait for the full payment, and a zone may send every item to
+    // one kitchen station (food court, VIP kitchen).
+    const flow = readOrderWorkflow(order.workflow);
+    if (
+      flow?.kitchenPrint === 'AFTER_PAYMENT' &&
+      order.status !== 'CANCELLED' &&
+      order.paidTotal - order.refundedTotal < order.total
+    )
+      return;
+    if (flow?.stationId) {
+      const stationId = flow.stationId;
+      await tx.orderItem.updateMany({
+        where: { orderId, kitchenPrintedAt: null, NOT: { stationId } },
+        data: { stationId },
+      });
+      for (const item of order.items)
+        if (!item.kitchenPrintedAt) item.stationId = stationId;
+    }
     const fresh =
       order.status === 'CANCELLED'
         ? []
@@ -127,7 +155,34 @@ export async function enqueueKitchenTickets(
             })
           )?.displayName ?? null)
         : nameOf(lastChange?.actorId ?? null);
-    const toLine = (item: (typeof order.items)[number]) => ({
+    // Printing rules (Chop etish qoidalari); without a rule today's behaviour stays.
+    const rules = await loadPrintRules(tx, order.tenantId);
+    const changeRule = ruleOf(rules, 'MODIFICATION');
+    const cancelRule = ruleOf(rules, 'CANCELLATION');
+    const paid =
+      order.status === 'CANCELLED' ||
+      order.paidTotal - order.refundedTotal >= order.total;
+    // Each printer follows the rule of its department's type (Oshxona / Kabob / Bar);
+    // Kabob and Bar without their own rule follow the kitchen one.
+    const ruleFor = (printer: { station: { printType: string } | null }) => {
+      const type = printer.station?.printType;
+      return ruleOf(
+        rules,
+        type === 'KEBAB' || type === 'BAR' ? type : 'KITCHEN',
+      );
+    };
+    // Waits for a manual print, or for the full payment.
+    const deferred = (rule: ReturnType<typeof ruleFor>) =>
+      !options.force &&
+      !!rule &&
+      (rule.trigger === 'MANUAL' ||
+        (rule.trigger === 'AFTER_PAYMENT' && !paid));
+    // A switched-off type is marked as handled (no flood of old tickets later).
+    const skipCancelled = cancelRule?.enabled === false;
+    const toLine = (
+      item: (typeof order.items)[number],
+      showPrices: boolean,
+    ) => ({
       quantity: item.quantity,
       name: `${item.productName}${item.variantName === 'Standart' ? '' : ` (${item.variantName})`}`,
       modifiers: [
@@ -140,7 +195,7 @@ export async function enqueueKitchenTickets(
         ),
       ],
       note: item.note,
-      ...(settings.kitchenPrices ? { price: item.lineTotal } : {}),
+      ...(showPrices ? { price: item.lineTotal } : {}),
     });
     const printers = await tx.printer.findMany({
       where: {
@@ -162,9 +217,24 @@ export async function enqueueKitchenTickets(
           item.stationId === printer.stationId,
       );
     const now = services.now?.() ?? new Date();
+    // Items a printer took care of (printed, or its rule switched printing off).
+    const handled = new Set<string>();
+    const targeted = new Set<string>();
     for (const printer of printers) {
-      const items = forPrinter(printer, fresh);
-      const cancelled = forPrinter(printer, removed);
+      const typeRule = ruleFor(printer);
+      const ownItems = forPrinter(printer, fresh);
+      const ownCancelled = forPrinter(printer, removed);
+      for (const item of [...ownItems, ...ownCancelled]) targeted.add(item.id);
+      if (deferred(typeRule)) continue;
+      for (const item of [...ownItems, ...ownCancelled]) handled.add(item.id);
+      const skipItems =
+        (!printedBefore && typeRule?.enabled === false) ||
+        (printedBefore && changeRule?.enabled === false);
+      const showPrices = typeRule
+        ? typeRule.showPrices
+        : settings.kitchenPrices;
+      const items = skipItems ? [] : ownItems;
+      const cancelled = skipCancelled ? [] : ownCancelled;
       if (items.length === 0 && cancelled.length === 0) continue;
       const update = printedBefore;
       const station = ticketTemplateOf(printer.station?.ticketTemplate);
@@ -175,16 +245,7 @@ export async function enqueueKitchenTickets(
         stationId: printer.stationId,
       });
       const custom = named.source === 'DEFAULT' ? null : named.settings;
-      const layout = custom
-        ? {
-            ...station,
-            header: custom.title || station.header,
-            footer: custom.thankYou || station.footer,
-            largeItems: custom.largeItems,
-            showWaiter: custom.showWaiter,
-            showNotes: custom.showNotes,
-          }
-        : station;
+      const layout = custom ? kitchenLayoutOf(custom, station) : station;
       const single = kitchenTicket({
         stationName: printer.station?.name ?? null,
         columns: custom
@@ -200,8 +261,8 @@ export async function enqueueKitchenTickets(
         priority: order.priority,
         createdAt: order.placedAt ?? order.createdAt,
         timezone: order.branch.timezone,
-        items: items.map(toLine),
-        cancelled: cancelled.map(toLine),
+        items: items.map((item) => toLine(item, showPrices)),
+        cancelled: cancelled.map((item) => toLine(item, showPrices)),
         delivery: order.type === 'DELIVERY',
         update,
         version: order.version,
@@ -210,7 +271,11 @@ export async function enqueueKitchenTickets(
         changedAt: update ? (lastChange?.createdAt ?? now) : now,
         template: layout,
       });
-      const copies = Array.from({ length: layout.copies }, () => single);
+      const rule = update ? changeRule : typeRule;
+      const copies = Array.from(
+        { length: rule?.copies ?? layout.copies },
+        () => single,
+      );
       const payload = new Uint8Array(
         copies.reduce((total, part) => total + part.length, 0),
       );
@@ -229,14 +294,19 @@ export async function enqueueKitchenTickets(
         },
       });
     }
-    if (fresh.length)
+    // Items waiting only for deferred printers stay unprinted for a later pass.
+    const done = (item: { id: string }) =>
+      handled.has(item.id) || !targeted.has(item.id);
+    const printedNow = fresh.filter(done);
+    const cancelledNow = removed.filter(done);
+    if (printedNow.length)
       await tx.orderItem.updateMany({
-        where: { id: { in: fresh.map((item) => item.id) } },
+        where: { id: { in: printedNow.map((item) => item.id) } },
         data: { kitchenPrintedAt: now },
       });
-    if (removed.length)
+    if (cancelledNow.length)
       await tx.orderItem.updateMany({
-        where: { id: { in: removed.map((item) => item.id) } },
+        where: { id: { in: cancelledNow.map((item) => item.id) } },
         data: { cancelPrintedAt: now },
       });
   });
@@ -250,6 +320,17 @@ export async function enqueueKitchenTickets(
 export async function processPrintJobs(services: Services, limit = 20) {
   const { db } = services;
   const now = services.now?.() ?? new Date();
+  // A send interrupted by a crash or restart: it may have printed — never resent alone.
+  await db.printJob.updateMany({
+    where: {
+      status: 'PRINTING',
+      nextTryAt: { lt: new Date(now.getTime() - 60_000) },
+    },
+    data: {
+      status: 'UNKNOWN',
+      lastError: 'Natija noma’lum (ilova qayta ishga tushdi)',
+    },
+  });
   const claimed = await db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM print_jobs
@@ -257,10 +338,10 @@ export async function processPrintJobs(services: Services, limit = 20) {
       ORDER BY "createdAt" LIMIT ${limit} FOR UPDATE SKIP LOCKED`;
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.id);
-    // Push nextTryAt forward while this worker owns the jobs.
+    // Being sent now; nextTryAt marks how long this worker owns them.
     await tx.printJob.updateMany({
       where: { id: { in: ids } },
-      data: { nextTryAt: new Date(now.getTime() + 60_000) },
+      data: { status: 'PRINTING', nextTryAt: new Date(now.getTime() + 60_000) },
     });
     return tx.printJob.findMany({
       where: { id: { in: ids } },
@@ -284,6 +365,18 @@ export async function processPrintJobs(services: Services, limit = 20) {
       sent++;
     } catch (error) {
       const attempts = job.attempts + 1;
+      // It may already be on paper: no automatic retry and no fallback copy.
+      if (error instanceof PrintOutcomeUnknown) {
+        await db.printJob.update({
+          where: { id: job.id },
+          data: {
+            attempts,
+            status: 'UNKNOWN',
+            lastError: `Natija noma’lum: ${error.message}`.slice(0, 200),
+          },
+        });
+        continue;
+      }
       if (
         attempts === FALLBACK_AFTER &&
         job.printer.fallbackPrinterId &&

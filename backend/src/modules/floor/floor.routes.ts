@@ -12,6 +12,8 @@ const roomInput = z.object({
   name: z.string().trim().min(1).max(60),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   isActive: z.boolean().default(true),
+  // Workflow zone of the room's tables (dining hall, VIP room, bar).
+  kind: z.enum(['HALL', 'VIP', 'BAR']).default('HALL'),
 });
 
 const tableInput = z.object({
@@ -62,6 +64,7 @@ export function floorRouter(services: Services) {
         name: room.name,
         sortOrder: room.sortOrder,
         isActive: room.isActive,
+        kind: room.kind,
         tables: room.tables.map((table) => ({
           id: table.id,
           name: table.name,
@@ -88,6 +91,7 @@ export function floorRouter(services: Services) {
             name: input.name,
             sortOrder: input.sortOrder,
             isActive: input.isActive,
+            kind: input.kind,
           },
         });
         await audit(tx, req, {

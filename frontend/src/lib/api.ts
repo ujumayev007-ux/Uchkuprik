@@ -20,7 +20,12 @@ export function setReauthHandler(handler: ReauthHandler | null) {
   reauthHandler = handler;
 }
 
-type Options = { method?: string; body?: unknown; signal?: AbortSignal };
+type Options = {
+  method?: string;
+  body?: unknown;
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+};
 
 async function send(path: string, options: Options): Promise<Response> {
   return fetch(`/api${path}`, {
@@ -36,6 +41,7 @@ async function send(path: string, options: Options): Promise<Response> {
       ...(options.body === undefined
         ? {}
         : { 'Content-Type': 'application/json' }),
+      ...options.headers,
     },
     ...(options.body === undefined
       ? {}

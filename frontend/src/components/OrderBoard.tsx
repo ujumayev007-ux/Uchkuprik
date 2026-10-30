@@ -128,7 +128,10 @@ export function OrderBoard({ orders, mode, onSelect, onAssignTable }: Props) {
                 <span>{tableLabel(order)}</span>
               </button>
               <div className="badges">
-                <StatusBadge status={order.status} />
+                <StatusBadge
+                  status={order.status}
+                  scheduledFor={order.scheduledFor}
+                />
                 <PaymentBadge order={order} />
               </div>
               <ul className="order-card-items">
@@ -202,7 +205,10 @@ export function OrderBoard({ orders, mode, onSelect, onAssignTable }: Props) {
                 <AssignLink order={order} onAssignTable={onAssignTable} />
               </td>
               <td>
-                <StatusBadge status={order.status} />
+                <StatusBadge
+                  status={order.status}
+                  scheduledFor={order.scheduledFor}
+                />
               </td>
               <td>
                 <PaymentBadge order={order} />

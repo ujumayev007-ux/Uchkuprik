@@ -12,11 +12,63 @@ export const messages = {
   validation: 'Kiritilgan ma’lumotlarni tekshiring.',
   invalidCredentials: 'Login yoki parol noto‘g‘ri.',
   invalidPin: 'PIN-kod noto‘g‘ri.',
+  backupUnavailable:
+    'Zaxira nusxalar shu kompyuterdagi FastFood Server ilovasida ishlaydi (yangi versiya kerak).',
+  backupInvalid: 'Bu fayl FastFood zaxira nusxasi emas yoki shikastlangan.',
+  backupVerifyFailed:
+    'Zaxira nusxa tekshiruvdan o‘tmadi (tiklab ko‘rilganda maʼlumotlar mos kelmadi).',
+  backupFailed: 'Zaxira nusxa olinmadi. Server jurnalini tekshiring.',
+  backupPassword: 'Parol noto‘g‘ri yoki fayl shikastlangan.',
+  backupConfirm: 'Tasdiqlash uchun TIKLASH so‘zini yozing.',
+  offsiteFolder:
+    'Bu papkaga yozib bo‘lmadi. To‘liq yo‘lni kiriting (masalan D:\\FastFood-zaxira yoki \\\\server\\zaxira) va disk ulanganini tekshiring.',
+  backupPartialConflict:
+    'Tanlangan maʼlumotlarni tiklab bo‘lmadi (hozirgi maʼlumotlar bilan to‘qnashuv). Hech narsa o‘zgarmadi.',
+  printMayDuplicate:
+    'Bu chek allaqachon chop etilgan bo‘lishi mumkin. Qayta yuborsangiz, ikkinchi chek chiqishi mumkin — tasdiqlang.',
+  creditNotAllowed:
+    'Qarzga (nasiya) yoki xona hisobiga yozish faqat shunday ish rejimida mumkin.',
+  creditLimit:
+    'Qarz limiti yetmaydi. Avval eski qarzni to‘lang yoki limitni oshiring.',
+  creditAccountClosed: 'Bu qarz hisobi yopilgan.',
+  creditNotSettled:
+    'Hisobda to‘lanmagan qarz bor. Avval qarzni to‘liq to‘lang.',
+  workflowSchedule:
+    'Buyurtmani belgilangan vaqtga qoldirish faqat rejalashtirilgan buyurtma yoki banket ish rejimida mumkin.',
+  telegramOff: 'Restoran Telegram boti sozlanmagan yoki o‘chirilgan.',
+  telegramNoChat:
+    'Bu mijozning Telegram chati topilmadi. Mijoz botga /start yozib, o‘z raqamini yuborishi kerak.',
+  printRuleOff: 'Bu chek turini chop etish o‘chirilgan (Chop etish qoidalari).',
+  printInProgress: 'Chek hozir printerga yuborilmoqda. Biroz kuting.',
+  workflowInvalid:
+    'Ish rejimida xatolar bor. Tekshiruv natijasini ko‘rib, tuzating.',
+  workflowSource:
+    'Ish rejimi bo‘yicha bu joyda bunday buyurtma qabul qilinmaydi (masalan, bu zonada faqat kassa buyurtma oladi).',
+  workflowPaymentFirst:
+    'Ish rejimi bo‘yicha avval to‘lov qilinadi, keyin buyurtma oshxonaga yuboriladi.',
+  workflowAdvance:
+    'Ish rejimi bo‘yicha avval avans to‘lanishi kerak, keyin buyurtma oshxonaga yuboriladi.',
+  workflowApproval:
+    'Ish rejimi bo‘yicha bu buyurtmani tasdiqlash huquqingiz yo‘q.',
+  workflowEdit:
+    'Ish rejimi bo‘yicha oshxonaga yuborilgan buyurtmani o‘zgartirib bo‘lmaydi. Menejerga murojaat qiling.',
+  workflowDiscount:
+    'Ish rejimi bo‘yicha bu buyurtmaga chegirma berib bo‘lmaydi.',
+  importFile:
+    'Excel faylini o‘qib bo‘lmadi. “Excel namunasini yuklab olish” orqali olingan .xlsx faylni to‘ldirib yuklang.',
+  importTooMany: 'Bir martada ko‘pi bilan 500 ta taom yuklash mumkin.',
+  deviceDisabled:
+    'Bu terminal administrator tomonidan vaqtincha o‘chirilgan. Administratorga murojaat qiling.',
+  productImageTooLarge:
+    'Rasm juda katta (kichraytirilgandan keyin ham 1 MB dan oshdi). Boshqa rasm tanlang.',
+  pinInUse:
+    'Bu PIN-kod boshqa xodimda bor. Har bir xodimga alohida PIN-kod bering.',
   agentUnavailable:
     'Bu kompyuterdagi FastFood agenti bu amalni bajara olmaydi (eski versiya yoki server kompyuteri emas). Restoran serverini yangilang; hozircha faqat Owner’dagi nomni o‘zgartirish mumkin.',
   hostnameInvalid:
     'Windows nomi 1–15 belgi bo‘lsin: lotin harflari, raqamlar va “-” (faqat raqamdan iborat bo‘lmasin).',
-  deviceStateConflict: 'Qurilmaning hozirgi holatida bu amalni bajarib bo‘lmaydi.',
+  deviceStateConflict:
+    'Qurilmaning hozirgi holatida bu amalni bajarib bo‘lmaydi.',
   accountLocked:
     'Juda ko‘p noto‘g‘ri urinish. Hisob vaqtincha bloklandi, keyinroq urinib ko‘ring.',
   unauthenticated: 'Iltimos, tizimga kiring.',

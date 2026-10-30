@@ -125,16 +125,52 @@ export class EscPos {
     const pH = (len >> 8) & 0xff;
     return this.raw(
       // Model 2
-      GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+      GS,
+      0x28,
+      0x6b,
+      0x04,
+      0x00,
+      0x31,
+      0x41,
+      0x32,
+      0x00,
       // Size
-      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, Math.max(1, Math.min(16, size)),
+      GS,
+      0x28,
+      0x6b,
+      0x03,
+      0x00,
+      0x31,
+      0x43,
+      Math.max(1, Math.min(16, size)),
       // Error correction Level M
-      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31,
+      GS,
+      0x28,
+      0x6b,
+      0x03,
+      0x00,
+      0x31,
+      0x45,
+      0x31,
       // Store data
-      GS, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30,
+      GS,
+      0x28,
+      0x6b,
+      pL,
+      pH,
+      0x31,
+      0x50,
+      0x30,
       ...bytes,
       // Print
-      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30
+      GS,
+      0x28,
+      0x6b,
+      0x03,
+      0x00,
+      0x31,
+      0x51,
+      0x30,
     );
   }
   barcode(code: string, height = 50) {
@@ -143,15 +179,23 @@ export class EscPos {
     const bytes = Buffer.from(printable, 'ascii');
     return this.raw(
       // Barcode height
-      GS, 0x68, Math.max(20, Math.min(255, height)),
+      GS,
+      0x68,
+      Math.max(20, Math.min(255, height)),
       // Barcode width multiplier
-      GS, 0x77, 2,
+      GS,
+      0x77,
+      2,
       // HRI characters below
-      GS, 0x48, 2,
+      GS,
+      0x48,
+      2,
       // CODE39
-      GS, 0x6b, 0x04,
+      GS,
+      0x6b,
+      0x04,
       ...bytes,
-      0x00
+      0x00,
     );
   }
   raw(...bytes: number[]) {
@@ -184,14 +228,48 @@ export type KitchenTicket = {
   cancelled?: KitchenTicketItem[];
   // Characters per line (paper width).
   columns?: number;
-  // Department template (KitchenStation.ticketTemplate).
+  // Department template (KitchenStation.ticketTemplate), or a named KITCHEN template
+  // with the design fields below (left out: printed as before).
   template?: {
     header: string;
     footer: string;
     largeItems: boolean;
     showWaiter: boolean;
     showNotes: boolean;
+    design?: KitchenDesign | undefined;
   };
+};
+
+/** Parts of a kitchen ticket, top to bottom by default. */
+export const KITCHEN_BLOCKS = [
+  'header',
+  'alerts',
+  'station',
+  'number',
+  'meta',
+  'items',
+  'note',
+  'footer',
+] as const;
+export type KitchenBlock = (typeof KITCHEN_BLOCKS)[number];
+
+/** Kitchen ticket design from the receipt designer (named KITCHEN templates). */
+export type KitchenDesign = {
+  blocks?: string[] | undefined;
+  showStation?: boolean;
+  showOrderNumber?: boolean;
+  showOrderType?: boolean;
+  showTable?: boolean;
+  showDateTime?: boolean;
+  showModifiers?: boolean;
+  // Items: 'normal' 1x1, 'tall' 1x2 (the usual large), 'big' 2x2.
+  itemSize?: 'normal' | 'tall' | 'big';
+  // The order number in double size (as before) or in normal letters.
+  largeNumber?: boolean;
+  smallFont?: boolean;
+  // Character of the separator lines ('-' as before).
+  separator?: string;
+  extraLines?: string;
 };
 
 export type KitchenTicketItem = {
@@ -216,58 +294,129 @@ export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
   const time = clock(ticket.createdAt);
   const doc = new EscPos(ticket.columns ?? COLUMNS).align('center');
   const layout = ticket.template;
-  if (layout?.header) doc.bold(true).line(layout.header).bold(false);
-  if (ticket.delivery)
-    doc.size(2, 2).bold(true).line('! DOSTAVKA !').size(1, 1).bold(false);
-  if (ticket.update)
-    doc
-      .bold(true)
-      .rule('*')
-      .line('DIQQAT! CHEK YANGILANDI')
-      .rule('*')
-      .bold(false);
-  if (ticket.stationName) doc.line(ticket.stationName.toUpperCase());
-  if (ticket.priority > 0)
-    doc.bold(true).line('*** SHOSHILINCH ***').bold(false);
-  doc.size(2, 2).bold(true).line(`N ${ticket.number}`).size(1, 1).bold(false);
-  if (ticket.version && ticket.version > 1)
-    doc.line(`Versiya ${ticket.version}`);
-  doc.line(
-    `${ticket.typeLabel}${ticket.table ? ` - ${ticket.table}` : ''} - ${time}`,
+  const design: KitchenDesign = layout?.design ?? {};
+  const on = (value: boolean | undefined) => value !== false;
+  const rule = () => doc.rule(design.separator || '-');
+  const itemHeight: 1 | 2 = design.itemSize
+    ? design.itemSize === 'normal'
+      ? 1
+      : 2
+    : layout?.largeItems === false
+      ? 1
+      : 2;
+  const itemWidth: 1 | 2 = design.itemSize === 'big' ? 2 : 1;
+  if (design.smallFont) doc.smallFont(true);
+  const blocks: Record<KitchenBlock, () => void> = {
+    header: () => {
+      if (layout?.header) doc.bold(true).line(layout.header).bold(false);
+    },
+    alerts: () => {
+      if (ticket.delivery)
+        doc.size(2, 2).bold(true).line('! DOSTAVKA !').size(1, 1).bold(false);
+      if (ticket.update)
+        doc
+          .bold(true)
+          .rule('*')
+          .line('DIQQAT! CHEK YANGILANDI')
+          .rule('*')
+          .bold(false);
+    },
+    station: () => {
+      if (ticket.stationName && on(design.showStation))
+        doc.line(ticket.stationName.toUpperCase());
+      if (ticket.priority > 0)
+        doc.bold(true).line('*** SHOSHILINCH ***').bold(false);
+    },
+    number: () => {
+      if (on(design.showOrderNumber)) {
+        if (design.largeNumber === false)
+          doc.bold(true).line(`N ${ticket.number}`).bold(false);
+        else
+          doc
+            .size(2, 2)
+            .bold(true)
+            .line(`N ${ticket.number}`)
+            .size(1, 1)
+            .bold(false);
+      }
+      if (ticket.version && ticket.version > 1)
+        doc.line(`Versiya ${ticket.version}`);
+    },
+    meta: () => {
+      const parts = [
+        ...(on(design.showOrderType) ? [ticket.typeLabel] : []),
+        ...(ticket.table && on(design.showTable) ? [ticket.table] : []),
+        ...(on(design.showDateTime) ? [time] : []),
+      ];
+      if (parts.length) doc.line(parts.join(' - '));
+      if (ticket.waiter && layout?.showWaiter !== false)
+        doc.line(`Ofitsiant: ${ticket.waiter}`);
+      if (ticket.update && ticket.changedAt)
+        doc.line(
+          `O'zgartirildi: ${clock(ticket.changedAt)}${ticket.changedBy ? ` - ${ticket.changedBy}` : ''}`,
+        );
+      doc.align('left');
+      rule();
+    },
+    items: () => {
+      if (ticket.cancelled?.length) {
+        doc.bold(true).line('OLIB TASHLANDI:').bold(false);
+        for (const item of ticket.cancelled) {
+          // Thermal printers have no strikethrough: the line is crossed with dashes.
+          const text = `${item.quantity} x ${item.name}`;
+          doc
+            .size(1, 2)
+            .line(`--${toPrintable(text).replace(/ /g, '-')}-- BEKOR`)
+            .size(1, 1);
+        }
+        rule();
+        if (ticket.items.length)
+          doc.bold(true).line("YANGI / QO'SHILDI:").bold(false);
+      }
+      for (const item of ticket.items) {
+        const text = `${item.quantity} x ${item.name}`;
+        doc.size(itemWidth, itemHeight).bold(true);
+        if (item.price !== undefined && item.price !== null)
+          doc.pair(text, money(item.price));
+        else doc.line(text);
+        doc.size(1, 1).bold(false);
+        if (on(design.showModifiers))
+          for (const modifier of item.modifiers) doc.line(`   + ${modifier}`);
+        if (item.note && layout?.showNotes !== false)
+          doc.line(`   ! ${item.note}`);
+      }
+    },
+    note: () => {
+      if (ticket.note && layout?.showNotes !== false) {
+        rule();
+        doc.line(`Izoh: ${ticket.note}`);
+      }
+    },
+    footer: () => {
+      if (design.extraLines) {
+        rule();
+        doc.align('center');
+        for (const text of design.extraLines.split('\n')) doc.line(text);
+      }
+      if (layout?.footer) {
+        rule();
+        doc.align('center').line(layout.footer);
+      }
+    },
+  };
+  // Without a chosen order the ticket is printed exactly as before.
+  const chosen = (design.blocks ?? []).filter((name): name is KitchenBlock =>
+    (KITCHEN_BLOCKS as readonly string[]).includes(name),
   );
-  if (ticket.waiter && layout?.showWaiter !== false)
-    doc.line(`Ofitsiant: ${ticket.waiter}`);
-  if (ticket.update && ticket.changedAt)
-    doc.line(
-      `O'zgartirildi: ${clock(ticket.changedAt)}${ticket.changedBy ? ` - ${ticket.changedBy}` : ''}`,
-    );
-  doc.align('left').rule();
-  if (ticket.cancelled?.length) {
-    doc.bold(true).line('OLIB TASHLANDI:').bold(false);
-    for (const item of ticket.cancelled) {
-      // Thermal printers have no strikethrough: the line is crossed with dashes.
-      const text = `${item.quantity} x ${item.name}`;
-      doc
-        .size(1, 2)
-        .line(`--${toPrintable(text).replace(/ /g, '-')}-- BEKOR`)
-        .size(1, 1);
-    }
-    doc.rule();
-    if (ticket.items.length)
-      doc.bold(true).line("YANGI / QO'SHILDI:").bold(false);
+  const order = chosen.length
+    ? [...new Set([...chosen, ...KITCHEN_BLOCKS])]
+    : KITCHEN_BLOCKS;
+  for (const name of order) {
+    if (chosen.length)
+      doc.align(name === 'items' || name === 'note' ? 'left' : 'center');
+    blocks[name]();
   }
-  for (const item of ticket.items) {
-    const text = `${item.quantity} x ${item.name}`;
-    doc.size(1, layout?.largeItems === false ? 1 : 2).bold(true);
-    if (item.price !== undefined && item.price !== null)
-      doc.pair(text, money(item.price));
-    else doc.line(text);
-    doc.size(1, 1).bold(false);
-    for (const modifier of item.modifiers) doc.line(`   + ${modifier}`);
-    if (item.note && layout?.showNotes !== false) doc.line(`   ! ${item.note}`);
-  }
-  if (ticket.note && layout?.showNotes !== false)
-    doc.rule().line(`Izoh: ${ticket.note}`);
-  if (layout?.footer) doc.rule().align('center').line(layout.footer);
-  return doc.rule().feed(4).cut().build();
+  if (design.smallFont) doc.smallFont(false);
+  rule();
+  return doc.feed(4).cut().build();
 }

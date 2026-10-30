@@ -11,7 +11,7 @@ import {
   isUniqueViolation,
   parse,
 } from '../../http/errors.js';
-import { hashSecret } from '../../lib/crypto.js';
+import { hashSecret, verifySecret } from '../../lib/crypto.js';
 import { audit } from '../audit/audit.js';
 import { passwordSchema, pinSchema } from '../auth/auth.routes.js';
 import {
@@ -182,6 +182,32 @@ export function usersRouter(services: Services) {
     },
   );
 
+  /**
+   * Every active employee of the restaurant has their own PIN: one already given to
+   * another active employee is refused (PINs are stored hashed, so each is checked).
+   */
+  const assertPinFree = async (
+    tenantId: string,
+    pin: string,
+    exceptUserId: string | null,
+  ) => {
+    const others = await db.user.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        pinHash: { not: null },
+        ...(exceptUserId ? { id: { not: exceptUserId } } : {}),
+      },
+      select: { id: true, pinHash: true },
+    });
+    for (const other of others)
+      if (
+        other.pinHash &&
+        (await verifySecret(services.secrets.pepperPin(other.id, pin), other.pinHash))
+      )
+        throw new AppError(409, 'PIN_IN_USE', 'pinInUse');
+  };
+
   router.post('/users', ...manage, async (req, res) => {
     const auth = getAuth(res);
     const input = parse(
@@ -198,6 +224,7 @@ export function usersRouter(services: Services) {
     );
     if (!input.password && !input.pin)
       throw errors.validation([{ path: 'password' }]);
+    if (input.pin) await assertPinFree(auth.tenantId, input.pin, null);
     const passwordHash = input.password
       ? await hashSecret(input.password)
       : null;
@@ -385,6 +412,7 @@ export function usersRouter(services: Services) {
     const auth = getAuth(res);
     const id = parse(z.uuid(), req.params.id);
     const { pin } = parse(z.object({ pin: pinSchema.nullable() }), req.body);
+    if (pin) await assertPinFree(auth.tenantId, pin, id);
     const pinHash = pin
       ? await hashSecret(services.secrets.pepperPin(id, pin))
       : null;

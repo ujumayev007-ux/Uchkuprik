@@ -54,6 +54,8 @@ export function devicesRouter(services: Services) {
           panel: device.panel,
           lastIp: device.lastIp,
           createdAt: device.createdAt,
+          disabledAt: device.disabledAt,
+          allowedUserIds: device.allowedUserIds,
         })),
       });
     },
@@ -230,6 +232,85 @@ export function devicesRouter(services: Services) {
     });
     setCookie(res, services, names.device, token, DEVICE_COOKIE_MS);
     res.status(201).json({ id: device.id, status: device.status });
+  });
+
+  /**
+   * "Terminallar": the Admin names a terminal, sets its role (panel), chooses the
+   * employees who may sign in on it and switches it off or on for a while. Approval
+   * stays with the Owner: only terminals already active can be changed here.
+   */
+  router.patch('/devices/:id', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const input = parse(
+      z.object({
+        name: z.string().trim().min(2).max(80).optional(),
+        panel: z.enum(['CASHIER', 'KITCHEN', 'WAITER', 'OTHER']).optional(),
+        allowedUserIds: z.array(z.uuid()).max(500).optional(),
+        enabled: z.boolean().optional(),
+      }),
+      req.body,
+    );
+    await db.$transaction(async (tx) => {
+      const device = await tx.device.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!device) throw errors.notFound();
+      if (device.status !== 'ACTIVE') throw errors.forbidden();
+      // The TV registers itself as a display; its role is not changed here.
+      if (input.panel && device.panel === 'DISPLAY') throw errors.forbidden();
+      const allowed = input.allowedUserIds
+        ? [...new Set(input.allowedUserIds)]
+        : undefined;
+      if (allowed?.length) {
+        const found = await tx.user.count({
+          where: { tenantId: auth.tenantId, id: { in: allowed }, deletedAt: null },
+        });
+        if (found !== allowed.length)
+          throw errors.validation([{ path: 'allowedUserIds' }]);
+      }
+      const disabledAt =
+        input.enabled === undefined
+          ? undefined
+          : input.enabled
+            ? null
+            : (device.disabledAt ?? now());
+      await tx.device.update({
+        where: { id },
+        data: {
+          ...(input.name ? { name: input.name } : {}),
+          ...(input.panel ? { panel: input.panel } : {}),
+          ...(allowed ? { allowedUserIds: allowed } : {}),
+          ...(disabledAt !== undefined ? { disabledAt } : {}),
+        },
+      });
+      // Who may be signed in here changed: open sessions on this terminal end (the
+      // staff sign in again with their PIN; their work shifts stay open).
+      const accessChanged =
+        (input.panel && input.panel !== device.panel) ||
+        allowed !== undefined ||
+        input.enabled === false;
+      if (accessChanged)
+        await tx.session.updateMany({
+          // The Admin making the change on this very terminal stays signed in.
+          where: { deviceId: id, revokedAt: null, id: { not: auth.sessionId } },
+          data: { revokedAt: now(), revokeReason: 'device_access_changed' },
+        });
+      await audit(tx, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'device.update',
+        entityType: 'device',
+        entityId: id,
+        data: {
+          ...(input.name ? { name: input.name } : {}),
+          ...(input.panel ? { panel: input.panel } : {}),
+          ...(allowed ? { allowedUsers: allowed.length } : {}),
+          ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        },
+      });
+    });
+    res.json({ ok: true });
   });
 
   router.post('/devices/:id/revoke', ...manage, async (req, res) => {

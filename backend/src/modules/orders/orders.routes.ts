@@ -11,8 +11,6 @@ import {
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
 import { qrPaymentOf } from '../settings/settings.routes.js';
-import { resolveTemplate } from '../../printing/resolve-template.js';
-import { localDateTime, receiptTicket } from '../../printing/receipt.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import {
   getAuth,
@@ -39,6 +37,75 @@ import {
   syncKitchenStatus,
 } from './engine.js';
 import { completeOrder } from './complete.js';
+import { serialize } from './serialize.js';
+import { receiptBytes, receiptData, repeated } from './receipt-data.js';
+import { printRefund } from '../../printing/auto.js';
+import { sendTelegramReceipt } from '../telegram/receipt.js';
+import { issueReceiptAccess } from './e-receipt.js';
+import { enqueueKitchenTickets } from '../../printing/queue.js';
+import {
+  approvalStatus,
+  heldForSchedule,
+  requiredBeforeKitchen,
+  type OrderWorkflow,
+} from '../workflow/engine.js';
+import {
+  assertSchedule,
+  isWaiter,
+  orderFlow,
+  snapshotFor,
+} from '../workflow/restaurant.js';
+import { loadPrintRules, printPlan } from '../../printing/rules.js';
+import { accountOfPayment, postCredit } from '../credit/ledger.js';
+
+/** Under a workflow, the kitchen gets the order only when the money it asks for is in. */
+const assertPaidForKitchen = (
+  flow: OrderWorkflow | null,
+  total: number,
+  paid: number,
+) => {
+  if (!flow || paid >= requiredBeforeKitchen(flow, total)) return;
+  throw flow.payment === 'PREPAY'
+    ? new AppError(409, 'WORKFLOW_PAYMENT_FIRST', 'workflowPaymentFirst')
+    : new AppError(409, 'WORKFLOW_ADVANCE', 'workflowAdvance', {
+        percent: flow.advancePercent,
+      });
+};
+// Scheduled orders and banquets: a time only where the zone's workflow schedules.
+export const scheduleFields = {
+  scheduledFor: z.iso.datetime({ offset: true }).nullable().optional(),
+  guests: z.number().int().min(1).max(5000).nullable().optional(),
+  eventName: z.string().trim().max(120).nullable().optional(),
+};
+/**
+ * Fields for an order leaving DRAFT: a scheduled order that is not due yet waits as
+ * PENDING (confirmed when it needed no approval) instead of reaching the kitchen.
+ */
+const placeFields = (
+  flow: OrderWorkflow | null,
+  status: 'PLACED' | 'PENDING',
+  scheduledFor: Date | null,
+  at: Date,
+  // Placing an existing order stamps placedAt even when it waits for the cashier (as
+  // before); a new order only when it is placed.
+  stampPending = true,
+) =>
+  heldForSchedule(flow, scheduledFor, at)
+    ? {
+        status: 'PENDING' as const,
+        placedAt: null,
+        scheduleConfirmedAt: status === 'PLACED' ? at : null,
+      }
+    : {
+        status,
+        placedAt: status === 'PLACED' || stampPending ? at : null,
+        ...autoAccept(flow, status, at),
+      };
+// The kitchen needs no confirmation in this zone: the ticket counts as accepted.
+const autoAccept = (flow: OrderWorkflow | null, status: string, at: Date) =>
+  flow && !flow.kitchenConfirm && status === 'PLACED'
+    ? { kitchenAcceptedAt: at }
+    : {};
 import { loadOrderSettings, placementStatus } from './settings.js';
 
 const amount = z.number().int().min(1).max(1_000_000_000);
@@ -61,96 +128,7 @@ const featureOff = () =>
 // Methods accepted at the counter. Online providers (Click, Payme, Uzum) are only
 // accepted through verified provider callbacks (Phase 8), never as manual entries.
 // QR is a merchant QR (e.g. Paynet) confirmed by the cashier; it must be enabled by the owner.
-const counterMethods = ['CASH', 'CARD', 'LOYALTY', 'QR'] as const;
-
-type OrderWithRelations = Prisma.OrderGetPayload<{
-  include: { items: true; payments: true; refunds: true; table: true };
-}>;
-
-function serialize(order: OrderWithRelations, auth: AuthContext) {
-  const showCost =
-    auth.permissions.has('finance.view') &&
-    auth.financial.cost &&
-    auth.reportFields.cost;
-  return {
-    id: order.id,
-    branchId: order.branchId,
-    number: order.number,
-    businessDate: order.businessDate.toISOString().slice(0, 10),
-    type: order.type,
-    channel: order.channel,
-    status: order.status,
-    table: order.table ? { id: order.table.id, name: order.table.name } : null,
-    customerId: order.customerId,
-    couponId: order.couponId,
-    customerName: order.customerName,
-    customerPhone: order.customerPhone,
-    deliveryAddress: order.deliveryAddress,
-    deliveryLandmark: order.deliveryLandmark,
-    note: order.note,
-    subtotal: order.subtotal,
-    discountBp: order.discountBp,
-    discountFixed: order.discountFixed,
-    discountTotal: order.discountTotal,
-    discountReason: order.discountReason,
-    serviceChargeBp: order.serviceChargeBp,
-    serviceCharge: order.serviceCharge,
-    total: order.total,
-    paidTotal: order.paidTotal,
-    refundedTotal: order.refundedTotal,
-    due: Math.max(0, order.total - netPaid(order)),
-    version: order.version,
-    createdAt: order.createdAt,
-    placedAt: order.placedAt,
-    completedAt: order.completedAt,
-    cancelledAt: order.cancelledAt,
-    cancelReason: order.cancelReason,
-    kitchen: {
-      acceptedAt: order.kitchenAcceptedAt,
-      rejectedAt: order.kitchenRejectedAt,
-      rejectReason: order.kitchenRejectReason,
-    },
-    items: order.items
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((item) => ({
-        id: item.id,
-        variantId: item.variantId,
-        productName: item.productName,
-        variantName: item.variantName,
-        unitPrice: item.unitPrice,
-        modifiers: item.modifiers,
-        modifiersTotal: item.modifiersTotal,
-        components: item.components,
-        quantity: item.quantity,
-        lineTotal: item.lineTotal,
-        note: item.note,
-        status: item.status,
-        cancelReason: item.cancelReason,
-        kitchenStatus: item.kitchenStatus,
-        cancelRequested: item.cancelRequestedAt
-          ? { reason: item.cancelRequestReason }
-          : null,
-        ...(showCost ? { unitCost: item.unitCost } : {}),
-      })),
-    payments: order.payments.map((payment) => ({
-      id: payment.id,
-      method: payment.method,
-      amount: payment.amount,
-      tendered: payment.tendered,
-      change: payment.change,
-      reference: payment.reference,
-      createdAt: payment.createdAt,
-    })),
-    refunds: order.refunds.map((refund) => ({
-      id: refund.id,
-      paymentId: refund.paymentId,
-      method: refund.method,
-      amount: refund.amount,
-      reason: refund.reason,
-      createdAt: refund.createdAt,
-    })),
-  };
-}
+const counterMethods = ['CASH', 'CARD', 'LOYALTY', 'QR', 'CREDIT'] as const;
 
 export function ordersRouter(services: Services) {
   const { db } = services;
@@ -244,6 +222,11 @@ export function ordersRouter(services: Services) {
         tableId,
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
         ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}),
+        // A booking (banquet) more than three hours ahead leaves the table free today.
+        NOT: {
+          status: 'PENDING',
+          scheduledFor: { gt: new Date(now().getTime() + 3 * 3_600_000) },
+        },
       },
       select: {
         id: true,
@@ -301,6 +284,14 @@ export function ordersRouter(services: Services) {
                     'READY',
                     'SERVED',
                   ],
+                },
+                // Bookings more than three hours ahead are listed under Banket /
+                // rejalashtirilgan and do not occupy their table today.
+                NOT: {
+                  status: 'PENDING',
+                  scheduledFor: {
+                    gt: new Date(now().getTime() + 3 * 3_600_000),
+                  },
                 },
               }
             : query.scope === 'today'
@@ -369,6 +360,7 @@ export function ordersRouter(services: Services) {
             note: z.string().trim().max(300).nullable().optional(),
             items: z.array(itemSchema).max(100).default([]),
             place: z.boolean().default(false),
+            ...scheduleFields,
           })
           .refine(
             (order) =>
@@ -433,9 +425,28 @@ export function ordersRouter(services: Services) {
             discountFixed: 0,
             serviceChargeBp,
           });
+          // The SUPER_OWNER's workflow for this zone (null: existing behaviour).
+          const flow = await snapshotFor(tx, {
+            tenantId: auth.tenantId,
+            type: input.type,
+            channel: 'POS',
+            tableId,
+            waiter: isWaiter(auth),
+          });
+          const scheduledFor = input.scheduledFor
+            ? new Date(input.scheduledFor)
+            : null;
+          assertSchedule(flow, scheduledFor, now());
+          if (input.place) assertPaidForKitchen(flow, totals.total, 0);
           const placing = input.place
-            ? await placementStatus(tx, auth.tenantId, auth.permissions)
+            ? flow
+              ? approvalStatus(flow, auth.permissions)
+              : await placementStatus(tx, auth.tenantId, auth.permissions)
             : 'DRAFT';
+          const placed =
+            placing === 'DRAFT'
+              ? { status: 'DRAFT' as const, placedAt: null }
+              : placeFields(flow, placing, scheduledFor, now(), false);
           const order = await tx.order.create({
             data: {
               tenantId: auth.tenantId,
@@ -444,8 +455,11 @@ export function ordersRouter(services: Services) {
               businessDate: date,
               type: input.type,
               channel: 'POS',
-              status: placing,
-              placedAt: placing === 'PLACED' ? now() : null,
+              ...placed,
+              ...(flow ? { workflow: flow } : {}),
+              scheduledFor,
+              guests: input.guests ?? null,
+              eventName: input.eventName ?? null,
               tableId,
               customerName: input.customerName ?? null,
               customerPhone: input.customerPhone ?? null,
@@ -577,9 +591,23 @@ export function ordersRouter(services: Services) {
   const assertCanEditPlaced = async (
     tx: Tx,
     auth: AuthContext,
-    order: { status: string },
+    order: {
+      status: string;
+      workflow?: unknown;
+      kitchenAcceptedAt?: Date | null;
+    },
   ) => {
     if (order.status === 'DRAFT' || order.status === 'PENDING') return;
+    // Under a workflow the zone decides (managers may always change).
+    const flow = orderFlow(order);
+    if (flow && !auth.permissions.has('orders.cancel')) {
+      if (
+        flow.edit === 'NONE' ||
+        (flow.edit === 'BEFORE_KITCHEN' && order.kitchenAcceptedAt)
+      )
+        throw new AppError(403, 'WORKFLOW_EDIT', 'workflowEdit');
+      return;
+    }
     if (
       auth.permissions.has('orders.cancel') ||
       auth.permissions.has('payments.accept')
@@ -591,8 +619,17 @@ export function ordersRouter(services: Services) {
 
   // Cancelling or reducing a sent item lowers the bill: managers only, unless the
   // restaurant explicitly allows staff to do it.
-  const assertCanCancelPlaced = async (tx: Tx, auth: AuthContext) => {
+  const assertCanCancelPlaced = async (
+    tx: Tx,
+    auth: AuthContext,
+    order?: { workflow?: unknown },
+  ) => {
     if (auth.permissions.has('orders.cancel')) return;
+    const flow = order ? orderFlow(order) : null;
+    if (flow) {
+      if (flow.cancel === 'STAFF') return;
+      throw errors.forbidden();
+    }
     if (!(await loadOrderSettings(tx, auth.tenantId)).staffCanCancelPlaced)
       throw errors.forbidden();
   };
@@ -677,7 +714,8 @@ export function ordersRouter(services: Services) {
           });
         } else {
           await assertCanEditPlaced(tx, auth, order);
-          if (quantity < item.quantity) await assertCanCancelPlaced(tx, auth);
+          if (quantity < item.quantity)
+            await assertCanCancelPlaced(tx, auth, order);
           if (input.reason.length < 3)
             throw errors.validation([{ path: 'reason' }]);
           if (await needsKitchenAck(tx, auth, item, input.override))
@@ -759,7 +797,7 @@ export function ordersRouter(services: Services) {
         // Items already sent to the kitchen need edit rights and a reason.
         if (order.status !== 'DRAFT') {
           await assertCanEditPlaced(tx, auth, order);
-          await assertCanCancelPlaced(tx, auth);
+          await assertCanCancelPlaced(tx, auth, order);
           if (reason.length < 3) throw errors.validation([{ path: 'reason' }]);
         }
         const item = await tx.orderItem.findFirst({
@@ -1036,6 +1074,18 @@ export function ordersRouter(services: Services) {
       await mutate(auth, id, async (tx, order) => {
         if (!editableStatuses.includes(order.status))
           throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
+        // The zone's discount rule (removing a discount is always allowed).
+        const flow = orderFlow(order);
+        if (flow && (input.percentBp > 0 || input.fixed > 0)) {
+          const manager =
+            auth.permissions.has('settings.manage') ||
+            auth.permissions.has('orders.cancel');
+          if (
+            flow.discounts === 'NONE' ||
+            (flow.discounts === 'MANAGER' && !manager)
+          )
+            throw new AppError(403, 'WORKFLOW_DISCOUNT', 'workflowDiscount');
+        }
         await tx.order.update({
           where: { id },
           data: {
@@ -1089,22 +1139,33 @@ export function ordersRouter(services: Services) {
       if (to === 'COMPLETED')
         return completeOrder(tx, order, auth.userId, now());
       // Cashier confirmation: staff without approval rights send the order to the
-      // cashier first; it reaches the kitchen only after approval.
+      // cashier first; it reaches the kitchen only after approval. Under a workflow its
+      // zone decides (approval rule, money due before the kitchen).
+      const flow = orderFlow(order);
+      if (to === 'PLACED')
+        assertPaidForKitchen(flow, order.total, netPaid(order));
       const status =
         to === 'PLACED'
-          ? await placementStatus(tx, auth.tenantId, auth.permissions)
+          ? flow
+            ? approvalStatus(flow, auth.permissions)
+            : await placementStatus(tx, auth.tenantId, auth.permissions)
           : to;
+      const fields =
+        to === 'PLACED'
+          ? placeFields(
+              flow,
+              status as 'PLACED' | 'PENDING',
+              order.scheduledFor,
+              now(),
+            )
+          : { status, completedAt: now() };
       await tx.order.update({
         where: { id },
-        data: {
-          status,
-          version: { increment: 1 },
-          ...(to === 'PLACED' ? { placedAt: now() } : { completedAt: now() }),
-        },
+        data: { ...fields, version: { increment: 1 } },
       });
       await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
         from: order.status,
-        to: status,
+        to: fields.status,
       });
     });
   };
@@ -1212,15 +1273,23 @@ export function ordersRouter(services: Services) {
               'UZUM',
               'QR',
               'OTHER',
+              'CREDIT',
             ]),
             amount,
             tendered: z.number().int().min(1).max(1_000_000_000).optional(),
             reference: z.string().trim().max(60).nullable().optional(),
+            // CREDIT: the customer credit / hotel room account the order is charged to.
+            creditAccountId: z.uuid().optional(),
           })
           .refine(
             (payment) =>
               payment.method !== 'CASH' || payment.tendered !== undefined,
             { path: ['tendered'] },
+          )
+          .refine(
+            (payment) =>
+              payment.method !== 'CREDIT' || !!payment.creditAccountId,
+            { path: ['creditAccountId'] },
           ),
         req.body,
       );
@@ -1256,7 +1325,8 @@ export function ordersRouter(services: Services) {
           if (!editableStatuses.includes(order.status))
             throw new AppError(409, 'ORDER_CLOSED', 'orderClosed');
           // Online orders are approved before money is taken.
-          if (order.status === 'PENDING')
+          // (A scheduled order or banquet waiting for its time still takes money.)
+          if (order.status === 'PENDING' && !order.scheduledFor)
             throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
           const shift = await findOpenShift(tx, auth, order.branchId);
           if (!shift)
@@ -1284,6 +1354,13 @@ export function ordersRouter(services: Services) {
             throw new AppError(400, 'INSUFFICIENT_CASH', 'insufficientCash');
           if (input.method === 'LOYALTY' && !order.customerId)
             throw new AppError(409, 'CUSTOMER_REQUIRED', 'customerRequired');
+          // Charging to an account only where the workflow allows credit (nasiya,
+          // hotel room bill).
+          if (
+            input.method === 'CREDIT' &&
+            orderFlow(order)?.payment !== 'CREDIT'
+          )
+            throw new AppError(409, 'CREDIT_NOT_ALLOWED', 'creditNotAllowed');
           const change =
             input.method === 'CASH' ? input.tendered! - input.amount : null;
           const created = await tx.payment.create({
@@ -1301,22 +1378,45 @@ export function ordersRouter(services: Services) {
               createdById: auth.userId,
             },
           });
-          // Paying a draft sends it to the kitchen (typical fast-food counter flow).
-          const placing = order.status === 'DRAFT';
+          // Paying a draft sends it to the kitchen (typical fast-food counter flow);
+          // under a workflow only once the money its zone asks for is in.
+          const flow = orderFlow(order);
+          const paidAfter = netPaid(order) + input.amount;
+          const placing =
+            order.status === 'DRAFT' &&
+            (!flow || paidAfter >= requiredBeforeKitchen(flow, order.total));
+          const placedStatus = flow
+            ? approvalStatus(flow, auth.permissions)
+            : 'PLACED';
           if (placing) {
             const items = await tx.orderItem.count({
               where: { orderId: id, status: 'ACTIVE' },
             });
             if (items === 0) throw errors.validation([{ path: 'items' }]);
           }
+          const placedFields = placing
+            ? placeFields(flow, placedStatus, order.scheduledFor, now())
+            : null;
           await tx.order.update({
             where: { id },
             data: {
               paidTotal: { increment: input.amount },
               version: { increment: 1 },
-              ...(placing ? { status: 'PLACED', placedAt: now() } : {}),
+              ...(placedFields ?? {}),
             },
           });
+          if (input.method === 'CREDIT')
+            await postCredit(tx, {
+              tenantId: auth.tenantId,
+              accountId: input.creditAccountId!,
+              type: 'CHARGE',
+              amount: input.amount,
+              orderId: id,
+              paymentId: created.id,
+              shiftId: shift.id,
+              note: `Buyurtma №${order.number}`,
+              actorId: auth.userId,
+            });
           // Points are redeemed 1:1 against the bill, under a lock on the customer.
           if (input.method === 'LOYALTY')
             await postLoyalty(tx, {
@@ -1333,12 +1433,24 @@ export function ordersRouter(services: Services) {
             paymentId: created.id,
             method: input.method,
             amount: input.amount,
+            ...(input.creditAccountId
+              ? { creditAccountId: input.creditAccountId }
+              : {}),
           });
-          if (placing)
+          if (placedFields)
             await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
               from: 'DRAFT',
-              to: 'PLACED',
+              to: placedFields.status,
             });
+          // Zone closes the table on payment: a served order fully paid is done.
+          if (
+            flow?.tableClose === 'ON_PAYMENT' &&
+            paidAfter >= order.total &&
+            (order.status === 'READY' || order.status === 'SERVED')
+          ) {
+            const fresh = await tx.order.findUniqueOrThrow({ where: { id } });
+            await completeOrder(tx, fresh, auth.userId, now());
+          }
           return created;
         });
         res.status(201).json({
@@ -1370,7 +1482,7 @@ export function ordersRouter(services: Services) {
         }),
         req.body,
       );
-      await mutate(auth, id, async (tx, order) => {
+      const refundId = await mutate(auth, id, async (tx, order) => {
         const payment = await tx.payment.findFirst({
           where: { id: input.paymentId, orderId: id },
         });
@@ -1408,6 +1520,21 @@ export function ordersRouter(services: Services) {
             version: { increment: 1 },
           },
         });
+        // A refunded credit charge lowers the account's debt (no cash moves).
+        if (payment.method === 'CREDIT') {
+          const accountId = await accountOfPayment(tx, payment.id);
+          if (accountId)
+            await postCredit(tx, {
+              tenantId: auth.tenantId,
+              accountId,
+              type: 'REFUND',
+              amount: -input.amount,
+              orderId: id,
+              paymentId: payment.id,
+              note: input.reason,
+              actorId: auth.userId,
+            });
+        }
         // Refunded loyalty payments return the points to the customer.
         if (payment.method === 'LOYALTY' && order.customerId)
           await postLoyalty(tx, {
@@ -1441,7 +1568,12 @@ export function ordersRouter(services: Services) {
             reason: input.reason,
           },
         });
+        return refund.id;
       });
+      // Qaytarish cheki on the printer its rule names.
+      await printRefund(services, refundId, null).catch(() =>
+        services.logger.warn('Refund slip printing failed'),
+      );
       res.status(201).json(await respondChanged(auth, id));
     },
   );
@@ -1498,98 +1630,15 @@ export function ordersRouter(services: Services) {
       print?: boolean | undefined;
     },
   ) => {
-    const order = await load(auth, id);
-    const lastPayment = await db.payment.findFirst({
-      where: { tenantId: auth.tenantId, orderId: order.id },
-      orderBy: { createdAt: 'desc' },
-      select: { createdById: true },
-    });
-    const [tenant, branch, creator, payer] = await Promise.all([
-      db.tenant.findUniqueOrThrow({
-        where: { id: auth.tenantId },
-        include: { profile: true },
-      }),
-      db.branch.findUniqueOrThrow({
-        where: { id: order.branchId },
-        include: { brand: true },
-      }),
-      order.createdById
-        ? db.user.findUnique({
-            where: { id: order.createdById },
-            select: {
-              displayName: true,
-              roles: { select: { role: { select: { systemKey: true } } } },
-            },
-          })
-        : null,
-      lastPayment?.createdById
-        ? db.user.findUnique({
-            where: { id: lastPayment.createdById },
-            select: { displayName: true },
-          })
-        : null,
-    ]);
-    // The cashier is who took the payment; the waiter is who opened a waiter's order.
-    const waiter = creator?.roles.some((r) => r.role.systemKey === 'waiter')
-      ? creator.displayName
-      : null;
-    // A waiter's unpaid order has no cashier yet (the waiter is not shown as one).
-    const cashier = payer ?? (waiter ? null : creator);
-    // 0 = the first receipt; 1, 2 … = copies printed again ("NUSXA").
-    const copy = pick.print
-      ? (
-          await db.order.update({
-            where: { id: order.id },
-            data: { receiptPrints: { increment: 1 } },
-            select: { receiptPrints: true },
-          })
-        ).receiptPrints - 1
-      : 0;
-    const data = serialize(order, { ...auth, permissions: new Set() });
+    const receipt = await receiptData(db, await load(auth, id), pick);
+    // Chop etish qoidalari for this receipt type: on/off and copies (screens and the
+    // Kassa application print what the rule says).
     return {
-      // A branch trading under a brand prints the brand name and texts.
-      business: {
-        name: branch.brand?.name ?? tenant.name,
-        brand: branch.brand
-          ? {
-              logoUrl: branch.brand.logoUrl,
-              primaryColor: branch.brand.primaryColor,
-            }
-          : null,
-        legalName: tenant.profile?.legalName ?? null,
-        taxId: tenant.profile?.taxId ?? null,
-        phone: tenant.profile?.phone ?? null,
-        header:
-          branch.brand?.receiptHeader ?? tenant.profile?.receiptHeader ?? null,
-        footer:
-          branch.brand?.receiptFooter ?? tenant.profile?.receiptFooter ?? null,
-      },
-      branch: {
-        name: branch.name,
-        address: branch.address,
-        phone: branch.phone,
-        timezone: branch.timezone,
-      },
-      cashier: cashier?.displayName ?? null,
-      waiter,
-      copy,
-      // Template of the printer (or the one picked), else the restaurant default.
-      layout: (
-        await resolveTemplate(db, auth.tenantId, {
-          kind: 'CUSTOMER',
-          printerId: pick.printerId ?? null,
-          templateId: pick.templateId ?? null,
-        })
-      ).settings,
-      // Fiscal sign/QR exist only after a certified fiscal provider registers the receipt.
-      fiscal: (await db.fiscalReceipt.findUnique({
-        where: { orderId: order.id },
-        select: { status: true, fiscalSign: true, qrUrl: true },
-      })) ?? { status: 'NOT_CONFIGURED', fiscalSign: null, qrUrl: null },
-      order: {
-        ...data,
-        items: data.items.filter((item) => item.status === 'ACTIVE'),
-      },
+      ...receipt,
+      printRule: printPlan(
+        await loadPrintRules(db, auth.tenantId),
+        receipt.receiptType,
+      ),
     };
   };
 
@@ -1612,6 +1661,60 @@ export function ordersRouter(services: Services) {
       const id = parse(z.uuid(), req.params.id);
       const query = parse(receiptQuery, req.query);
       res.json(await buildReceipt(auth, id, query));
+    },
+  );
+
+  // Electronic receipt: an unguessable link to the order's public page (/buyurtma/:token)
+  // the guest opens from a QR code or a message. Online orders already have one.
+  router.post(
+    '/orders/:id/e-receipt',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const order = await load(auth, id);
+      // Staff-taken orders get a 6-digit code (in the QR link after '#').
+      const access = await issueReceiptAccess(
+        db,
+        services.secrets,
+        order.id,
+        now(),
+      );
+      if (!order.trackingToken)
+        await audit(db, req, {
+          tenantId: auth.tenantId,
+          actorUserId: auth.userId,
+          action: 'order.e_receipt',
+          entityType: 'order',
+          entityId: id,
+        });
+      res.json(access);
+    },
+  );
+
+  // Elektron chek to the guest's Telegram now (the chat of the order, or the chat
+  // whose number Telegram confirmed as the guest's own).
+  router.post(
+    '/orders/:id/e-receipt/telegram',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      await load(auth, id);
+      await sendTelegramReceipt(services, id, {
+        force: true,
+        origin: services.appOrigin ?? null,
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'order.e_receipt_telegram',
+        entityType: 'order',
+        entityId: id,
+      });
+      res.json({ ok: true });
     },
   );
 
@@ -1638,6 +1741,59 @@ export function ordersRouter(services: Services) {
         select: { id: true, name: true, paperWidth: true },
       });
       res.json({ printers });
+    },
+  );
+
+  // «Oshxonaga chop etish»: kitchen tickets now, also those whose rule waits for a
+  // manual print or for the payment.
+  router.post(
+    '/orders/:id/kitchen-print',
+    requireAuth(),
+    requirePermission('orders.edit'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const order = await load(auth, id);
+      if (['DRAFT', 'PENDING', 'CANCELLED'].includes(order.status))
+        throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      const before = await db.printJob.count({
+        where: { orderId: id, kind: 'KITCHEN' },
+      });
+      await enqueueKitchenTickets(services, id, { force: true });
+      const after = await db.printJob.count({
+        where: { orderId: id, kind: 'KITCHEN' },
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        branchId: order.branchId,
+        actorUserId: auth.userId,
+        action: 'order.kitchen_print',
+        entityType: 'order',
+        entityId: id,
+        data: { jobs: after - before },
+      });
+      res.json({ jobs: after - before });
+    },
+  );
+
+  // A refund slip again (Qaytarish cheki), on a chosen printer.
+  router.post(
+    '/orders/:id/refunds/:refundId/print',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const refundId = parse(z.uuid(), req.params.refundId);
+      const { printerId } = parse(z.object({ printerId: z.uuid() }), req.body);
+      await load(auth, id);
+      const refund = await db.refund.findFirst({
+        where: { id: refundId, orderId: id, tenantId: auth.tenantId },
+      });
+      if (!refund) throw errors.notFound();
+      const job = await printRefund(services, refundId, { printerId });
+      if (!job) throw new AppError(409, 'PRINT_RULE_OFF', 'printRuleOff');
+      res.status(201).json({ jobId: job.id });
     },
   );
 
@@ -1670,65 +1826,11 @@ export function ordersRouter(services: Services) {
         templateId: input.templateId,
         print: true,
       });
-      const typeLabels = {
-        DINE_IN: 'Zalda',
-        TAKEAWAY: 'Olib ketish',
-        DELIVERY: 'Yetkazib berish',
-      } as const;
-      const methodLabels: Record<string, string> = {
-        CASH: 'Naqd',
-        CARD: 'Karta',
-        LOYALTY: 'Bonus',
-        CLICK: 'Click',
-        PAYME: 'Payme',
-        UZUM: 'Uzum',
-        QR: 'QR',
-        OTHER: 'Boshqa',
-      };
-      const order = receipt.order;
-      const payload = receiptTicket(
-        {
-          business: receipt.business,
-          branch: receipt.branch,
-          cashier: receipt.cashier,
-          waiter: receipt.waiter,
-          customer: {
-            name: order.customerName,
-            phone: order.customerPhone,
-            address: order.deliveryAddress,
-          },
-          fiscal: receipt.fiscal,
-          copy: receipt.copy,
-          number: order.number,
-          // The branch's local time (not UTC).
-          dateTime: localDateTime(new Date(order.createdAt), receipt.branch.timezone),
-          typeLabel: typeLabels[order.type],
-          table: order.table?.name ?? null,
-          items: order.items.map((item) => ({
-            name: `${item.productName}${
-              item.variantName === 'Standart' ? '' : ` (${item.variantName})`
-            }`,
-            modifiers: (item.modifiers as { name: string }[]).map(
-              (modifier) => modifier.name,
-            ),
-            note: item.note,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice + item.modifiersTotal,
-            lineTotal: item.lineTotal,
-          })),
-          subtotal: order.subtotal,
-          discountTotal: order.discountTotal,
-          serviceCharge: order.serviceCharge,
-          total: order.total,
-          payments: order.payments.map((payment) => ({
-            label: methodLabels[payment.method] ?? payment.method,
-            amount: payment.tendered ?? payment.amount,
-            change: payment.change,
-          })),
-          due: order.due,
-        },
-        receipt.layout,
-      );
+      // Chop etish qoidalari: copies of the first receipt (reprints stay one copy).
+      if (!receipt.printRule.enabled)
+        throw new AppError(409, 'PRINT_RULE_OFF', 'printRuleOff');
+      const copies = receipt.copy === 0 ? receipt.printRule.copies : 1;
+      const payload = repeated(receiptBytes(receipt), copies);
       const job = await db.printJob.create({
         data: {
           tenantId: auth.tenantId,

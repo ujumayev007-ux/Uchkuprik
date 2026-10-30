@@ -50,6 +50,38 @@ export async function ownerApi<T = unknown>(
   }
 }
 
+/** Downloads a file from `/api/control<path>` (asks for step-up when required). */
+export async function ownerDownload(path: string, filename: string) {
+  const fetchOnce = () =>
+    fetch(`/api/control${path}`, { credentials: 'same-origin' });
+  let response = await fetchOnce();
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      code?: string;
+      message?: string;
+    } | null;
+    if (
+      payload?.code === 'REAUTH_REQUIRED' &&
+      reauthPrompt &&
+      (await reauthPrompt())
+    )
+      response = await fetchOnce();
+    else
+      throw new ApiError(
+        response.status,
+        payload?.code ?? 'UNKNOWN',
+        payload?.message ?? '',
+      );
+  }
+  if (!response.ok) throw new ApiError(response.status, 'UNKNOWN', '');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5_000);
+}
+
 export const ownerPost = <T = unknown>(path: string, body: unknown = {}) =>
   ownerApi<T>(path, { method: 'POST', body });
 export const ownerPut = <T = unknown>(path: string, body: unknown) =>

@@ -97,7 +97,14 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Buyurtmalarni ko‘rish',
     permission: 'orders.view',
     menuPath: '/buyurtmalar',
-    routes: ['GET /orders', 'GET /orders/:id', 'GET /orders/:id/events'],
+    routes: [
+      'GET /orders',
+      'GET /orders/:id',
+      'GET /orders/:id/events',
+      // Workflow summary for staff screens; banquets and scheduled orders.
+      'GET /workflow/active',
+      'GET /scheduled-orders',
+    ],
   }),
   f({
     key: 'orders.create',
@@ -120,6 +127,8 @@ export const featureCatalog: FeatureDef[] = [
       'POST /orders/:id/items',
       'PATCH /orders/:id/items/:itemId',
       'POST /orders/:id/place',
+      'POST /orders/:id/schedule',
+      'POST /orders/:id/kitchen-print',
     ],
   }),
   f({
@@ -150,7 +159,11 @@ export const featureCatalog: FeatureDef[] = [
     group: 'Kassa va buyurtmalar',
     label: 'To‘lov qabul qilish',
     permission: 'payments.accept',
-    routes: ['POST /orders/:id/payments', 'POST /orders/:id/complete'],
+    routes: [
+      'POST /orders/:id/payments',
+      'POST /orders/:id/complete',
+      'POST /credit-accounts/:id/repayments',
+    ],
   }),
   f({
     key: 'payments.refund',
@@ -170,6 +183,9 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       'GET /orders/:id/receipt',
       'POST /orders/:id/receipt/print',
+      'POST /orders/:id/refunds/:refundId/print',
+      'POST /orders/:id/e-receipt',
+      'POST /orders/:id/e-receipt/telegram',
       'GET /receipt-printers',
     ],
   }),
@@ -179,7 +195,11 @@ export const featureCatalog: FeatureDef[] = [
     group: 'Kassa va buyurtmalar',
     label: 'Onlayn buyurtmani tasdiqlash',
     permission: 'orders.approve',
-    routes: ['POST /orders/:id/approve', 'POST /orders/:id/reject'],
+    routes: [
+      'POST /orders/:id/approve',
+      'POST /orders/:id/reject',
+      'POST /orders/:id/release',
+    ],
     offline: 'never',
   }),
   f({
@@ -257,6 +277,39 @@ export const featureCatalog: FeatureDef[] = [
     ],
   }),
   f({
+    key: 'kitchen.design',
+    kind: 'module',
+    group: 'Oshxona',
+    label: 'Oshxona ekrani dizayni',
+    hint: 'Yoqilgan: oshxona ekranida 6 ta dizayndan birini tanlash mumkin (kim tanlashini quyida belgilang). O‘chirilgan: faqat standart dizayn.',
+    params: [
+      {
+        key: 'defaultTheme',
+        label: 'Standart dizayn',
+        type: 'enum',
+        options: [
+          { value: 'classic', label: 'Klassik' },
+          { value: 'dark', label: 'Qorong‘i' },
+          { value: 'columns', label: 'Ustunli' },
+          { value: 'compact', label: 'Ixcham' },
+          { value: 'smart', label: 'Aqlli oshxona' },
+          { value: 'minimal', label: 'Minimal' },
+        ],
+        default: 'classic',
+      },
+      {
+        key: 'whoCanChange',
+        label: 'Kim o‘zgartira oladi',
+        type: 'enum',
+        options: [
+          { value: 'all', label: 'Admin va oshxona xodimlari' },
+          { value: 'admin', label: 'Faqat Admin' },
+        ],
+        default: 'all',
+      },
+    ],
+  }),
+  f({
     key: 'kitchen.manage',
     kind: 'module',
     group: 'Oshxona',
@@ -282,6 +335,8 @@ export const featureCatalog: FeatureDef[] = [
       '* /printers/*',
       '* /print-jobs',
       '* /print-jobs/*',
+      // Chop etish qoidalari (receipt types).
+      '* /print-rules',
     ],
   }),
   f({
@@ -471,7 +526,14 @@ export const featureCatalog: FeatureDef[] = [
     label: 'Menyuni boshqarish',
     permission: 'menu.manage',
     menuPath: '/menyu',
-    routes: ['POST /menu/*', 'PATCH /menu/*', 'PUT /menu/*', 'DELETE /menu/*'],
+    routes: [
+      'POST /menu/*',
+      'PATCH /menu/*',
+      'PUT /menu/*',
+      'DELETE /menu/*',
+      // Excel template for the menu import.
+      'GET /menu/import/template',
+    ],
     offline: 'off',
   }),
   // ---- Mijozlar ----
@@ -487,6 +549,9 @@ export const featureCatalog: FeatureDef[] = [
       'GET /customers/:id',
       'GET /feedback',
       'GET /coupons',
+      // Qarz hisoblari (nasiya, hotel room bills).
+      'GET /credit-accounts',
+      'GET /credit-accounts/:id',
     ],
   }),
   f({
@@ -501,6 +566,10 @@ export const featureCatalog: FeatureDef[] = [
       'POST /customers/:id/referrer',
       'POST /orders/:id/customer',
       'POST /feedback/:id/resolve',
+      'POST /credit-accounts',
+      'PATCH /credit-accounts/:id',
+      'POST /credit-accounts/:id/close',
+      'POST /credit-accounts/:id/reopen',
     ],
   }),
   f({
@@ -688,6 +757,8 @@ export const featureCatalog: FeatureDef[] = [
     routes: [
       '* /settings',
       '* /settings/*',
+      '* /backups',
+      '* /backups/*',
       'GET /admin/menu-visibility',
       'PUT /admin/menu-visibility',
     ],
@@ -790,6 +861,8 @@ export const featureCatalog: FeatureDef[] = [
       'GET /devices',
       'POST /devices/register',
       'POST /devices/:id/revoke',
+      // "Terminallar": name, role, employees, switch off / on.
+      'PATCH /devices/:id',
     ],
   }),
   f({
@@ -1242,6 +1315,8 @@ const openRoutes = [
   // Design and advertising: the sign-in screen must always work; handlers check the rest.
   '* /branding',
   '* /branding/*',
+  // Menu product pictures are public like the customer menu that shows them.
+  'GET /menu/images/:id',
   // Platform administration of the cloud edition (not part of a restaurant).
   '* /platform/*',
   'GET /tenant/export',

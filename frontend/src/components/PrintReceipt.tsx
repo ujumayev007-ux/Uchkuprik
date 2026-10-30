@@ -1,24 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useMe } from '../auth/session';
+import { EReceiptButton } from './EReceiptDialog';
 import { Button, useToast } from './ui';
 import { t } from '../i18n';
 import { api, errorMessage, post } from '../lib/api';
 import { useBusy } from '../lib/busy';
 import { printOnTerminal, terminalPrinter } from './TerminalPrinter';
 
-/**
- * Receipt buttons: open the receipt in the browser (laid out by the template of the
- * chosen printer, or the restaurant default) or send it straight to a receipt printer.
- */
-export function PrintReceipt({ orderId }: { orderId: string }) {
-  // Printing is never interrupted.
-  useBusy('print');
+function useReceiptPrinters() {
   const { data: me } = useMe();
-  const toast = useToast();
   const branchId = me?.activeBranchId;
-  const [printerId, setPrinterId] = useState('');
-  const printers = useQuery({
+  return useQuery({
     queryKey: ['receipt-printers', branchId],
     queryFn: () =>
       api<{ printers: { id: string; name: string }[] }>(
@@ -28,6 +21,50 @@ export function PrintReceipt({ orderId }: { orderId: string }) {
     staleTime: 60_000,
     retry: false,
   });
+}
+
+/** Qaytarish cheki of one refund on a receipt printer (again, marked NUSXA). */
+export function RefundPrintButton({
+  orderId,
+  refundId,
+}: {
+  orderId: string;
+  refundId: string;
+}) {
+  const toast = useToast();
+  const printers = useReceiptPrinters();
+  const first = printers.data?.[0];
+  if (!first) return null;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={async () => {
+        try {
+          await post(`/orders/${orderId}/refunds/${refundId}/print`, {
+            printerId: first.id,
+          });
+          toast(t.printRules.refundPrinted);
+        } catch (caught) {
+          toast(errorMessage(caught), 'error');
+        }
+      }}
+    >
+      {t.printRules.refundPrint} · {first.name}
+    </Button>
+  );
+}
+
+/**
+ * Receipt buttons: open the receipt in the browser (laid out by the template of the
+ * chosen printer, or the restaurant default) or send it straight to a receipt printer.
+ */
+export function PrintReceipt({ orderId }: { orderId: string }) {
+  // Printing is never interrupted.
+  useBusy('print');
+  const toast = useToast();
+  const [printerId, setPrinterId] = useState('');
+  const printers = useReceiptPrinters();
   const list = printers.data ?? [];
   return (
     <>
@@ -66,6 +103,7 @@ export function PrintReceipt({ orderId }: { orderId: string }) {
       >
         {t.payment.printReceipt}
       </Button>
+      <EReceiptButton orderId={orderId} />
       {printerId && (
         <Button
           variant="primary"

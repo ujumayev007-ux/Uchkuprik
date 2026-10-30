@@ -6,6 +6,7 @@ import type { TelegramTransport } from './modules/notifications/notify.js';
 import type { WebhookSender } from './modules/developer/webhooks.js';
 import type { ControlRuntime } from './modules/control/runtime.js';
 import type { ControlViewProvider } from './modules/control/view.js';
+import type { BackupStore } from './lib/backup-store.js';
 
 export type Services = {
   db: Db;
@@ -45,8 +46,16 @@ export type Services = {
     // Device private key (PEM) from the launcher's OS secure storage.
     deviceKeyPem?: string;
   };
+  // Public address of this server (links in Telegram receipts).
+  appOrigin?: string;
   // Connection string, used only by backup tooling.
   databaseUrl?: string;
+  // Backups of the restaurant computer (desktop app only).
+  backups?: BackupStore;
+  // Off-device copies of the newest backup (folder / central server).
+  offsite?: import('./lib/backup-offsite.js').OffsiteBackups;
+  // Called after an answer is sent when the server must restart (database swap).
+  requestRestart?: () => void;
   // Version of the running build (compared with the policy's minimum version).
   appVersion?: string;
   // Control state per tenant (feature switches, offline mode, financial visibility).

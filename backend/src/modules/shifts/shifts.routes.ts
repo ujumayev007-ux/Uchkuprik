@@ -17,6 +17,8 @@ import {
   type AuthContext,
 } from '../auth/session.js';
 import { resolveBranch } from '../branches/access.js';
+import { printShiftReport } from '../../printing/auto.js';
+import { loadPrintRules, printPlan } from '../../printing/rules.js';
 
 const amount = z.number().int().min(0).max(1_000_000_000);
 
@@ -284,6 +286,10 @@ export function shiftsRouter(services: Services) {
       });
       return { expectedCash: summary.expectedCash, variance };
     });
+    // Smena hisoboti on the printer its rule names (nothing without such a rule).
+    await printShiftReport(services, id).catch(() =>
+      services.logger.warn('Shift report printing failed'),
+    );
     res.json(result);
   });
 
@@ -379,6 +385,11 @@ export function shiftsRouter(services: Services) {
       branch: { name: branch.name, address: branch.address },
       openedBy: names.get(shift.openedById) ?? null,
       closedBy: shift.closedById ? (names.get(shift.closedById) ?? null) : null,
+      // Smena hisoboti rule: on/off and copies for the printed page.
+      printRule: printPlan(
+        await loadPrintRules(db, auth.tenantId),
+        'SHIFT_REPORT',
+      ),
     });
   });
 

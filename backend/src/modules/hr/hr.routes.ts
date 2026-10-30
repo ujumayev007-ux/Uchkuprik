@@ -151,6 +151,7 @@ export function hrRouter(services: Services) {
           tenantId: auth.tenantId,
           branchId: branch.id,
           userId: auth.userId,
+          deviceId: auth.deviceId,
           clockIn: now(),
         },
       });
@@ -197,10 +198,21 @@ export function hrRouter(services: Services) {
       select: { id: true, displayName: true },
     });
     const names = new Map(users.map((user) => [user.id, user.displayName]));
+    const deviceIds = [
+      ...new Set(records.flatMap((r) => (r.deviceId ? [r.deviceId] : []))),
+    ];
+    const devices = deviceIds.length
+      ? await db.device.findMany({
+          where: { tenantId: auth.tenantId, id: { in: deviceIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const terminals = new Map(devices.map((device) => [device.id, device.name]));
     res.json({
       records: records.map((record) => ({
         ...record,
         name: names.get(record.userId) ?? '—',
+        terminal: record.deviceId ? (terminals.get(record.deviceId) ?? null) : null,
         minutes: record.clockOut
           ? Math.floor(
               (record.clockOut.getTime() - record.clockIn.getTime()) / 60_000,

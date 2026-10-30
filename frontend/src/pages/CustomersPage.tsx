@@ -18,6 +18,7 @@ import {
 } from '../components/ui';
 import { t } from '../i18n';
 import { LoyaltyCardPanel } from './LoyaltyCardPanel';
+import { CreditAccountsTab } from './CreditAccountsTab';
 import { api, patch, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
 
@@ -641,14 +642,14 @@ function FeedbackTab() {
   );
 }
 
-type Tab = 'customers' | 'coupons' | 'feedback';
+type Tab = 'customers' | 'coupons' | 'feedback' | 'credit';
 
 export function CustomersPage() {
   const { data: me } = useMe();
   const [tab, setTab] = useState<Tab>('customers');
   const tabs: Tab[] = can(me, 'customers.manage')
-    ? ['customers', 'coupons', 'feedback']
-    : ['customers', 'feedback'];
+    ? ['customers', 'coupons', 'feedback', 'credit']
+    : ['customers', 'feedback', 'credit'];
   return (
     <>
       <PageHeader title={t.crm.title} subtitle={t.crm.subtitle} />
@@ -668,6 +669,7 @@ export function CustomersPage() {
       {tab === 'customers' && <CustomersTab />}
       {tab === 'coupons' && <CouponsTab />}
       {tab === 'feedback' && <FeedbackTab />}
+      {tab === 'credit' && <CreditAccountsTab />}
     </>
   );
 }

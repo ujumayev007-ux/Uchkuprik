@@ -12,6 +12,7 @@ import { normalizeLayout, pageCss } from '../lib/receipt';
 import { api } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import type { ShiftSummary } from '../lib/orders';
+import { copiesOf, type PrintPlan } from '../lib/print-rules';
 import { ShiftTotals } from './ShiftPage';
 
 type Business = {
@@ -31,6 +32,11 @@ const forTerminal = <T extends { widthMm: number }>(layout: T): T => {
   const width = Number(terminal().get('width'));
   return width === 58 || width === 80 ? { ...layout, widthMm: width } : layout;
 };
+
+/** A receipt type switched off in Chop etish qoidalari: nothing to print. */
+function RuleOff() {
+  return <p className="notice">{t.printRules.off}</p>;
+}
 
 /** Prints once data is rendered; the page is sized for 80 mm receipt printers. */
 function useAutoPrint(ready: boolean) {
@@ -79,7 +85,7 @@ export function ReceiptPage() {
   const receipt = useQuery({
     queryKey: ['receipt', id, query],
     queryFn: () =>
-      api<{ layout?: unknown } & SheetData>(
+      api<{ layout?: unknown; printRule?: PrintPlan } & SheetData>(
         `/orders/${id}/receipt${query ? `?${query}` : ''}`,
       ),
     // Fetched once: a refetch would count another printed copy.
@@ -88,14 +94,24 @@ export function ReceiptPage() {
     refetchOnReconnect: false,
     retry: false,
   });
-  useAutoPrint(receipt.isSuccess);
+  const rule = receipt.data?.printRule;
+  useAutoPrint(receipt.isSuccess && rule?.enabled !== false);
   if (receipt.isPending) return <LoadingState />;
   if (receipt.error) return <ErrorState error={receipt.error} />;
+  if (rule?.enabled === false) return <RuleOff />;
   const layout = forTerminal(normalizeLayout(receipt.data.layout));
+  // The first receipt in the rule's copies (the Kassa application prints one page per
+  // call and repeats the call instead).
+  const copies =
+    terminal().get('silent') === '1' || (receipt.data.copy ?? 0) > 0
+      ? 1
+      : (rule?.copies ?? 1);
   return (
     <>
       <style>{pageCss(layout)}</style>
-      <ReceiptSheet layout={layout} data={receipt.data} />
+      {copiesOf(copies).map((index) => (
+        <ReceiptSheet key={index} layout={layout} data={receipt.data} />
+      ))}
       <button
         className="btn btn-primary btn-md no-print receipt-print-button"
         onClick={() => window.print()}
@@ -136,15 +152,18 @@ export function ZReportPage() {
           branch: { name: string; address: string | null };
           openedBy: string | null;
           closedBy: string | null;
+          printRule?: PrintPlan;
         }
       >(`/shifts/${id}/report`),
   });
-  useAutoPrint(report.isSuccess);
+  const rule = report.data?.printRule;
+  useAutoPrint(report.isSuccess && rule?.enabled !== false);
   if (report.isPending) return <LoadingState />;
   if (report.error) return <ErrorState error={report.error} />;
+  if (rule?.enabled === false) return <RuleOff />;
   const data = report.data;
-  return (
-    <div className="receipt">
+  return copiesOf(rule?.copies ?? 1).map((index) => (
+    <div className="receipt" key={index}>
       <Header business={data.business} branch={data.branch} />
       <h1 className="receipt-title">{t.shift.zReport}</h1>
       <div className="receipt-meta">
@@ -163,12 +182,14 @@ export function ZReportPage() {
         </span>
       </div>
       <ShiftTotals summary={data} />
-      <button
-        className="btn btn-primary btn-md no-print"
-        onClick={() => window.print()}
-      >
-        {t.receipt.print}
-      </button>
+      {index === 0 && (
+        <button
+          className="btn btn-primary btn-md no-print"
+          onClick={() => window.print()}
+        >
+          {t.receipt.print}
+        </button>
+      )}
     </div>
-  );
+  ));
 }

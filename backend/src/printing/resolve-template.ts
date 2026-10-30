@@ -7,9 +7,10 @@ import {
 } from './receipt-template.js';
 
 /**
- * Template that applies to a print target: the printer's own template, else its
- * department's, else the default of the receipt kind, else (customer receipts) the
- * restaurant's original single layout.
+ * Template that applies to a print target: the printer's own template, else the one
+ * for this customer receipt type (bill / paid / credit), else its department's, else
+ * the default of the receipt kind, else (customer receipts) the restaurant's original
+ * single layout.
  */
 export async function resolveTemplate(
   db: Db | Tx,
@@ -19,6 +20,7 @@ export async function resolveTemplate(
     printerId?: string | null;
     stationId?: string | null;
     templateId?: string | null;
+    receiptType?: string | null;
   },
 ): Promise<{
   settings: ReceiptTemplateSettings;
@@ -38,6 +40,10 @@ export async function resolveTemplate(
   }
   const targets = [
     input.printerId && { targetType: 'PRINTER', targetId: input.printerId },
+    input.receiptType && {
+      targetType: 'RECEIPT_TYPE',
+      targetId: input.receiptType,
+    },
     input.stationId && { targetType: 'STATION', targetId: input.stationId },
     { targetType: 'TYPE', targetId: input.kind },
   ].filter(Boolean) as { targetType: string; targetId: string }[];

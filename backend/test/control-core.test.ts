@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { registerRetryWait } from '../src/modules/control/runtime.js';
 import {
   catalogByKey,
   featureCatalog,
@@ -450,5 +451,17 @@ describe('per-role overrides and parameters', () => {
       roles: { cashier: { params: { maxPercent: 12 } } },
     });
     expect(clean['orders.display']).toBeUndefined();
+  });
+});
+
+describe('announcing an install that is not linked yet', () => {
+  it('retries soon after a failure, every minute while pending, rarely otherwise', () => {
+    expect(registerRetryWait('ERROR', 1)).toBe(30_000);
+    expect(registerRetryWait('ERROR', 2)).toBe(60_000);
+    expect(registerRetryWait('ERROR', 4)).toBe(240_000);
+    expect(registerRetryWait('ERROR', 10)).toBe(300_000);
+    expect(registerRetryWait('PENDING', 0)).toBe(60_000);
+    expect(registerRetryWait('SKIPPED', 0)).toBe(600_000);
+    expect(registerRetryWait('ACTIVATED', 0)).toBe(600_000);
   });
 });

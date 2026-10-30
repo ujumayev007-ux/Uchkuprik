@@ -37,11 +37,14 @@ import {
 import { kitchenVariantIds } from './kitchen-filter.js';
 import { completeOrder } from '../orders/complete.js';
 import { netPaid } from '../orders/engine.js';
+import { readOrderWorkflow } from '../workflow/engine.js';
 
 const stationInput = z.object({
   name: z.string().trim().min(1).max(60),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   isActive: z.boolean().default(true),
+  // Printing rule of its tickets (Chop etish qoidalari); left out keeps the current one.
+  printType: z.enum(['KITCHEN', 'KEBAB', 'BAR']).optional(),
 });
 
 const can = (
@@ -94,12 +97,13 @@ export function kitchenRouter(services: Services) {
     });
     res.json({
       stations: stations.map(
-        ({ id, name, sortOrder, isActive, ticketTemplate }) => ({
+        ({ id, name, sortOrder, isActive, ticketTemplate, printType }) => ({
           template: ticketTemplateOf(ticketTemplate),
           id,
           name,
           sortOrder,
           isActive,
+          printType,
         }),
       ),
     });
@@ -115,7 +119,13 @@ export function kitchenRouter(services: Services) {
       try {
         const station = await db.$transaction(async (tx) => {
           const created = await tx.kitchenStation.create({
-            data: { tenantId: auth.tenantId, ...input },
+            data: {
+              tenantId: auth.tenantId,
+              name: input.name,
+              sortOrder: input.sortOrder,
+              isActive: input.isActive,
+              ...(input.printType ? { printType: input.printType } : {}),
+            },
           });
           await audit(tx, req, {
             tenantId: auth.tenantId,
@@ -220,7 +230,12 @@ export function kitchenRouter(services: Services) {
       try {
         const result = await db.kitchenStation.updateMany({
           where: { id, tenantId: auth.tenantId },
-          data: input,
+          data: {
+            name: input.name,
+            sortOrder: input.sortOrder,
+            isActive: input.isActive,
+            ...(input.printType ? { printType: input.printType } : {}),
+          },
         });
         if (result.count === 0) throw errors.notFound();
       } catch (error) {
@@ -864,18 +879,28 @@ export function kitchenRouter(services: Services) {
         kitchenRejectedAt: null,
       },
       orderBy: [{ readyAt: 'desc' }, { placedAt: 'asc' }],
-      select: { id: true, number: true, status: true, readyAt: true },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        readyAt: true,
+        workflow: true,
+      },
     });
+    // Zones whose workflow keeps their orders off the customers' TV.
+    const shown = orders.filter(
+      (order) => readOrderWorkflow(order.workflow)?.queueTv !== false,
+    );
     return {
       branch: { name: branch.name },
       // Kassa switched the TVs off: they show a pause screen and keep polling.
       paused: branch.tvPaused,
       // Layout, visible statuses and voice settings chosen centrally.
       display,
-      preparing: orders
+      preparing: shown
         .filter((order) => order.status !== 'READY')
         .map((order) => order.number),
-      ready: orders
+      ready: shown
         .filter((order) => order.status === 'READY')
         .map((order) => ({
           id: order.id,

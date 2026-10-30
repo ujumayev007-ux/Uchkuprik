@@ -12,7 +12,16 @@ export type OrderStatus =
   | 'CANCELLED';
 export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 export type PaymentMethod =
-  'CASH' | 'CARD' | 'LOYALTY' | 'CLICK' | 'PAYME' | 'UZUM' | 'QR' | 'OTHER';
+  | 'CASH'
+  | 'CARD'
+  | 'LOYALTY'
+  | 'CLICK'
+  | 'PAYME'
+  | 'UZUM'
+  | 'QR'
+  | 'OTHER'
+  // Charged to a customer credit (nasiya) or hotel room account.
+  | 'CREDIT';
 
 export type OrderItem = {
   id: string;
@@ -63,6 +72,18 @@ export type Order = {
   placedAt: string | null;
   completedAt: string | null;
   cancelReason: string | null;
+  // Scheduled order / banquet (workflows 11 and 12).
+  scheduledFor?: string | null;
+  scheduleConfirmedAt?: string | null;
+  guests?: number | null;
+  eventName?: string | null;
+  // What the zone's workflow allows (null: no workflow).
+  workflow?: {
+    zone: string;
+    payment: string;
+    advancePercent: number;
+    scheduling: boolean;
+  } | null;
   version?: number;
   kitchen?: {
     acceptedAt: string | null;

@@ -10,7 +10,18 @@ import { z } from 'zod';
 
 export const TEMPLATE_KINDS = ['CUSTOMER', 'KITCHEN'] as const;
 export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
-export const ASSIGNMENT_TARGETS = ['PRINTER', 'STATION', 'TYPE'] as const;
+export const ASSIGNMENT_TARGETS = [
+  'PRINTER',
+  'STATION',
+  'TYPE',
+  // A customer receipt type: preliminary bill, paid receipt or credit receipt.
+  'RECEIPT_TYPE',
+] as const;
+export const CUSTOMER_RECEIPT_TYPES = [
+  'PRELIM_BILL',
+  'PAID',
+  'CREDIT',
+] as const;
 export type AssignmentTarget = (typeof ASSIGNMENT_TARGETS)[number];
 
 const dataImage = z
@@ -68,6 +79,11 @@ export const receiptTemplateSchema = z.object({
   showChange: z.boolean().default(true),
   // Kitchen tickets: items in double-height letters.
   largeItems: z.boolean().default(true),
+  // Kitchen tickets: items 1x1 / 1x2 / 2x2 (left out: largeItems decides), the order
+  // number in double size, the department name.
+  kitchenItemSize: z.enum(['normal', 'tall', 'big']).optional(),
+  kitchenLargeNumber: z.boolean().default(true),
+  showStation: z.boolean().default(true),
   title: z.string().trim().max(60).default(''),
   extraLines: z.string().trim().max(500).default(''),
   thankYou: z.string().trim().max(120).default('Xaridingiz uchun rahmat!'),
@@ -100,6 +116,11 @@ export const receiptTemplateSchema = z.object({
   showCopyMark: z.boolean().default(true),
   presetKey: z.string().optional(),
   sectionOrder: z.array(z.string()).optional(),
+  // Order of the receipt parts (logo, header, meta, delivery, items, totals, fiscal,
+  // wifi, qr, barcode, footer). Absent: the usual order.
+  layoutOrder: z.array(z.string().max(20)).max(20).optional(),
+  // Browser printing on an office printer: A4/A5 page instead of the paper roll.
+  pageSize: z.enum(['roll', 'A4', 'A5']).optional(),
 });
 export type ReceiptTemplateSettings = z.infer<typeof receiptTemplateSchema>;
 

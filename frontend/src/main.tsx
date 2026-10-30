@@ -460,7 +460,10 @@ const router = createBrowserRouter([
           <Guard
             feature="kitchen_printing"
             allow={(me) =>
-              can(me, 'settings.manage') || can(me, 'pos.access')
+              can(me, 'settings.manage') ||
+              can(me, 'pos.access') ||
+              can(me, 'kitchen.access') ||
+              can(me, 'orders.create')
             }
           >
             <PrintersPage />

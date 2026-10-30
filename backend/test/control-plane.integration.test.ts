@@ -1210,3 +1210,79 @@ describe('Owner device management', () => {
     ).toBe(1);
   });
 });
+
+describe('Owner workflows (Ish rejimlari)', () => {
+  it('checks, activates as versions, rolls back and reaches the restaurant by heartbeat', async () => {
+    const { agent } = await signedIn();
+    const lic = await createLicensedCustomer(agent);
+    const pc = device(request.agent(ctx.app));
+    const id = (await pc.activate(lic.key).expect(201)).body.activationId as string;
+    await pc.heartbeat(id, { capabilities: ['workflow'], facts: { stations: [], staff: { cashier: 1, waiter: 1, kitchen: 1 } } }).expect(200);
+    const base = `/control/customers/${lic.customerId}/workflow`;
+    const start = await api(agent).get(base).expect(200);
+    expect(start.body.active).toBeNull();
+    expect(start.body.presets).toHaveLength(20);
+    const fastFood = start.body.presets.find((p: { id: number }) => p.id === 2).config;
+    const checked = await api(agent).post(`${base}/preview`, { config: fastFood }).expect(200);
+    expect(checked.body.routes[0].steps.join(' → ')).toContain('To‘lov');
+    // Activation needs explicit confirmation.
+    await api(agent).post(base, { config: fastFood }).expect(400);
+    const v1 = await api(agent).post(base, { config: fastFood, confirm: true }).expect(201);
+    expect(v1.body.version).toBe(1);
+    const table = start.body.presets.find((p: { id: number }) => p.id === 7).config;
+    await api(agent).post(base, { config: table, confirm: true }).expect(201);
+    const back = await api(agent).post(`${base}/rollback`, { version: 1, confirm: true }).expect(201);
+    expect(back.body.version).toBe(3);
+    const now = await api(agent).get(base).expect(200);
+    expect(now.body.active.version).toBe(3);
+    expect(now.body.active.config.preset).toBe(2);
+    expect(now.body.history.map((h: { version: number }) => h.version)).toEqual([3, 2, 1]);
+    // The signed heartbeat answer carries the active workflow.
+    const beat = await pc.heartbeat(id).expect(200);
+    const doc = verifyDocument<{ workflow: { version: number } }>(beat.body.response, [server.publicKey])!;
+    expect(doc.workflow.version).toBe(3);
+    const actions = (
+      await ctx.db.controlAuditLog.findMany({ where: { customerId: lic.customerId }, select: { action: true } })
+    ).map((entry) => entry.action);
+    expect(actions).toEqual(expect.arrayContaining(['workflow.activate', 'workflow.rollback']));
+  });
+});
+
+describe('Owner → Restoran boshqaruvi (hosted restaurant)', () => {
+  it('reads snapshots without secrets and makes audited changes at once', async () => {
+    const { agent } = await signedIn();
+    const tenant = await createTenant(ctx);
+    const tenantId = tenant.tenant.id;
+    const customer = await ctx.db.controlCustomer.create({ data: { name: unique('Mijoz'), tenantId } });
+    const category = await ctx.db.menuCategory.create({ data: { tenantId, name: 'Ichimliklar' } });
+    const product = await ctx.db.product.create({ data: { tenantId, categoryId: category.id, name: 'Choy' } });
+    const variant = await ctx.db.productVariant.create({
+      data: { tenantId, productId: product.id, name: 'Choynak', price: 5_000 },
+    });
+    const ops = `/control/customers/${customer.id}/remote/ops`;
+    const menu = await api(agent).post(ops, { kind: 'snapshot.menu' }).expect(201);
+    expect(menu.body.status).toBe('DONE');
+    await api(agent).post(ops, { kind: 'menu.variant.price', payload: { variantId: variant.id, price: 6_000 } }).expect(201);
+    expect((await ctx.db.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).price).toBe(6_000);
+    await api(agent).post(ops, { kind: 'menu.product.visibility', payload: { productId: product.id, isActive: false } }).expect(201);
+    expect((await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } })).isActive).toBe(false);
+    const staff = await api(agent).post(ops, { kind: 'snapshot.staff' }).expect(201);
+    expect(staff.body.status).toBe('DONE');
+    const view = await api(agent).get(`/control/customers/${customer.id}/remote`).expect(200);
+    expect(view.body.snapshots['snapshot.menu'].result.products[0].name).toBe('Choy');
+    expect(JSON.stringify(view.body)).not.toMatch(/pinHash|passwordHash|qrToken/);
+    // Another restaurant's product can not be changed through this customer.
+    const other = await createTenant(ctx);
+    const otherCategory = await ctx.db.menuCategory.create({ data: { tenantId: other.tenant.id, name: 'X' } });
+    const otherProduct = await ctx.db.product.create({
+      data: { tenantId: other.tenant.id, categoryId: otherCategory.id, name: 'Begona' },
+    });
+    const refused = await api(agent)
+      .post(ops, { kind: 'menu.product.visibility', payload: { productId: otherProduct.id, isActive: false } })
+      .expect(201);
+    expect(refused.body.status).toBe('FAILED');
+    expect((await ctx.db.product.findUniqueOrThrow({ where: { id: otherProduct.id } })).isActive).toBe(true);
+    const audits = await ctx.db.auditLog.findMany({ where: { tenantId, action: 'menu.variant.price' } });
+    expect(audits).toHaveLength(1);
+  });
+});

@@ -1,4 +1,5 @@
 import { AppError } from '../../http/errors.js';
+import { handleReceiptChat } from './receipt.js';
 import { applyDeliveryLocation, parsePoint } from '../delivery/distance.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -10,6 +11,7 @@ import { notifyOnlineOrder } from '../notifications/hooks.js';
 import { telegramTransport } from '../notifications/notify.js';
 import { publicMenu } from '../online/online.routes.js';
 import { issueOrderCode } from '../orders/codes.js';
+import { snapshotFor } from '../workflow/restaurant.js';
 import {
   addEvent,
   businessDate,
@@ -183,7 +185,14 @@ export async function handleTelegramUpdate(
   if (!parsed.success) return;
   const update = parsed.data;
   const bot = await loadBot(services, tenantId);
-  if (!bot || !bot.config.ordersEnabled || !bot.branchId) return;
+  if (!bot) return;
+  // Only electronic receipts (no ordering): the guest links their own number.
+  if (!bot.config.ordersEnabled) {
+    if (bot.config.receiptsEnabled && update.message)
+      await handleReceiptChat(services, tenantId, bot.token, update.message);
+    return;
+  }
+  if (!bot.branchId) return;
   const branchId = bot.branchId;
   const chatId = String(
     update.message?.chat.id ?? update.callback_query?.message?.chat.id ?? '',
@@ -431,7 +440,14 @@ export async function handleTelegramUpdate(
       return send('Iltimos, o‘zingizning raqamingizni yuboring.');
     const digits = message.contact.phone_number.replace(/\D/g, '');
     const phone = `+${digits.startsWith('998') ? digits : `998${digits.slice(-9)}`}`;
-    await db.telegramChat.update({ where: { id: chat.id }, data: { phone } });
+    await db.telegramChat.update({
+      where: { id: chat.id },
+      // Receipts go only to numbers Telegram confirmed as the sender's own.
+      data: {
+        phone,
+        phoneVerified: message.contact.user_id === message.from?.id,
+      },
+    });
     chat.phone = phone;
     await send('Rahmat! ✅', MAIN_KEYBOARD);
     return nextAfterPhone();
@@ -518,6 +534,12 @@ export async function handleTelegramUpdate(
           '😔 Afsuski, bu manzil yetkazib berish masofasidan tashqarida. Olib ketishni tanlashingiz mumkin.',
           MAIN_KEYBOARD,
         );
+      // The restaurant's workflow does not take Telegram orders here.
+      if (error instanceof AppError && error.code === 'WORKFLOW_SOURCE')
+        return send(
+          '😔 Afsuski, restoran hozir Telegram orqali bunday buyurtma qabul qilmaydi.',
+          MAIN_KEYBOARD,
+        );
       throw error;
     }
     async function placeTx() {
@@ -542,6 +564,14 @@ export async function handleTelegramUpdate(
           chat.phone!,
           chat.name ?? 'Telegram',
         );
+        // The SUPER_OWNER's workflow (Telegram orders always wait for approval).
+        const flow = await snapshotFor(tx, {
+          tenantId,
+          type: state.type!,
+          channel: 'TELEGRAM',
+          tableId: null,
+          waiter: false,
+        });
         const created = await tx.order.create({
           data: {
             tenantId,
@@ -552,6 +582,7 @@ export async function handleTelegramUpdate(
             type: state.type!,
             channel: 'TELEGRAM',
             status: 'PENDING',
+            ...(flow ? { workflow: flow } : {}),
             customerName: chat.name ?? null,
             customerPhone: chat.phone,
             deliveryAddress:
@@ -717,7 +748,10 @@ export function startTelegramPolling(services: Services, intervalMs = 2500) {
   const cleared = new Set<string>();
   const tick = async () => {
     const configs = await services.db.telegramConfig.findMany({
-      where: { isActive: true, ordersEnabled: true },
+      where: {
+        isActive: true,
+        OR: [{ ordersEnabled: true }, { receiptsEnabled: true }],
+      },
     });
     for (const config of configs) {
       const token = services.secrets.decrypt(config.botTokenEnc);

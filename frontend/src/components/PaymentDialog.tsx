@@ -6,7 +6,21 @@ import { useBusy } from '../lib/busy';
 import { formatMoney } from '../lib/format';
 import { newKey, type Order, type PaymentMethod } from '../lib/orders';
 import { QrPayPanel, useQrPayment } from './QrPayPanel';
-import { Button, Dialog, FormError, MoneyField, TextField } from './ui';
+import {
+  Button,
+  Dialog,
+  FormError,
+  MoneyField,
+  SelectField,
+  TextField,
+} from './ui';
+
+type CreditAccount = {
+  id: string;
+  label: string;
+  balance: number;
+  available: number | null;
+};
 
 const QUICK_CASH = [50_000, 100_000, 200_000];
 
@@ -34,6 +48,8 @@ export function PaymentDialog({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [partial, setPartial] = useState(false);
+  const [accountId, setAccountId] = useState('');
+  const [accountQuery, setAccountQuery] = useState('');
   // One idempotency key per attempt; retries after a network error reuse it.
   const key = useRef(newKey());
 
@@ -53,6 +69,17 @@ export function PaymentDialog({
   // Merchant QR (Paynet etc.), when the owner enabled it.
   const qr = useQrPayment();
   const qrEnabled = !!qr.data?.enabled;
+  // Nasiya / hotel room bill: only where the order's workflow allows credit.
+  const creditAllowed = current.workflow?.payment === 'CREDIT';
+  const accounts = useQuery({
+    queryKey: ['credit-accounts', 'open', accountQuery],
+    queryFn: () =>
+      api<{ accounts: CreditAccount[] }>(
+        `/credit-accounts?open=true${accountQuery.trim() ? `&q=${encodeURIComponent(accountQuery.trim())}` : ''}`,
+      ).then((data) => data.accounts),
+    enabled: creditAllowed && method === 'CREDIT',
+  });
+  const account = accounts.data?.find((item) => item.id === accountId);
   // Each method starts from what it can cover: points up to the balance, else the full due.
   useEffect(() => {
     setAmount(
@@ -79,11 +106,13 @@ export function PaymentDialog({
           ...((method === 'CARD' || method === 'QR') && reference.trim()
             ? { reference: reference.trim() }
             : {}),
+          ...(method === 'CREDIT' ? { creditAccountId: accountId } : {}),
         },
       );
       key.current = newKey();
       await client.invalidateQueries({ queryKey: ['shift'] });
       await client.invalidateQueries({ queryKey: ['customers'] });
+      await client.invalidateQueries({ queryKey: ['credit-accounts'] });
       await client.invalidateQueries({ queryKey: ['orders'] });
       if (result.order.due === 0) onPaid(result.order, result.change);
       else {
@@ -135,6 +164,7 @@ export function PaymentDialog({
               'CARD',
               ...(qrEnabled ? (['QR'] as const) : []),
               ...(current.customerId ? (['LOYALTY'] as const) : []),
+              ...(creditAllowed ? (['CREDIT'] as const) : []),
             ] as const
           ).map((value) => (
             <button
@@ -168,6 +198,41 @@ export function PaymentDialog({
             <p className="notice">
               {t.crm.points}: <strong>{points}</strong>
             </p>
+          ) : method === 'CREDIT' ? (
+            <div className="stack">
+              <TextField
+                label={t.payment.creditSearch}
+                type="search"
+                value={accountQuery}
+                onChange={(e) => setAccountQuery(e.target.value)}
+              />
+              {accounts.data?.length === 0 ? (
+                <p className="muted small">{t.payment.creditNone}</p>
+              ) : (
+                <SelectField
+                  label={t.payment.creditAccount}
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                >
+                  <option value="">{t.payment.creditPick}</option>
+                  {accounts.data?.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label} · {formatMoney(item.balance)}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
+              {account && (
+                <p className="muted small">
+                  {account.available === null
+                    ? t.payment.creditNoLimit
+                    : t.payment.creditAvailable.replace(
+                        '{n}',
+                        formatMoney(account.available),
+                      )}
+                </p>
+              )}
+            </div>
           ) : (
             <TextField
               label={
@@ -218,6 +283,9 @@ export function PaymentDialog({
             amount > current.due ||
             (method === 'CASH' && change < 0) ||
             (method === 'LOYALTY' && amount > points) ||
+            (method === 'CREDIT' &&
+              (!account ||
+                (account.available !== null && amount > account.available))) ||
             (method === 'QR' &&
               !!qr.data?.requireReference &&
               !reference.trim())

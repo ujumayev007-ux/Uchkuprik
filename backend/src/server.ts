@@ -10,9 +10,14 @@ import { createDatabase } from './database.js';
 import type { Services } from './context.js';
 import { createPrisma } from './db.js';
 import { createSecretBox } from './lib/crypto.js';
+import { backupStore } from './lib/backup-store.js';
 import { createEventBus } from './realtime/bus.js';
 import { attachRealtime } from './realtime/socket.js';
 import { enqueueKitchenTickets, startPrintWorker } from './printing/queue.js';
+import { startScheduleWorker } from './modules/workflow/schedule.js';
+import { autoPrintOrder } from './printing/auto.js';
+import { sendTelegramReceipt } from './modules/telegram/receipt.js';
+import { offsiteBackups, startOffsiteWorker } from './lib/backup-offsite.js';
 import { startBillingWorker } from './modules/billing/lifecycle.js';
 import { setEntitlementsOverride } from './modules/billing/entitlements.js';
 import {
@@ -112,6 +117,27 @@ async function main(): Promise<void> {
     },
   } as Services;
   services.appVersion = appVersion();
+  if (config.BACKUP_DIR)
+    services.backups = backupStore({
+      dir: config.BACKUP_DIR,
+      dataDir: config.FASTFOOD_DATA_DIR ?? null,
+      databaseUrl: config.DATABASE_URL,
+      canSwap: config.RESTORE_SWAP,
+    });
+  // Encrypted copies of the newest backup off this computer (when configured).
+  if (services.backups && config.BACKUP_DIR)
+    services.offsite = offsiteBackups({
+      dir: config.BACKUP_DIR,
+      store: services.backups,
+      secrets: services.secrets,
+      central: () => services.controlRuntime?.uploadBackup ?? null,
+    });
+  services.appOrigin = config.APP_ORIGIN;
+  // The launcher starts the server again (and swaps a prepared database in first).
+  services.requestRestart = () => {
+    logger.warn('Restarting for a database swap');
+    setTimeout(() => process.exit(0), 1_500).unref();
+  };
   // Control channel: installs report to the central server; the cloud edition reads
   // customer policies straight from its own tables.
   if (config.SELF_HOSTED && !config.CONTROL_PLANE) {
@@ -127,11 +153,24 @@ async function main(): Promise<void> {
     : () => undefined;
   services.afterOrderChange = async (orderId) => {
     await enqueueKitchenTickets(services, orderId);
+    // Chop etish qoidalari bound to a printer (paid receipt, bill, delivery slip).
+    await autoPrintOrder(services, orderId).catch(() =>
+      logger.warn('Automatic receipt printing failed'),
+    );
+    // Elektron chek in Telegram once the order is paid (when switched on).
+    await sendTelegramReceipt(services, orderId, {
+      origin: config.APP_ORIGIN,
+    }).catch(() => logger.warn('Telegram receipt failed'));
     await notifyTelegramCustomer(services, orderId).catch(() =>
       logger.warn('Telegram customer notice failed'),
     );
   };
   const stopPrinting = startPrintWorker(services);
+  const stopOffsite = services.offsite
+    ? startOffsiteWorker(services.offsite, logger)
+    : () => undefined;
+  // Scheduled orders and banquets reach the kitchen on time.
+  const stopSchedule = startScheduleWorker(services);
   const stopLicenseSync = config.SELF_HOSTED
     ? startLicenseSync(services)
     : () => undefined;
@@ -188,6 +227,8 @@ async function main(): Promise<void> {
     deadline.unref();
     void realtime.close();
     stopPrinting();
+    stopSchedule();
+    stopOffsite();
     stopBilling();
     stopMaintenance();
     stopNotifications();

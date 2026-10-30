@@ -4,6 +4,7 @@
 //   npm run backup -w backend -- restore <file>        (target must be empty+migrated)
 // `create` also verifies the new file by default; pass --no-verify to skip.
 import { stat } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 import { loadConfig } from '../config.js';
 import {
   createBackup,
@@ -11,6 +12,7 @@ import {
   verifyBackup,
   type BackupSummary,
 } from '../lib/backup.js';
+import { writeManifest, writeStatus } from '../lib/backup-store.js';
 
 const [command, file, flag] = process.argv.slice(2);
 const config = loadConfig();
@@ -34,6 +36,16 @@ async function main() {
           : `Restore check FAILED: ${JSON.stringify(result.mismatches)}`,
       );
       process.exitCode = result.ok ? 0 : 1;
+      // Zaxira nusxalar page and the Owner heartbeat read these.
+      const name = basename(file);
+      if (result.ok)
+        await writeManifest(
+          file,
+          name.startsWith('daily-') ? 'daily' : 'manual',
+          summary,
+          true,
+        ).catch(() => undefined);
+      await writeStatus(dirname(file), name, result.ok).catch(() => undefined);
     }
     return;
   }

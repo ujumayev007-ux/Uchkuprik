@@ -22,6 +22,8 @@ type AttendanceRecord = {
   clockOut: string | null;
   note: string | null;
   name?: string;
+  // The terminal the shift was opened on.
+  terminal?: string | null;
   minutes?: number | null;
 };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -366,6 +368,9 @@ export function AttendancePage() {
                     <tr key={record.id}>
                       <td>
                         {record.name}
+                        {record.terminal && (
+                          <small className="muted block">🖥 {record.terminal}</small>
+                        )}
                         {record.note && (
                           <small className="muted block">{record.note}</small>
                         )}

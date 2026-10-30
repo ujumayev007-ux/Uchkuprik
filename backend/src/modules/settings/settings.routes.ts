@@ -14,6 +14,7 @@ import {
   receiptTemplateSchema,
 } from '../../printing/receipt-template.js';
 import { audit } from '../audit/audit.js';
+import { keepVersion } from '../printing/receipt-templates.routes.js';
 import {
   getAuth,
   requireAuth,
@@ -330,6 +331,23 @@ export function settingsRouter(services: Services) {
       // The restaurant's default template (full template settings; old fields included).
       const input = parse(receiptTemplateSchema, req.body);
       await db.$transaction(async (tx) => {
+        const before = await tx.tenantProfile.findUnique({
+          where: { tenantId: auth.tenantId },
+          select: { receiptSettings: true },
+        });
+        // The receipt being replaced stays in the designer's history.
+        if (before?.receiptSettings)
+          await keepVersion(
+            tx,
+            auth.tenantId,
+            null,
+            {
+              name: 'Asosiy chek',
+              kind: 'CUSTOMER',
+              settings: fromLegacyLayout(before.receiptSettings),
+            },
+            auth.userId,
+          );
         await tx.tenantProfile.upsert({
           where: { tenantId: auth.tenantId },
           update: { receiptSettings: input },

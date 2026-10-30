@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { applyOwnerDecision } from '../devices/approval.js';
 import os from 'node:os';
 import type { Services } from '../../context.js';
@@ -29,6 +30,9 @@ import { verifyLicense } from '../license/license.js';
 import type { BrandingBundle } from '../branding/bundle.js';
 import { sha256Of, sniffMedia } from '../branding/media.js';
 import { loadAdminData, unlinkedView, type ControlView } from './view.js';
+import { storeWorkflow } from '../workflow/restaurant.js';
+import { executeOp, RESTART_OPS } from '../remote/ops.js';
+import { AppError } from '../../http/errors.js';
 
 type Transport = typeof fetch;
 
@@ -60,6 +64,8 @@ type BeatResponse = {
     name?: string;
   }[];
   update: AvailableUpdate | null;
+  workflow?: { version: number; config: unknown } | null;
+  ops?: { id: string; kind: string; payload: unknown }[];
   // Address the centre has moved to (signed with the same key as the grant).
   relocate?: string | null;
   // Design and advertising of this restaurant (only when the install's copy is outdated).
@@ -73,6 +79,20 @@ const LINK_CACHE_MS = 2_000;
  * monotonic clock, command execution and the synchronisation outbox. The central
  * server stays authoritative; this object only ever holds what the server signed.
  */
+/**
+ * When an install that is not linked yet announces itself again: soon after a failure
+ * (30 s, doubling, at most 5 min), every minute while the Owner's decision is pending,
+ * otherwise every ten minutes.
+ */
+export function registerRetryWait(
+  result: 'SKIPPED' | 'PENDING' | 'ACTIVATED' | 'ERROR',
+  failures: number,
+): number {
+  if (result === 'ERROR')
+    return Math.min(5 * 60_000, 30_000 * 2 ** Math.max(0, failures - 1));
+  return result === 'PENDING' ? 60_000 : 10 * 60_000;
+}
+
 export function createControlRuntime(
   services: Services,
   options: { transport?: Transport } = {},
@@ -374,6 +394,97 @@ export function createControlRuntime(
     });
   }
 
+  /** Stations, printers, staff and TVs: what the Owner's workflow check looks at. */
+  async function restaurantFacts() {
+    const [stations, printers, roles, tv] = await Promise.all([
+      db.kitchenStation.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        take: 100,
+      }),
+      db.printer.groupBy({
+        by: ['kind'],
+        where: { isActive: true },
+        _count: { _all: true },
+      }),
+      db.userRole.findMany({
+        where: { user: { status: 'ACTIVE', deletedAt: null } },
+        select: { userId: true, role: { select: { permissions: true } } },
+      }),
+      db.device.count({ where: { panel: 'DISPLAY', status: 'ACTIVE' } }),
+    ]);
+    const holders = (permission: string) =>
+      new Set(
+        roles
+          .filter((row) => row.role.permissions.includes(permission))
+          .map((row) => row.userId),
+      ).size;
+    const count = (kind: string) =>
+      printers.find((row) => row.kind === kind)?._count._all ?? 0;
+    return {
+      stations: stations.map((station) => ({
+        id: station.id,
+        name: station.name.slice(0, 80),
+      })),
+      printers: { kitchen: count('KITCHEN'), receipt: count('RECEIPT') },
+      staff: {
+        cashier: holders('payments.accept'),
+        waiter: holders('orders.create'),
+        kitchen: holders('kitchen.access'),
+      },
+      tv,
+      ...(await monitoringFacts()),
+    };
+  }
+
+  /** Owner → Monitoring: print queue, panels seen recently and the last backup. */
+  async function monitoringFacts() {
+    const at = sysNow();
+    const day = new Date(at.getTime() - 24 * 3_600_000);
+    const recent = new Date(at.getTime() - 10 * 60_000);
+    const [failed24h, unknown24h, pending, panels, backup] = await Promise.all([
+      db.printJob.count({
+        where: { status: 'FAILED', createdAt: { gte: day } },
+      }),
+      db.printJob.count({
+        where: { status: 'UNKNOWN', createdAt: { gte: day } },
+      }),
+      db.printJob.count({ where: { status: { in: ['PENDING', 'PRINTING'] } } }),
+      db.device.findMany({
+        where: {
+          status: 'ACTIVE',
+          panel: { in: ['KITCHEN', 'DISPLAY', 'POS', 'WAITER'] },
+        },
+        select: { panel: true, lastSeenAt: true },
+        take: 200,
+      }),
+      services.backups?.status().catch(() => null) ?? null,
+    ]);
+    // Copies off this computer: where the newest one went, or why it did not.
+    const offsite = services.offsite
+      ? await services.offsite.state().catch(() => null)
+      : null;
+    const seen = (panel: string) => ({
+      total: panels.filter((row) => row.panel === panel).length,
+      online: panels.filter(
+        (row) =>
+          row.panel === panel && row.lastSeenAt && row.lastSeenAt >= recent,
+      ).length,
+    });
+    return {
+      printing: { failed24h, unknown24h, pending },
+      panels: {
+        kitchen: seen('KITCHEN'),
+        tv: seen('DISPLAY'),
+        pos: seen('POS'),
+        waiter: seen('WAITER'),
+      },
+      ...(backup
+        ? { backup: { ...backup, ...(offsite ? { offsite } : {}) } }
+        : {}),
+    };
+  }
+
   async function heartbeatPayload() {
     const at = sysNow();
     const current = await link();
@@ -412,7 +523,15 @@ export function createControlRuntime(
       // What this agent can do for the Owner.
       capabilities: [
         'rekey',
+        'workflow',
+        'remote_ops',
+        // Workflow parts this server runs: nasiya / hotel room bills, scheduled orders.
+        'credit',
+        'scheduled',
         ...(services.hostRenameAgent ? ['rename_host'] : []),
+        ...(services.backups ? ['backups', 'partial_restore'] : []),
+        ...(services.offsite ? ['offsite_backup'] : []),
+        ...(services.backups?.canRestore ? ['restore'] : []),
       ],
       ...(rename
         ? {
@@ -424,6 +543,7 @@ export function createControlRuntime(
           }
         : {}),
       currentUser: session?.user.displayName ?? null,
+      facts: await restaurantFacts(),
       os: `${os.type()} ${os.release()}`.slice(0, 80),
       ackCommands: ackIds.slice(0, 20),
       brandingVersion: await completeBrandingVersion(),
@@ -457,7 +577,7 @@ export function createControlRuntime(
   async function signedPost(
     row: ControlLink,
     pem: string,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey',
+    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result' | 'backup',
     path: string,
     payload: object,
   ) {
@@ -570,6 +690,82 @@ export function createControlRuntime(
     // Report it now (the Owner sees the outcome without waiting a minute).
     void beat().catch(() => undefined);
     return true;
+  }
+
+  let pendingOps: { id: string; kind: string; payload: unknown }[] = [];
+
+  /**
+   * Owner → Restoran boshqaruvi on this computer: each operation (verified inside the
+   * signed heartbeat answer) runs once — a receipt keeps its result — and the result is
+   * sent back signed; a result not delivered yet is sent again on the next delivery.
+   */
+  async function runOwnerOps() {
+    const ops = pendingOps;
+    pendingOps = [];
+    if (!ops.length) return;
+    const tenant = await db.tenant.findFirst({
+      where: { kind: 'BUSINESS' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!tenant) return;
+    for (const op of ops) {
+      let receipt = await db.remoteOpReceipt.findUnique({
+        where: { id: op.id },
+      });
+      if (!receipt) {
+        let ok = true;
+        let result: unknown = null;
+        let error: string | null = null;
+        try {
+          result = await executeOp(db, tenant.id, op.kind, op.payload, {
+            backups: services.backups,
+          });
+        } catch (caught) {
+          ok = false;
+          error = caught instanceof AppError ? caught.code : 'FAILED';
+        }
+        receipt = await db.remoteOpReceipt.create({
+          data: {
+            id: op.id,
+            kind: op.kind,
+            ok,
+            ...(result !== null && result !== undefined
+              ? { result: result as Prisma.InputJsonValue }
+              : {}),
+            error,
+          },
+        });
+        if (ok && !op.kind.startsWith('snapshot.')) void announceConfigChange();
+      }
+      const row = await db.controlLink.findUnique({ where: { id: 1 } });
+      const pem = row ? devicePem(row) : null;
+      if (!row || !pem) return;
+      const sent = await signedPost(
+        row,
+        pem,
+        'op-result',
+        '/control/device/op-result',
+        {
+          id: op.id,
+          ok: receipt.ok,
+          ...(receipt.ok
+            ? { result: receipt.result }
+            : { error: receipt.error }),
+        },
+      ).catch(() => null);
+      if (sent?.status === 200)
+        await db.remoteOpReceipt.update({
+          where: { id: op.id },
+          data: { reported: true },
+        });
+      // A prepared restore: nothing more runs on this database; the launcher swaps it.
+      // (The receipt moves to the restored database, so the operation never runs twice.)
+      if (receipt.ok && RESTART_OPS.includes(op.kind)) {
+        services.requestRestart?.();
+        return;
+      }
+    }
   }
 
   /** One check-in with the centre. Network failures are recorded, never thrown. */
@@ -829,6 +1025,18 @@ export function createControlRuntime(
       // The centre announced a new address: verify it first, then switch.
       if (doc.relocate && trimUrl(doc.relocate) !== row.serverUrl)
         void relocate(doc.relocate);
+      // Owner operations: run each exactly once, then report (after this beat).
+      if (doc.ops?.length) pendingOps = doc.ops;
+      // The SUPER_OWNER's workflow: kept for the restaurant (newer versions only).
+      if (doc.workflow) {
+        const tenant = await db.tenant.findFirst({
+          where: { kind: 'BUSINESS' },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (tenant && (await storeWorkflow(db, tenant.id, doc.workflow)))
+          void announceConfigChange();
+      }
       // New decisions from the Owner reach connected screens and Android devices:
       // policy changes, and blocking / unblocking (the screens drop or show the
       // "blocked" notice at once instead of after a reload).
@@ -961,18 +1169,30 @@ export function createControlRuntime(
   function start(intervalMs: number = timing.heartbeatIntervalMs) {
     let lastSummaries = 0;
     let lastRegister = 0;
+    let registerWait = 0;
+    let registerFailures = 0;
     const tick = async () => {
       try {
         if ((await link()) === null) {
-          // Not linked yet: announce this installation (and collect an approval) now
-          // and then, never more often than every ten minutes.
-          if (Date.now() - lastRegister > 10 * 60_000) {
+          // Not linked yet: announce this installation (and collect an approval).
+          // A failed attempt (centre asleep, internet not up yet) is retried soon
+          // (30 s, doubling, at most 5 min) instead of after ten minutes; while the
+          // Owner's decision is awaited the install asks every minute, so a licence
+          // the Owner assigns is picked up at once.
+          if (Date.now() - lastRegister >= registerWait) {
             lastRegister = Date.now();
-            await register().catch(() => undefined);
+            const result = await register().catch(() => 'ERROR' as const);
+            registerFailures = result === 'ERROR' ? registerFailures + 1 : 0;
+            registerWait = registerRetryWait(result, registerFailures);
+            // Licence assigned by the Owner: check in right away so the Owner sees
+            // the installation online at once (not a minute later).
+            if (result === 'ACTIVATED' && (await beat()) === 'ok')
+              await sync().catch(() => undefined);
           }
           return;
         }
         if ((await beat()) === 'ok') {
+          await runOwnerOps().catch(() => undefined);
           await sync().catch(() => undefined);
           if (Date.now() - lastSummaries > 60 * 60_000) {
             lastSummaries = Date.now();
@@ -994,12 +1214,49 @@ export function createControlRuntime(
     };
   }
 
+  /**
+   * Off-device copy for the Owner's server: an already encrypted backup, in 1 MB
+   * signed chunks (a repeated upload of the same file is recognised and skipped).
+   */
+  async function uploadBackup(
+    file: string,
+    meta: { name: string; sha256: string; bytes: number },
+  ) {
+    const data = await readFile(file);
+    const size = 1024 * 1024;
+    const total = Math.max(1, Math.ceil(data.length / size));
+    for (let index = 0; index < total; index++) {
+      const row = await db.controlLink.findUnique({ where: { id: 1 } });
+      const pem = row ? devicePem(row) : null;
+      if (!row || !pem) throw new Error('Owner bilan aloqa yo‘q');
+      const sent = await signedPost(
+        row,
+        pem,
+        'backup',
+        '/control/device/backup-chunk',
+        {
+          ...meta,
+          total,
+          index,
+          data: data
+            .subarray(index * size, (index + 1) * size)
+            .toString('base64'),
+        },
+      );
+      if (sent.status !== 200)
+        throw new Error(`Markaziy server qabul qilmadi (${sent.status})`);
+      if ((sent.data as { complete?: boolean } | null)?.complete) return;
+    }
+  }
+
   return {
     view,
     state,
     activate,
+    uploadBackup,
     register,
     beat,
+    runOwnerOps,
     answerHostRename,
     hostRenameRequest: async () =>
       ((await link())?.hostRenameRequest ?? null) as {

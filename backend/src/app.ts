@@ -40,6 +40,8 @@ import { enforceControl } from './modules/control/enforce.js';
 import { controlInstallRouter } from './modules/control/install.routes.js';
 import { manageRouter } from './modules/control/manage.routes.js';
 import { registryRouter } from './modules/control/registry.js';
+import { workflowRouter } from './modules/control/workflow.routes.js';
+import { remoteRouter } from './modules/control/remote.routes.js';
 import { ownerRouter } from './modules/control/owner.routes.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
@@ -54,6 +56,9 @@ import { enforceNetwork, networkStatus } from './modules/control/network.js';
 import { kitchenRouter } from './modules/kitchen/kitchen.routes.js';
 import { printersRouter } from './modules/printing/printers.routes.js';
 import { receiptTemplatesRouter } from './modules/printing/receipt-templates.routes.js';
+import { creditRouter } from './modules/credit/credit.routes.js';
+import { restaurantWorkflowRouter } from './modules/workflow/workflow.routes.js';
+import { backupsRouter } from './modules/backups/backups.routes.js';
 import { menuRouter } from './modules/menu/menu.routes.js';
 import { onlineRouter } from './modules/online/online.routes.js';
 import { paymentsRouter } from './modules/payments/payments.routes.js';
@@ -222,12 +227,26 @@ export function createApp({
       '/api/control/media',
       express.raw({ type: () => true, limit: '21mb' }),
     );
+    // Menu import: the filled .xlsx template as a raw body.
+    app.use(
+      '/api/menu/import',
+      express.raw({ type: () => true, limit: '3mb' }),
+    );
+    // Menu product pictures (reduced by the app first), validated by their own bytes.
+    app.use(
+      '/api/menu/product-images',
+      express.raw({ type: () => true, limit: '2mb' }),
+    );
     app.use(
       '/api/branding/admin/media',
       express.raw({ type: () => true, limit: '4mb' }),
     );
     // The merchant QR picture may be larger than ordinary JSON requests.
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
+    // Results of the Owner's remote operations (menu, staff… snapshots) are larger.
+    app.use('/api/control/device/op-result', express.json({ limit: '4mb' }));
+    // Off-device backup copies arrive in 1 MB chunks (base64).
+    app.use('/api/control/device/backup-chunk', express.json({ limit: '2mb' }));
     app.use('/api', express.json({ limit: '100kb' }));
     app.use('/api', loadSession(services));
     // Restaurant operations stay on the restaurant's own network (self-hosted installs).
@@ -262,6 +281,9 @@ export function createApp({
       kitchenRouter,
       printersRouter,
       receiptTemplatesRouter,
+      backupsRouter,
+      creditRouter,
+      restaurantWorkflowRouter,
       brandingRouter,
       inventoryRouter,
       stockAlertsRouter,
@@ -286,6 +308,8 @@ export function createApp({
         ownerRouter,
         manageRouter,
         registryRouter,
+        workflowRouter,
+        remoteRouter,
         dataRouter,
         brandingOwnerRouter,
         deviceRouter,

@@ -30,6 +30,7 @@ type Settings = {
   isActive: boolean;
   dailySummaryHour: number | null;
   ordersEnabled?: boolean;
+  receiptsEnabled?: boolean;
   orderBranchId?: string | null;
   webhookUrl: string;
   events: EventKey[];
@@ -79,6 +80,9 @@ function SettingsTab({ settings }: { settings: Settings }) {
   );
   const branches = useBranches();
   const [ordersEnabled, setOrdersEnabled] = useState(!!settings.ordersEnabled);
+  const [receiptsEnabled, setReceiptsEnabled] = useState(
+    !!settings.receiptsEnabled,
+  );
   const [orderBranchId, setOrderBranchId] = useState(
     settings.orderBranchId ?? '',
   );
@@ -99,6 +103,7 @@ function SettingsTab({ settings }: { settings: Settings }) {
                 isActive,
                 dailySummaryHour: hour === '' ? null : Number(hour),
                 ordersEnabled,
+                receiptsEnabled,
                 orderBranchId: orderBranchId || null,
               },
             }),
@@ -138,6 +143,15 @@ function SettingsTab({ settings }: { settings: Settings }) {
         checked={isActive}
         onChange={setActive}
       />
+      <fieldset className="stack">
+        <legend>🧾 {t.eReceipt.telegramTitle}</legend>
+        <Checkbox
+          label={t.eReceipt.telegramEnable}
+          checked={receiptsEnabled}
+          onChange={setReceiptsEnabled}
+        />
+        <p className="muted small">{t.eReceipt.telegramHint}</p>
+      </fieldset>
       <fieldset className="stack">
         <legend>🛒 {t.telegramOrders.title}</legend>
         <Checkbox
