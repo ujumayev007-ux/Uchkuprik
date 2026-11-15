@@ -243,41 +243,70 @@ public class MainActivity extends Activity {
         LinearLayout results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
         box.addView(results);
-        // The TV keeps looking (every 5 s) until the restaurant computer answers: it may
-        // start before the Wi‑Fi / LAN or the computer is up. Stops once this screen is gone.
+        // A paired app (and the TV) keeps looking every 5 s until its own restaurant
+        // computer answers: the computer may restart or get a new address after the 90 s
+        // reconnect gave up. Stops once this screen is gone. Only the paired computer's
+        // signed key is ever adopted by itself; another computer needs a tap.
         Runnable[] retry = new Runnable[1];
+        String[] shown = {""};
+        boolean[] background = {false};
+        // Shown because the connection was lost (not opened by the person with «Back»).
+        boolean keepLooking = BuildConfig.IS_TV
+            || (error != null && prefs().getString(KEY_SERVER_KEY, null) != null);
         Runnable runSearch = () -> {
-            search.setEnabled(false);
-            results.removeAllViews();
-            status.setTextColor(Color.DKGRAY);
-            status.setText("Kompyuter qidirilmoqda…");
+            boolean quiet = background[0];
+            background[0] = false;
+            if (!quiet) {
+                search.setEnabled(false);
+                results.removeAllViews();
+                shown[0] = "";
+                status.setTextColor(Color.DKGRAY);
+                status.setText("Kompyuter qidirilmoqda…");
+            }
             new Thread(() -> {
                 List<LanDiscovery.Server> found = LanDiscovery.discover(BuildConfig.LAN_PORT, null, 2500);
                 runOnUiThread(() -> {
+                    if (!box.isAttachedToWindow()) return;
                     search.setEnabled(true);
                     String pairedKey = prefs().getString(KEY_SERVER_KEY, null);
+                    boolean paired = pairedKey != null;
                     LanDiscovery.Server own = null;
                     for (LanDiscovery.Server s : found) if (s.key.equals(pairedKey)) own = s;
-                    // This phone's own computer, or the only one: connect; several: the person chooses.
-                    // A paired TV never switches to another computer by itself.
-                    boolean foreignOnly = BuildConfig.IS_TV && pairedKey != null && own == null;
-                    if (foreignOnly) handler.postDelayed(retry[0], 5000);
-                    if (own != null || (found.size() == 1 && !foreignOnly)) {
-                        adopt(own != null ? own : found.get(0));
+                    if (own != null) {
+                        adopt(own);
                         return;
                     }
+                    // Not paired yet and only one computer here: that is the restaurant's.
+                    if (!paired && found.size() == 1) {
+                        adopt(found.get(0));
+                        return;
+                    }
+                    if (keepLooking) {
+                        background[0] = true;
+                        handler.postDelayed(retry[0], resumed ? 5000 : 30_000);
+                    }
                     if (found.isEmpty()) {
-                        if (BuildConfig.IS_TV) {
+                        results.removeAllViews();
+                        shown[0] = "";
+                        if (keepLooking) {
                             status.setTextColor(Color.DKGRAY);
-                            status.setText("Restoran serveri qidirilmoqda… (Wi‑Fi yoki LAN)");
-                            handler.postDelayed(retry[0], 5000);
+                            status.setText("Restoran kompyuteri qidirilmoqda… (Wi‑Fi yoki LAN)\nFastFood Server kompyuterda yoqilganini tekshiring.");
                             return;
                         }
                         status.setTextColor(Color.rgb(192, 57, 43));
                         status.setText("Kompyuter topilmadi. FastFood kompyuterda ochiqligini va bir Wi‑Fi’da ekaningizni tekshiring yoki manzilni kiriting.");
                         return;
                     }
-                    status.setText("Bir nechta kompyuter topildi. Kodini kompyuter ekranidagi bilan solishtirib tanlang:");
+                    StringBuilder ids = new StringBuilder();
+                    for (LanDiscovery.Server s : found) ids.append(s.id).append(s.host).append(';');
+                    // The same list is not redrawn, so a tap in progress is never lost.
+                    if (ids.toString().equals(shown[0])) return;
+                    shown[0] = ids.toString();
+                    results.removeAllViews();
+                    status.setTextColor(Color.DKGRAY);
+                    status.setText(paired
+                        ? "Bu telefon ulangan kompyuter topilmadi (qidirish davom etmoqda). Boshqa kompyuter topildi — faqat kodi kompyuter ekranidagi bilan bir xil bo‘lsa tanlang:"
+                        : "Bir nechta kompyuter topildi. Kodini kompyuter ekranidagi bilan solishtirib tanlang:");
                     for (LanDiscovery.Server s : found) {
                         Button choice = new Button(this);
                         choice.setText(s.name + "  ·  " + s.fingerprint() + "  ·  " + s.host);
@@ -290,7 +319,11 @@ public class MainActivity extends Activity {
         retry[0] = () -> {
             if (box.isAttachedToWindow()) runSearch.run();
         };
-        search.setOnClickListener(v -> runSearch.run());
+        search.setOnClickListener(v -> {
+            handler.removeCallbacks(retry[0]);
+            background[0] = false;
+            runSearch.run();
+        });
 
         connect.setOnClickListener(v -> {
             String server = normalize(input.getText().toString());
@@ -315,9 +348,9 @@ public class MainActivity extends Activity {
             }).start();
         });
         setContentView(box);
-        // First start: look for the restaurant computer by itself. The TV always does
-        // (also after a long outage), preferring its own paired computer.
-        if (prefs().getString(KEY_SERVER, null) == null || BuildConfig.IS_TV) runSearch.run();
+        // First start: look for the restaurant computer by itself. A paired app and the TV
+        // always do (also after a long outage), accepting by themselves only their own computer.
+        if (prefs().getString(KEY_SERVER, null) == null || keepLooking) runSearch.run();
     }
 
     /** Makes `server` (a verified discovery answer) this app's computer and opens it. */
@@ -533,9 +566,19 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
+    // In the foreground: the setup screen looks for the computer more often.
+    private boolean resumed = false;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        resumed = true;
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         CookieManager.getInstance().flush();
     }
 
