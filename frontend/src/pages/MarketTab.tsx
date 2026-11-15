@@ -17,6 +17,15 @@ import {
 import { t } from '../i18n';
 import { api, post } from '../lib/api';
 import { formatDateTime, formatMoney } from '../lib/format';
+import {
+  cleanQuantityInput,
+  parseQuantity,
+  priceFromTotal,
+  pricingUnit,
+  totalFromPrice,
+} from '../lib/market-price';
+import { CalculatorPanel } from '../components/Calculator';
+import { ProductSearch } from '../components/ProductSearch';
 import { useStockItems, type StockItem } from './InventoryPage';
 import { useStockRequests } from './StockRequestsTab';
 
@@ -32,6 +41,10 @@ type Line = {
   quantity: string;
   unitName: string;
   lineTotal: number | null;
+  // Price of one pricing unit (1 kg for grams, 1 l for ml, else 1 unitName).
+  unitPrice: number | null;
+  // Which of the two the user typed; the other one is worked out from it.
+  priceSource: 'total' | 'unit' | null;
 };
 
 const empty = (): Line => ({
@@ -42,7 +55,30 @@ const empty = (): Line => ({
   quantity: '',
   unitName: '',
   lineTotal: null,
+  unitPrice: null,
+  priceSource: null,
 });
+
+/** Biggest amount a money field takes (10 digits). */
+const MAX_MONEY = 9_999_999_999;
+
+/** Keeps unit price and total consistent after any change to a line. */
+function reprice(line: Line, change: Partial<Line>): Line {
+  const next = { ...line, ...change };
+  if ('unitPrice' in change) {
+    next.priceSource = change.unitPrice === null ? null : 'unit';
+    next.lineTotal = totalFromPrice(next.quantity, next.unitName, next.unitPrice);
+  } else if ('lineTotal' in change) {
+    next.priceSource = change.lineTotal === null ? null : 'total';
+    next.unitPrice = priceFromTotal(next.quantity, next.unitName, next.lineTotal);
+  } else if (next.priceSource === 'unit') {
+    next.lineTotal = totalFromPrice(next.quantity, next.unitName, next.unitPrice);
+  } else if (next.priceSource === 'total') {
+    next.unitPrice = priceFromTotal(next.quantity, next.unitName, next.lineTotal);
+  }
+  if (next.lineTotal !== null && next.lineTotal > MAX_MONEY) next.lineTotal = null;
+  return next;
+}
 
 // Units a brand-new product can be bought in (base unit plus the usual big one).
 const newUnits = { G: ['kg', 'g'], ML: ['l', 'ml'], PCS: ['dona'] } as const;
@@ -314,6 +350,8 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [correcting, setCorrecting] = useState<Purchase | null>(null);
+  // Line whose calculator is open.
+  const [calcFor, setCalcFor] = useState<number | null>(null);
 
   const canAdmin = me ? can(me, 'purchasing.manage') : false;
   const list = (items.data ?? []).filter((item) => item.isActive);
@@ -341,20 +379,20 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
   };
 
   const set = (index: number, change: Partial<Line>) =>
-    setLines(
-      lines.map((line, i) => {
+    setLines((current) =>
+      current.map((line, i) => {
         if (i !== index) return line;
         const next = { ...line, ...change };
         if (!unitsFor(next).includes(next.unitName))
           next.unitName = unitsFor(next)[0] ?? '';
-        return next;
+        return reprice(line, { ...change, unitName: next.unitName });
       }),
     );
 
   const ready = lines.filter(
     (line) =>
       (line.stockItemId === NEW ? line.newName.trim() : line.stockItemId) &&
-      Number(line.quantity) > 0 &&
+      parseQuantity(line.quantity) !== null &&
       line.lineTotal !== null,
   );
   const total = ready.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0);
@@ -376,7 +414,7 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
           ...(line.stockItemId === NEW
             ? { newItem: { name: line.newName.trim(), baseUnit: line.newUnit } }
             : { stockItemId: line.stockItemId }),
-          quantity: line.quantity,
+          quantity: String(parseQuantity(line.quantity)),
           unitName: line.unitName,
           lineTotal: line.lineTotal,
           ...(line.supplier.trim()
@@ -473,28 +511,19 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
 
         <div className="variant-list">
           {lines.map((line, index) => {
-            const quantity = Number(line.quantity);
-            const unitPrice =
-              quantity > 0 && line.lineTotal !== null
-                ? Math.round(line.lineTotal / quantity)
-                : null;
+            const priceUnit = pricingUnit(line.unitName).unit;
             return (
-              <div key={index} className="purchase-row">
-                <SelectField
-                  label={m.product}
-                  value={line.stockItemId}
-                  onChange={(event) =>
-                    set(index, { stockItemId: event.target.value })
+              <div key={index} className="purchase-row market-line">
+                <ProductSearch
+                  items={list}
+                  selectedId={line.stockItemId}
+                  isNew={line.stockItemId === NEW}
+                  newName={line.newName}
+                  onPick={(item) => set(index, { stockItemId: item.id })}
+                  onNew={(name) =>
+                    set(index, { stockItemId: NEW, newName: name })
                   }
-                >
-                  <option value="">—</option>
-                  {list.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                  <option value={NEW}>+ {m.newProduct}</option>
-                </SelectField>
+                />
                 {line.stockItemId === NEW && (
                   <>
                     <TextField
@@ -526,7 +555,7 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
                   value={line.quantity}
                   onChange={(event) =>
                     set(index, {
-                      quantity: event.target.value.replace(',', '.'),
+                      quantity: cleanQuantityInput(event.target.value),
                     })
                   }
                 />
@@ -552,26 +581,44 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
                   }
                 />
                 <MoneyField
-                  label={m.paidFor}
+                  label={m.unitPrice.replace('{unit}', priceUnit || '…')}
+                  value={line.unitPrice}
+                  onChange={(unitPrice) => set(index, { unitPrice })}
+                />
+                <MoneyField
+                  label={m.lineTotal}
                   value={line.lineTotal}
                   onChange={(lineTotal) => set(index, { lineTotal })}
-                  {...(unitPrice !== null
-                    ? { hint: `${formatMoney(unitPrice)} / ${line.unitName}` }
-                    : {})}
-                />
-                <button
-                  type="button"
-                  className="text-link"
-                  onClick={() =>
-                    setLines(
-                      lines.length > 1
-                        ? lines.filter((_, i) => i !== index)
-                        : [empty()],
-                    )
+                  hint={
+                    line.priceSource === null
+                      ? m.priceHint
+                      : line.unitPrice !== null && line.lineTotal !== null
+                        ? `${line.quantity} ${line.unitName} × ${formatMoney(line.unitPrice)} / ${priceUnit}`
+                        : m.needQuantity
                   }
-                >
-                  {t.menu.removeVariant}
-                </button>
+                />
+                <div className="market-line-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary market-calc-button"
+                    onClick={() => setCalcFor(index)}
+                  >
+                    🧮 {m.calc}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() =>
+                      setLines(
+                        lines.length > 1
+                          ? lines.filter((_, i) => i !== index)
+                          : [empty()],
+                      )
+                    }
+                  >
+                    {t.menu.removeVariant}
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -581,6 +628,66 @@ export function MarketTab({ isStandalonePage = false }: { isStandalonePage?: boo
             + {m.addLine}
           </Button>
         </div>
+
+        {calcFor !== null && lines[calcFor] && (
+          <Dialog
+            open
+            title={m.calcTitle.replace(
+              '{name}',
+              (lines[calcFor].stockItemId === NEW
+                ? lines[calcFor].newName
+                : list.find((item) => item.id === lines[calcFor]?.stockItemId)
+                    ?.name) || m.product,
+            )}
+            onClose={() => setCalcFor(null)}
+          >
+            <CalculatorPanel
+              extra={(value) => {
+                const index = calcFor;
+                const usable = value !== null && value > 0;
+                const put = (change: Partial<Line>) => {
+                  set(index, change);
+                  setCalcFor(null);
+                  toast(m.calcPut);
+                };
+                return (
+                  <div className="market-calc-targets">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={!usable || value >= 1e9}
+                      onClick={() =>
+                        put({
+                          quantity: cleanQuantityInput(
+                            String(Math.round(value! * 1000) / 1000),
+                          ),
+                        })
+                      }
+                    >
+                      {m.toQuantity}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={!usable || value > MAX_MONEY}
+                      onClick={() => put({ unitPrice: Math.round(value!) })}
+                    >
+                      {m.toPrice}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!usable || value > MAX_MONEY}
+                      onClick={() => put({ lineTotal: Math.round(value!) })}
+                    >
+                      {m.toTotal}
+                    </button>
+                  </div>
+                );
+              }}
+            />
+          </Dialog>
+        )}
 
         {(approved.data ?? []).length > 0 && (
           <fieldset className="stack">

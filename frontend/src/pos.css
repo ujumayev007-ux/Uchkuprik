@@ -531,6 +531,95 @@ tr.clickable {
   }
 }
 
+/* Bozorlik: touch-friendly product search, price fields and calculator. */
+.market-line {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.market-line .product-search {
+  grid-column: 1 / -1;
+  position: relative;
+}
+.product-search-input {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1.1rem;
+  padding: 10px 14px;
+}
+.product-search-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 4px;
+  display: grid;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.product-search-option {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 1.05rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.product-search-option:hover,
+.product-search-option:focus-visible,
+.product-search-option[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+.product-search-new {
+  font-weight: 600;
+  color: var(--accent);
+}
+.product-search-empty {
+  padding: 8px 14px;
+}
+.product-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: inherit;
+  cursor: pointer;
+}
+.product-chip-change {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 0.95rem;
+}
+.market-line-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.market-calc-button {
+  min-height: 48px;
+}
+.market-calc-targets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.market-calc-targets .btn {
+  min-height: 56px;
+  white-space: normal;
+}
+
 /* Payment provider settings */
 .card h2.provider-title {
   text-transform: none;
