@@ -467,17 +467,18 @@ async function firewallState({
       const same = (r) =>
         String(r?.program || '').toLowerCase() === String(exe).toLowerCase();
       const blocked = [].concat(data.blocked || []).filter(Boolean);
-      const reason = !data.tcp || !data.udp
-        ? 'missing'
-        : !same(data.tcp) ||
-            !same(data.udp) ||
-            !ports(data.tcp).includes(String(appPort)) ||
-            !ports(data.tcp).includes(String(discoveryPort)) ||
-            !ports(data.udp).includes(String(discoveryPort))
-          ? 'stale'
-          : blocked.length
-            ? 'blocked'
-            : null;
+      const reason =
+        !data.tcp || !data.udp
+          ? 'missing'
+          : !same(data.tcp) ||
+              !same(data.udp) ||
+              !ports(data.tcp).includes(String(appPort)) ||
+              !ports(data.tcp).includes(String(discoveryPort)) ||
+              !ports(data.udp).includes(String(discoveryPort))
+            ? 'stale'
+            : blocked.length
+              ? 'blocked'
+              : null;
       return { applicable: true, ok: reason === null, reason, blocked };
     }
   }

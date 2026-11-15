@@ -6,7 +6,10 @@ import {
   pricingUnit,
   totalFromPrice,
 } from '../../frontend/src/lib/market-price';
-import { matchProducts, normalizeName } from '../../frontend/src/lib/product-match';
+import {
+  matchProducts,
+  normalizeName,
+} from '../../frontend/src/lib/product-match';
 
 describe('Bozorlik price ↔ total', () => {
   it('total = quantity × unit price for dona and kg', () => {
