@@ -759,6 +759,8 @@ export const featureCatalog: FeatureDef[] = [
       '* /settings/*',
       '* /backups',
       '* /backups/*',
+      // Markaz bilan sinxronlash (Kassa server <-> central server).
+      '* /replication/*',
       'GET /admin/menu-visibility',
       'PUT /admin/menu-visibility',
     ],

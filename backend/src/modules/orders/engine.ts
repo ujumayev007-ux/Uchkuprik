@@ -291,7 +291,12 @@ export async function nextOrderNumber(
 ): Promise<number> {
   const rows = await tx.$queryRaw<{ lastNumber: number }[]>`
     INSERT INTO order_counters ("branchId", "businessDate", "lastNumber")
-    VALUES (${branchId}::uuid, ${date}::date, 1)
+    VALUES (${branchId}::uuid, ${date}::date, 1 + (
+      -- A restaurant replicated with its Kassa server: numbers given on the central
+      -- server start at 5001, so they never collide with the Kassa's own numbers.
+      SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM replication_tenants r JOIN branches b ON b."tenantId" = r."tenantId"
+         WHERE b.id = ${branchId}::uuid AND r.role = 'hub') THEN 5000 ELSE 0 END))
     ON CONFLICT ("branchId", "businessDate")
     DO UPDATE SET "lastNumber" = order_counters."lastNumber" + 1
     RETURNING "lastNumber"`;

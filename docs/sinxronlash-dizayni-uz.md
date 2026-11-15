@@ -1,6 +1,6 @@
 # Admin (Render) ↔ Kassa ikki tomonlama sinxronlash — tekshiruv va loyiha
 
-Holat: **loyiha hujjati**. Kod yozilmagan, deploy qilinmagan. Sana: 2026-11-15.
+Holat (2026-11-15): **dvigatel yozildi va staging'da sinaldi**. Prod'ga deploy QILINMAGAN — tasdiq kutilmoqda.
 
 ## 1. Maqsad
 
@@ -90,7 +90,40 @@ Xulosa: hozirgi deploy Admin'ni "Kassa o‘chiq bo‘lsa ham shu restoran ma'lum
 | 5 | Admin Terminal → Render; sinov restoranida 1–2 hafta parallel ishlatish | — | Ha |
 | 6 | Asosiy restoranda yoqish | — | Ha |
 
-## 6. Hozir nima ishlaydi
+## 6. Amalga oshirildi (branch `fix/bozorlik-terminals-20261115`)
+
+| Qism | Fayl |
+|---|---|
+| Migratsiya (faqat qo‘shimcha): `uid` ustunlari, `replication_*` jadvallari, `ff_replicate()` trigger funksiyasi | `backend/prisma/migrations/20261115090000_replication` |
+| Jadval sinflari, triggerlarni o‘rnatish | `backend/src/modules/replication/tables.ts` |
+| Qo‘llash: LWW, delta (qoldiq, ballar, balans), tenant tekshiruvi, savepoint, kutish (FK), ziddiyat yozuvi, imtiyozlarni olib tashlash | `backend/src/modules/replication/apply.ts` |
+| Ulash va birinchi nusxa, hub qabul qilishi (aniq bir marta), Kassa qabul qilishi, tozalash | `backend/src/modules/replication/engine.ts` |
+| Kanal: `POST /api/control/device/replicate` (imzolangan so‘rov va javob) | `backend/src/modules/control/device.routes.ts` |
+| Kassa sikli: har 5 s, aloqa yo‘q bo‘lsa 60 s gacha kutadi | `backend/src/modules/control/runtime.ts` |
+| Restoran PIN kaliti (`t1:`), eski PIN keyingi kirishda yangilanadi | `backend/src/lib/pin.ts` |
+| Markazdagi buyurtma raqamlari 5001 dan boshlanadi | `backend/src/modules/orders/engine.ts` |
+| Admin: Sozlamalar → «Markaz bilan sinxronlash» | `frontend/src/pages/SyncCard.tsx` |
+
+**Sinovlar:**
+- `backend/test/replication.integration.test.ts` — 9/9 o‘tdi. Ikki baza, ikki xil server kaliti.
+- `scripts/verify/replication-staging.mjs` — 26/26 o‘tdi. Ikki haqiqiy server jarayoni: Kassa to‘xtatilgan holda Admin markazda; markaz to‘xtatilgan holda (internet yo‘q) Kassa sotadi; qayta ulanish; dublikat yo‘q.
+- Butun backend: 417 o‘tdi. 3 ta xato bor edi: ikkitasi avvaldan mavjud, uchinchisi (katalog) tuzatildi.
+- Prod yangilanish mashqi: prod zaxirasi (548 qator) prod'dagi 56 ta migratsiya ustiga tiklandi, keyin 14 ta yangi migratsiya qo‘llandi. Ma'lumot saqlandi, markaz serveri ishga tushdi.
+
+**Cheklovlar (v1):**
+- Har restoranga bitta Kassa serveri.
+- Soatlar farqi LWW'ga ta'sir qiladi.
+- Audit jurnali, qurilmalar, chop etish navbatlari va Telegram/to‘lov sozlamalari har serverda alohida.
+- Ikki tomonda bir xil nom bilan yaratilgan yozuv «ziddiyat» bo‘lib qayd qilinadi.
+
+**Deploy tartibi (tasdiqdan keyin):**
+1. Prod zaxira nusxasini olish.
+2. `main` ga merge (Render avto-deploy migratsiyani qo‘llaydi).
+3. `/api/health/ready` ni tekshirish.
+4. Kassa'ga Server 1.16.0 ni o‘rnatish → Sozlamalar → «Markaz bilan sinxronlashni yoqish».
+5. Admin Terminal → «Server manzili…» → `https://fastfood-control.onrender.com`.
+
+## 7. Hozir nima ishlaydi (deploydan oldin)
 
 - Kassa serveri va LAN terminallari 1.15.9 (`D:\FastFood\RELEASE-FIXED`), Bozorlik tuzatishlari bilan.
 - Admin Terminal Kassa o‘chiq bo‘lganda **ishlamaydi**: bu 3–5-bosqichlarsiz mumkin emas.

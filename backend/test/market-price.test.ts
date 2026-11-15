@@ -5,11 +5,11 @@ import {
   priceFromTotal,
   pricingUnit,
   totalFromPrice,
-} from '../../frontend/src/lib/market-price';
+} from '../../frontend/src/lib/market-price.js';
 import {
   matchProducts,
   normalizeName,
-} from '../../frontend/src/lib/product-match';
+} from '../../frontend/src/lib/product-match.js';
 
 describe('Bozorlik price ↔ total', () => {
   it('total = quantity × unit price for dona and kg', () => {

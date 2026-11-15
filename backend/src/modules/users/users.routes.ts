@@ -11,7 +11,8 @@ import {
   isUniqueViolation,
   parse,
 } from '../../http/errors.js';
-import { hashSecret, verifySecret } from '../../lib/crypto.js';
+import { hashSecret } from '../../lib/crypto.js';
+import { hashPin, verifyPin } from '../../lib/pin.js';
 import { audit } from '../audit/audit.js';
 import { passwordSchema, pinSchema } from '../auth/auth.routes.js';
 import {
@@ -203,7 +204,16 @@ export function usersRouter(services: Services) {
     for (const other of others)
       if (
         other.pinHash &&
-        (await verifySecret(services.secrets.pepperPin(other.id, pin), other.pinHash))
+        (
+          await verifyPin(
+            db,
+            services.secrets,
+            tenantId,
+            other.id,
+            pin,
+            other.pinHash,
+          )
+        ).ok
       )
         throw new AppError(409, 'PIN_IN_USE', 'pinInUse');
   };
@@ -237,7 +247,7 @@ export function usersRouter(services: Services) {
         if (!input.allBranches) await assertBranches(tx, auth, input.branchIds);
         else if (!auth.allBranches) throw errors.forbidden();
         const pinHash = input.pin
-          ? await hashSecret(services.secrets.pepperPin(pinId, input.pin))
+          ? await hashPin(tx, services.secrets, auth.tenantId, pinId, input.pin)
           : null;
         const created = await tx.user.create({
           data: {
@@ -414,7 +424,7 @@ export function usersRouter(services: Services) {
     const { pin } = parse(z.object({ pin: pinSchema.nullable() }), req.body);
     if (pin) await assertPinFree(auth.tenantId, pin, id);
     const pinHash = pin
-      ? await hashSecret(services.secrets.pepperPin(id, pin))
+      ? await hashPin(db, services.secrets, auth.tenantId, id, pin)
       : null;
     await db.$transaction(async (tx) => {
       await loadTarget(tx, auth, id);

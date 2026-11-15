@@ -33,6 +33,12 @@ import { loadAdminData, unlinkedView, type ControlView } from './view.js';
 import { storeWorkflow } from '../workflow/restaurant.js';
 import { executeOp, RESTART_OPS } from '../remote/ops.js';
 import { AppError } from '../../http/errors.js';
+import type { Change } from '../replication/apply.js';
+import {
+  acceptFromHub,
+  changesAfter,
+  pruneChanges,
+} from '../replication/engine.js';
 
 type Transport = typeof fetch;
 
@@ -577,7 +583,14 @@ export function createControlRuntime(
   async function signedPost(
     row: ControlLink,
     pem: string,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result' | 'backup',
+    type:
+      | 'heartbeat'
+      | 'sync'
+      | 'media'
+      | 'rekey'
+      | 'op-result'
+      | 'backup'
+      | 'replicate',
     path: string,
     payload: object,
   ) {
@@ -1102,6 +1115,121 @@ export function createControlRuntime(
     });
   }
 
+  /**
+   * Two-way replication with the central server: sends this restaurant's queued
+   * changes and applies the centre's, until both queues are empty (or 20 rounds).
+   * Offline, nothing is lost: the queue is the replication_changes table and each
+   * cursor moves only after the other side confirmed.
+   */
+  // Runs one after another: a call made while one is running waits for it, then runs.
+  let replicateChain: Promise<unknown> = Promise.resolve();
+  function replicate(): Promise<{ rounds: number; error?: string }> {
+    const run = replicateChain.then(replicateOnce, replicateOnce);
+    replicateChain = run.catch(() => undefined);
+    return run;
+  }
+  async function replicateOnce(): Promise<{ rounds: number; error?: string }> {
+    let rounds = 0;
+    {
+      const row = await db.controlLink.findUnique({ where: { id: 1 } });
+      const pem = row ? devicePem(row) : null;
+      if (!row || !pem) return { rounds: 0 };
+      const links = await db.replicationTenant.findMany({
+        where: { role: 'spoke' },
+      });
+      let firstError: string | undefined;
+      for (const link of links) {
+        const outcome = await replicateTenant(row.id, pem, link).catch(
+          (error: Error) => ({ rounds: 0, error: error.message }),
+        );
+        rounds += outcome.rounds;
+        firstError ??= outcome.error;
+      }
+      return firstError ? { rounds, error: firstError } : { rounds };
+    }
+  }
+
+  /** One restaurant: rounds until both queues are empty (a failure stops only it). */
+  async function replicateTenant(
+    _linkId: number,
+    pem: string,
+    link: { tenantId: string; nodeId: string; pinKeyEnc: string | null },
+  ): Promise<{ rounds: number; error?: string }> {
+    let rounds = 0;
+    {
+      {
+        for (let round = 0; round < 20; round++) {
+          const current = await db.replicationTenant.findUniqueOrThrow({
+            where: { tenantId: link.tenantId },
+          });
+          const outgoing = await changesAfter(
+            db,
+            link.tenantId,
+            Number(current.pushedSeq),
+          );
+          const fresh = await db.controlLink.findUniqueOrThrow({
+            where: { id: 1 },
+          });
+          let result;
+          try {
+            result = await signedPost(
+              fresh,
+              pem,
+              'replicate',
+              '/control/device/replicate',
+              {
+                tenantId: link.tenantId,
+                nodeId: link.nodeId,
+                ...(current.lastSyncAt === null && link.pinKeyEnc
+                  ? { pinKey: services.secrets.decrypt(link.pinKeyEnc) }
+                  : {}),
+                changes: outgoing.changes,
+                since: Number(current.pulledSeq),
+              },
+            );
+          } catch (error) {
+            await db.replicationTenant.update({
+              where: { tenantId: link.tenantId },
+              data: { lastError: 'Markaziy server bilan aloqa yo‘q' },
+            });
+            return { rounds, error: String((error as Error).message) };
+          }
+          if (result.status !== 200) {
+            const message = String(
+              (result.data.details as { message?: string } | undefined)
+                ?.message ??
+                result.data.code ??
+                result.status,
+            ).slice(0, 200);
+            await db.replicationTenant.update({
+              where: { tenantId: link.tenantId },
+              data: { lastError: message },
+            });
+            return { rounds, error: message };
+          }
+          const doc = verifyDocument<{
+            t: string;
+            activationId: string;
+            ack: number;
+            changes: Change[];
+            next: number;
+            more: boolean;
+          }>(String(result.data.response), trusted);
+          if (
+            !doc ||
+            doc.t !== 'replicate' ||
+            doc.activationId !== fresh.activationId
+          )
+            throw new Error('BAD_RESPONSE');
+          await acceptFromHub(db, link.tenantId, doc);
+          rounds += 1;
+          if (!doc.more && !outgoing.more) break;
+        }
+      }
+    }
+    return { rounds };
+  }
+
   /** Internet-dependent work waiting in its own queues (never shown as done). */
   async function internetQueues() {
     const [
@@ -1204,6 +1332,29 @@ export function createControlRuntime(
         services.logger.warn('Control check-in failed');
       }
     };
+    // Replication runs every 5 s (backing off to 1 min while the centre is unreachable).
+    let replicateWait = 5_000;
+    let lastPrune = 0;
+    let replicateTimer: NodeJS.Timeout | null = null;
+    const replicateTick = async () => {
+      try {
+        const result = await replicate();
+        replicateWait = result.error
+          ? Math.min(replicateWait * 2, 60_000)
+          : 5_000;
+        if (Date.now() - lastPrune > 6 * 3_600_000) {
+          lastPrune = Date.now();
+          await pruneChanges(db).catch(() => undefined);
+        }
+      } catch {
+        replicateWait = Math.min(replicateWait * 2, 60_000);
+        services.logger.warn('Replication failed');
+      }
+      replicateTimer = setTimeout(() => void replicateTick(), replicateWait);
+      replicateTimer.unref();
+    };
+    replicateTimer = setTimeout(() => void replicateTick(), 10_000);
+    replicateTimer.unref();
     const first = setTimeout(() => void tick(), 15_000);
     first.unref();
     const timer = setInterval(() => void tick(), intervalMs);
@@ -1211,6 +1362,7 @@ export function createControlRuntime(
     return () => {
       clearTimeout(first);
       clearInterval(timer);
+      if (replicateTimer) clearTimeout(replicateTimer);
     };
   }
 
@@ -1265,6 +1417,7 @@ export function createControlRuntime(
         status: string;
       } | null,
     sync,
+    replicate,
     status,
     updateInfo,
     start,

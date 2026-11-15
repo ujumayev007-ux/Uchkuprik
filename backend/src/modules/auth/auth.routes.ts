@@ -10,6 +10,7 @@ import {
   verifyAgainstDummy,
   verifySecret,
 } from '../../lib/crypto.js';
+import { verifyPin } from '../../lib/pin.js';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../../lib/totp.js';
 import { messages } from '../../messages.js';
 import { audit } from '../audit/audit.js';
@@ -681,8 +682,12 @@ export function authRouter(services: Services) {
     }
     if (user.pinLockedUntil && user.pinLockedUntil > now())
       throw new AppError(429, 'ACCOUNT_LOCKED', 'accountLocked');
-    const ok = await verifySecret(
-      services.secrets.pepperPin(user.id, input.pin),
+    const { ok, upgrade } = await verifyPin(
+      db,
+      services.secrets,
+      user.tenantId,
+      user.id,
+      input.pin,
       user.pinHash,
     );
     if (!ok) {
@@ -711,7 +716,13 @@ export function authRouter(services: Services) {
     const { token, maxAgeMs } = await db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
-        data: { failedPinCount: 0, pinLockedUntil: null, lastLoginAt: now() },
+        data: {
+          failedPinCount: 0,
+          pinLockedUntil: null,
+          lastLoginAt: now(),
+          // Same PIN, now hashed with the restaurant key (works on both servers).
+          ...(upgrade ? { pinHash: upgrade } : {}),
+        },
       });
       await tx.device.update({
         where: { id: device.id },
