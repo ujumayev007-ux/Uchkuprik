@@ -2408,17 +2408,21 @@ model ApprovalRequest {
 // Phase 14a: notifications (Telegram) with a durable outbox.
 
 model TelegramConfig {
-  tenantId          String    @id @db.Uuid
+  tenantId           String    @id @db.Uuid
   // Bot token, AES-GCM encrypted; never returned by the API.
-  botTokenEnc       String
-  botUsername       String?
+  botTokenEnc        String
+  botUsername        String?
   // Secret expected in X-Telegram-Bot-Api-Secret-Token on webhook calls.
-  webhookSecretHash String
-  isActive          Boolean   @default(true)
+  webhookSecretHash  String
+  isActive           Boolean   @default(true)
   // Local hour (Asia/Tashkent) for the daily summary; null disables it.
-  dailySummaryHour  Int?      @default(22)
-  lastDailySummary  DateTime? @db.Date
-  updatedAt         DateTime  @updatedAt
+  dailySummaryHour   Int?      @default(22)
+  dailySummaryMinute Int       @default(0)
+  // The bot has a webhook set by another server: this install does not poll it
+  // (and never removes that webhook); linking then needs the manual chat ID.
+  webhookConflict    Boolean   @default(false)
+  lastDailySummary   DateTime? @db.Date
+  updatedAt          DateTime  @updatedAt
 
   // Customers can order through the bot; orders go to this branch.
   ordersEnabled   Boolean @default(false)
@@ -2432,20 +2436,26 @@ model TelegramConfig {
 }
 
 model NotificationSubscriber {
-  id        String    @id @default(uuid(7)) @db.Uuid
-  tenantId  String    @db.Uuid
-  name      String
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @db.Uuid
+  name          String
   // Telegram chat id; null until the subscriber links the bot with the code.
-  chatId    String?
-  linkCode  String?   @unique
+  chatId        String?
+  linkCode      String?   @unique
   // Event keys this subscriber receives.
-  events    String[]
+  events        String[]
   // Null = every branch.
-  branchIds String[]
-  isActive  Boolean   @default(true)
-  linkedAt  DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  branchIds     String[]
+  isActive      Boolean   @default(true)
+  linkedAt      DateTime?
+  // «Telegram’da ulash»: single-use pairing token (only its hash) and its end time.
+  linkTokenHash String?   @unique
+  linkExpiresAt DateTime?
+  // May see money amounts (shift totals, revenue) / staff names (attendance).
+  financial     Boolean   @default(true)
+  staff         Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([tenantId, id])
   @@unique([tenantId, chatId])
@@ -2480,7 +2490,10 @@ model NotificationJob {
   nextTryAt    DateTime           @default(now())
   sentAt       DateTime?
   createdAt    DateTime           @default(now())
+  // The same business event (retried request) is queued once per recipient.
+  dedupeKey    String?
 
+  @@unique([subscriberId, dedupeKey])
   @@index([status, nextTryAt])
   @@index([tenantId, createdAt])
   @@map("notification_jobs")

@@ -8,6 +8,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { upsertCustomer } from '../crm/loyalty.js';
 import { emitWebhook } from '../developer/webhooks.js';
 import { notifyOnlineOrder } from '../notifications/hooks.js';
+import { handleLinkStart, isLinkStart } from '../notifications/linking.js';
 import { telegramTransport } from '../notifications/notify.js';
 import { publicMenu } from '../online/online.routes.js';
 import { issueOrderCode } from '../orders/codes.js';
@@ -461,23 +462,10 @@ export async function handleTelegramUpdate(
     await send('Rahmat!', MAIN_KEYBOARD);
     return askConfirm();
   }
-  // Staff notification subscribers link their chat with /start <code> (polling mode).
-  const linkCode = text
-    .match(/^\/start\s+([A-Z0-9]{6,12})$/i)?.[1]
-    ?.toUpperCase();
-  if (linkCode) {
-    const subscriber = await db.notificationSubscriber.findFirst({
-      where: { tenantId, linkCode },
-    });
-    if (subscriber) {
-      await db.notificationSubscriber
-        .update({
-          where: { id: subscriber.id },
-          data: { chatId, linkCode: null, linkedAt: new Date() },
-        })
-        .catch(() => undefined);
-      return send('✅ Bildirishnomalar shu chatga ulandi.');
-    }
+  // Staff notification recipients link their chat with «Start» (deep link code).
+  if (isLinkStart(text)) {
+    const reply = await handleLinkStart(services, tenantId, chatId, text);
+    if (reply) return send(reply);
   }
   if (text.startsWith('/start') || text === '🍔 Menyu') {
     if (text.startsWith('/start'))
@@ -745,36 +733,86 @@ export async function notifyTelegramCustomer(
  */
 export function startTelegramPolling(services: Services, intervalMs = 2500) {
   let running = false;
-  const cleared = new Set<string>();
+  // When each bot's webhook was last checked (every 5 minutes).
+  const checked = new Map<string, number>();
   const tick = async () => {
+    const now = services.now?.() ?? new Date();
     const configs = await services.db.telegramConfig.findMany({
-      where: {
-        isActive: true,
-        OR: [{ ordersEnabled: true }, { receiptsEnabled: true }],
-      },
+      where: { isActive: true },
     });
     for (const config of configs) {
+      // Read the bot only when something waits for it: bot ordering, e-receipts,
+      // or a recipient who opened «Telegram’da ulash» in the last 15 minutes.
+      const linking =
+        (await services.db.notificationSubscriber.count({
+          where: {
+            tenantId: config.tenantId,
+            linkTokenHash: { not: null },
+            linkExpiresAt: { gt: now },
+          },
+        })) > 0;
+      if (!config.ordersEnabled && !config.receiptsEnabled && !linking)
+        continue;
       const token = services.secrets.decrypt(config.botTokenEnc);
-      if (!cleared.has(config.tenantId)) {
-        // Polling and webhooks are exclusive in the Bot API.
-        await telegramApi(services, token, 'deleteWebhook', {}).catch(
-          () => undefined,
-        );
-        cleared.add(config.tenantId);
+      // Polling and webhooks are exclusive in the Bot API. A webhook set on this bot
+      // by another server is never removed here: this server stays out of its way
+      // and the screen asks for the manual chat ID instead.
+      const last = checked.get(config.tenantId) ?? 0;
+      let conflict = config.webhookConflict;
+      if (Date.now() - last > 5 * 60_000) {
+        const info = (await telegramApi(
+          services,
+          token,
+          'getWebhookInfo',
+          {},
+        ).catch(() => null)) as { url?: string } | null;
+        if (info) {
+          conflict = !!info.url;
+          checked.set(config.tenantId, Date.now());
+          if (conflict !== config.webhookConflict)
+            await services.db.telegramConfig.update({
+              where: { tenantId: config.tenantId },
+              data: { webhookConflict: conflict },
+            });
+        }
       }
+      if (conflict) continue;
       const updates = (await telegramApi(services, token, 'getUpdates', {
         offset: Number(config.updateOffset) + 1,
         timeout: 0,
         allowed_updates: ['message', 'callback_query'],
-      })) as { update_id: number }[] | null;
+      })) as
+        | {
+            update_id: number;
+            message?: { text?: string; chat?: { id?: number | string } };
+          }[]
+        | null;
       for (const update of updates ?? []) {
         await services.db.telegramConfig.update({
           where: { tenantId: config.tenantId },
           data: { updateOffset: BigInt(update.update_id) },
         });
-        await handleTelegramUpdate(services, config.tenantId, update).catch(
-          () => services.logger.warn('Telegram update failed'),
-        );
+        const text = update.message?.text;
+        const chatId = update.message?.chat?.id;
+        // «Start» from a «Telegram’da ulash» link: the recipient is linked.
+        if (isLinkStart(text) && chatId !== undefined) {
+          const reply = await handleLinkStart(
+            services,
+            config.tenantId,
+            String(chatId),
+            text!,
+          ).catch(() => null);
+          if (reply)
+            await telegramApi(services, token, 'sendMessage', {
+              chat_id: chatId,
+              text: reply,
+            }).catch(() => undefined);
+          continue;
+        }
+        if (config.ordersEnabled || config.receiptsEnabled)
+          await handleTelegramUpdate(services, config.tenantId, update).catch(
+            () => services.logger.warn('Telegram update failed'),
+          );
       }
     }
   };

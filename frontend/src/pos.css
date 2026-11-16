@@ -772,3 +772,25 @@ tr.is-highlight td {
     box-shadow: none;
   }
 }
+
+/* «Telegram'da ulash»: QR for the phone and a button for this computer. */
+.telegram-link {
+  align-items: center;
+  text-align: center;
+}
+.telegram-link-qr {
+  width: min(240px, 70vw);
+  background: #fff;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+}
+.telegram-link-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.telegram-link-done {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--green, #1f8a4c);
+}

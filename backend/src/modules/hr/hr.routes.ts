@@ -8,6 +8,7 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { notifyAttendance } from '../notifications/hooks.js';
 import {
   getAuth,
   requireAuth,
@@ -146,14 +147,25 @@ export function hrRouter(services: Services) {
     business(auth);
     const branch = await resolveBranch(db, auth, null);
     try {
-      const record = await db.attendanceRecord.create({
-        data: {
+      const record = await db.$transaction(async (tx) => {
+        const created = await tx.attendanceRecord.create({
+          data: {
+            tenantId: auth.tenantId,
+            branchId: branch.id,
+            userId: auth.userId,
+            deviceId: auth.deviceId,
+            clockIn: now(),
+          },
+        });
+        // «Xodim ishga keldi» (queued; Telegram never delays the clock-in).
+        await notifyAttendance(tx, {
+          id: created.id,
           tenantId: auth.tenantId,
           branchId: branch.id,
-          userId: auth.userId,
-          deviceId: auth.deviceId,
-          clockIn: now(),
-        },
+          employee: auth.displayName,
+          clockIn: created.clockIn,
+        });
+        return created;
       });
       res.status(201).json({ id: record.id });
     } catch (error) {
@@ -166,12 +178,32 @@ export function hrRouter(services: Services) {
   router.post('/attendance/clock-out', requireAuth(), async (_req, res) => {
     const auth = getAuth(res);
     business(auth);
-    const result = await db.attendanceRecord.updateMany({
-      where: { userId: auth.userId, tenantId: auth.tenantId, clockOut: null },
-      data: { clockOut: now() },
+    const closed = await db.$transaction(async (tx) => {
+      const open = await tx.attendanceRecord.findMany({
+        where: { userId: auth.userId, tenantId: auth.tenantId, clockOut: null },
+      });
+      const at = now();
+      const result = await tx.attendanceRecord.updateMany({
+        where: {
+          id: { in: open.map((record) => record.id) },
+          clockOut: null,
+        },
+        data: { clockOut: at },
+      });
+      // «Xodim ishdan ketdi» for each record actually closed now.
+      if (result.count > 0)
+        for (const record of open)
+          await notifyAttendance(tx, {
+            id: record.id,
+            tenantId: auth.tenantId,
+            branchId: record.branchId,
+            employee: auth.displayName,
+            clockIn: record.clockIn,
+            clockOut: at,
+          });
+      return result.count;
     });
-    if (result.count === 0)
-      throw new AppError(409, 'NOT_CLOCKED_IN', 'notClockedIn');
+    if (closed === 0) throw new AppError(409, 'NOT_CLOCKED_IN', 'notClockedIn');
     res.json({ ok: true });
   });
 
@@ -207,12 +239,16 @@ export function hrRouter(services: Services) {
           select: { id: true, name: true },
         })
       : [];
-    const terminals = new Map(devices.map((device) => [device.id, device.name]));
+    const terminals = new Map(
+      devices.map((device) => [device.id, device.name]),
+    );
     res.json({
       records: records.map((record) => ({
         ...record,
         name: names.get(record.userId) ?? '—',
-        terminal: record.deviceId ? (terminals.get(record.deviceId) ?? null) : null,
+        terminal: record.deviceId
+          ? (terminals.get(record.deviceId) ?? null)
+          : null,
         minutes: record.clockOut
           ? Math.floor(
               (record.clockOut.getTime() - record.clockIn.getTime()) / 60_000,

@@ -62,6 +62,7 @@ export async function notifyOnlineOrder(
 export async function notifyShiftClosed(
   tx: Tx,
   shift: {
+    id?: string;
     tenantId: string;
     branchId: string;
     cashier: string;
@@ -82,5 +83,78 @@ export async function notifyShiftClosed(
       difference: money(shift.variance),
     },
     shift.branchId,
+    undefined,
+    {
+      ...(shift.id ? { dedupeKey: `shift.closed:${shift.id}` } : {}),
+      financialKeys: ['expected', 'counted', 'difference'],
+    },
+  );
+}
+
+/** «Smena ochildi»: the cash shift of a register was opened. */
+export async function notifyShiftOpened(
+  tx: Tx,
+  shift: {
+    id: string;
+    tenantId: string;
+    branchId: string;
+    cashier: string;
+    opening: number;
+  },
+) {
+  await notify(
+    tx,
+    shift.tenantId,
+    'shift.opened',
+    {
+      branch: await branchName(tx, shift.branchId),
+      cashier: shift.cashier,
+      opening: money(shift.opening),
+    },
+    shift.branchId,
+    undefined,
+    { dedupeKey: `shift.opened:${shift.id}`, financialKeys: ['opening'] },
+  );
+}
+
+/**
+ * «Xodim ishga keldi» / «Xodim ishdan ketdi»: from the attendance records (the
+ * employee pressed «Ishga keldim / Ketdim»), never from a PIN sign-in or app exit.
+ */
+export async function notifyAttendance(
+  tx: Tx,
+  record: {
+    id: string;
+    tenantId: string;
+    branchId: string;
+    employee: string;
+    clockIn: Date;
+    clockOut?: Date | null;
+  },
+) {
+  const out = !!record.clockOut;
+  const minutes = out
+    ? Math.max(
+        0,
+        Math.round(
+          (record.clockOut!.getTime() - record.clockIn.getTime()) / 60_000,
+        ),
+      )
+    : 0;
+  await notify(
+    tx,
+    record.tenantId,
+    out ? 'attendance.out' : 'attendance.in',
+    {
+      employee: record.employee,
+      branch: await branchName(tx, record.branchId),
+      worked: `${Math.floor(minutes / 60)} soat ${minutes % 60} daqiqa`,
+    },
+    record.branchId,
+    undefined,
+    {
+      dedupeKey: `${out ? 'attendance.out' : 'attendance.in'}:${record.id}`,
+      now: out ? record.clockOut! : record.clockIn,
+    },
   );
 }

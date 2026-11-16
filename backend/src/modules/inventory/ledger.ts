@@ -101,37 +101,49 @@ export async function postMovement(tx: Tx, input: MovementInput) {
     },
     next,
   );
+  // «Tovar tugadi»: from a positive quantity to zero or below. «Tovar kam qoldi»:
+  // crossing the item's own minimum while some is still left (never both at once).
+  let alert: {
+    event: 'stock.low' | 'stock.out';
+    vars: Record<string, string>;
+    branchId: string | null;
+  } | null = null;
   if (input.quantity.isNegative()) {
     const item = await tx.stockItem.findUnique({
       where: { id: input.stockItemId },
       select: { name: true, minStock: true, baseUnit: true },
     });
     const minimum = new Decimal(item?.minStock ?? 0);
-    if (
-      item &&
-      minimum.isPositive() &&
-      current.gt(minimum) &&
-      next.lte(minimum)
-    ) {
+    // (decimal.js counts +0 as "positive": compare with zero explicitly.)
+    const out = current.gt(0) && next.lte(0);
+    const low =
+      !out && minimum.isPositive() && current.gt(minimum) && next.lte(minimum);
+    if (item && (out || low)) {
       const warehouse = await tx.warehouse.findUnique({
         where: { id: input.warehouseId },
         select: { name: true, branchId: true },
       });
-      await notify(
-        tx,
-        input.tenantId,
-        'stock.low',
-        {
+      const branch = warehouse
+        ? await tx.branch.findUnique({
+            where: { id: warehouse.branchId },
+            select: { name: true },
+          })
+        : null;
+      const unit = baseUnitLabels[item.baseUnit as keyof typeof baseUnitLabels];
+      alert = {
+        event: out ? 'stock.out' : 'stock.low',
+        vars: {
           item: item.name,
+          branch: branch?.name ?? '',
           warehouse: warehouse?.name ?? '',
-          quantity: `${next.toString()} ${item.baseUnit}`,
-          minimum: `${minimum.toString()} ${item.baseUnit}`,
+          quantity: `${next.toString()} ${unit}`,
+          minimum: `${minimum.toString()} ${unit}`,
         },
-        warehouse?.branchId ?? null,
-      );
+        branchId: warehouse?.branchId ?? null,
+      };
     }
   }
-  return tx.stockMovement.create({
+  const movement = await tx.stockMovement.create({
     data: {
       tenantId: input.tenantId,
       warehouseId: input.warehouseId,
@@ -146,6 +158,18 @@ export async function postMovement(tx: Tx, input: MovementInput) {
       createdById: input.actorId,
     },
   });
+  // Queued with the movement: one message per crossing, even if a request is retried.
+  if (alert)
+    await notify(
+      tx,
+      input.tenantId,
+      alert.event,
+      alert.vars,
+      alert.branchId,
+      undefined,
+      { dedupeKey: `${alert.event}:${movement.uid}` },
+    );
+  return movement;
 }
 
 /**

@@ -2,14 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useMe } from '../auth/session';
 import {
+  Button,
   EmptyState,
   ErrorState,
   LoadingState,
   PageHeader,
   TextField,
+  useToast,
 } from '../components/ui';
 import { t } from '../i18n';
-import { api } from '../lib/api';
+import { api, ApiError, errorMessage, post } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import type { PaymentMethod } from '../lib/orders';
 import { ReportExportCard } from './ReportExportCard';
@@ -36,6 +38,51 @@ const today = () => {
     .toISOString()
     .slice(0, 10);
 };
+
+/**
+ * «Telegram’ga yuborish»: the shown period's key figures go to the recipients who
+ * receive reports. One tap = one message (a retried tap is not sent twice).
+ */
+function SendToTelegram({
+  branchId,
+  from,
+  to,
+}: {
+  branchId: string;
+  from: string;
+  to: string;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      busy={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await post('/reports/telegram', {
+            branchId,
+            from,
+            to,
+            requestId: crypto.randomUUID(),
+          });
+          toast(t.notifications.reportSent);
+        } catch (error) {
+          toast(
+            error instanceof ApiError && error.code === 'NO_REPORT_RECIPIENTS'
+              ? t.notifications.noReportRecipients
+              : errorMessage(error),
+            'error',
+          );
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      📨 {t.notifications.sendReport}
+    </Button>
+  );
+}
 
 export function ReportsPage() {
   const { data: me } = useMe();
@@ -68,6 +115,9 @@ export function ReportsPage() {
           min={from}
           onChange={(e) => setTo(e.target.value)}
         />
+        {me?.activeBranchId && from && to && (
+          <SendToTelegram branchId={me.activeBranchId} from={from} to={to} />
+        )}
       </div>
       {me?.activeBranchId && from && to && (
         <ReportExportCard branchId={me.activeBranchId} from={from} to={to} />

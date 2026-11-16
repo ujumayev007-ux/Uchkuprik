@@ -89,7 +89,14 @@ describe('Telegram notifications', () => {
       name: 'Boshqaruvchi',
       events: ['incident', 'summary.daily'],
     }).expect(201);
-    expect(created.body.linkCode).toMatch(/^[A-Z0-9]{10}$/);
+    // «Telegram’da ulash»: a single-use deep link to the bot.
+    const link = await post(
+      s.owner,
+      `/notifications/subscribers/${created.body.id}/link`,
+    ).expect(200);
+    const code = new URL(link.body.url).searchParams.get('start')!;
+    expect(link.body.url).toMatch(/^https:\/\/t\.me\/lazzat_test_bot\?start=/);
+    created.body.linkCode = code;
 
     // The webhook secret is set on the bot; forge attempts are rejected.
     await agent()
@@ -117,7 +124,7 @@ describe('Telegram notifications', () => {
       where: { id: created.body.id },
     });
     expect(subscriber.chatId).toBe('555');
-    expect(subscriber.linkCode).toBeNull();
+    expect(subscriber.linkTokenHash).toBeNull();
 
     // Events not subscribed to are not queued; subscribed ones are.
     expect(await notify(ctx.db, s.tenantId, 'stock.low', { item: 'Un' })).toBe(
@@ -141,7 +148,7 @@ describe('Telegram notifications', () => {
     expect(failed).toMatchObject({
       status: 'PENDING',
       attempts: 1,
-      lastError: 'Delivery failed',
+      lastError: 'TG_FAILED',
     });
     failSends = false;
     await ctx.db.notificationJob.updateMany({
@@ -155,8 +162,11 @@ describe('Telegram notifications', () => {
     );
     expect(delivered[0]!.token).toBe(TOKEN);
 
+    // The link itself is confirmed by the bot's reply in the chat (not a queued job).
+    expect(delivered.some((m) => m.text.startsWith('✅ Ulandi!'))).toBe(true);
     const monitor = await s.owner.get('/api/notifications/jobs').expect(200);
-    expect(monitor.body.counts.SENT).toBeGreaterThanOrEqual(2);
+    expect(monitor.body.counts.SENT).toBeGreaterThanOrEqual(1);
+    expect(monitor.body.jobs[0].recipient).toBe('Boshqaruvchi');
   });
 
   it('uses custom templates, sends one daily summary per day and alerts on events', async () => {

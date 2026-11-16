@@ -18,6 +18,12 @@ import {
   notify,
   telegramTransport,
 } from './notify.js';
+import {
+  createLinkToken,
+  handleLinkStart,
+  isLinkStart,
+  linkState,
+} from './linking.js';
 
 const eventSchema = z.enum(notificationEvents);
 const chatIdSchema = z
@@ -25,19 +31,26 @@ const chatIdSchema = z
   .trim()
   .regex(/^-?\d{1,20}$/);
 
-function linkCode() {
-  // 10 characters from a token; easy to type after /start.
-  return randomToken()
-    .replace(/[^A-Za-z0-9]/g, '')
-    .slice(0, 10)
-    .toUpperCase();
-}
-
 export function notificationsRouter(services: Services, appOrigin: string) {
   const { db } = services;
   const router = Router();
   const transport = services.telegram ?? telegramTransport;
   const manage = [requireAuth(), requirePermission('notifications.manage')];
+  const now = () => services.now?.() ?? new Date();
+  const ourWebhook = (tenantId: string) =>
+    `${appOrigin}/api/webhooks/telegram/${tenantId}`;
+
+  /**
+   * Is a webhook of ANOTHER server set on this bot? It is never replaced or removed
+   * silently: the screen explains it and the manual chat ID keeps working.
+   */
+  const foreignWebhook = async (token: string, tenantId: string) => {
+    if (!transport.api) return false;
+    const info = (await transport
+      .api(token, 'getWebhookInfo', {})
+      .catch(() => null)) as { url?: string } | null;
+    return !!info?.url && info.url !== ourWebhook(tenantId);
+  };
 
   router.get('/notifications/settings', ...manage, async (_req, res) => {
     const auth = getAuth(res);
@@ -49,10 +62,18 @@ export function notificationsRouter(services: Services, appOrigin: string) {
       botUsername: config?.botUsername ?? null,
       isActive: config?.isActive ?? false,
       dailySummaryHour: config?.dailySummaryHour ?? null,
+      dailySummaryMinute: config?.dailySummaryMinute ?? 0,
       ordersEnabled: config?.ordersEnabled ?? false,
       receiptsEnabled: config?.receiptsEnabled ?? false,
       orderBranchId: config?.orderBranchId ?? null,
-      webhookUrl: `${appOrigin}/api/webhooks/telegram/${auth.tenantId}`,
+      webhookUrl: ourWebhook(auth.tenantId),
+      // How this server reads the bot: its HTTPS webhook, or by asking Telegram
+      // (local Kassa); CONFLICT = another server's webhook is set on the bot.
+      receiver: appOrigin.startsWith('https://')
+        ? 'WEBHOOK'
+        : config?.webhookConflict
+          ? 'CONFLICT'
+          : 'POLLING',
       events: notificationEvents,
     });
   });
@@ -79,6 +100,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             .max(23)
             .nullable()
             .default(22),
+          dailySummaryMinute: z.number().int().min(0).max(59).default(0),
           // Customers order through the bot (Telegram buyurtmalar).
           ordersEnabled: z.boolean().default(false),
           // Elektron chek sent by the bot once an order is paid.
@@ -111,28 +133,33 @@ export function notificationsRouter(services: Services, appOrigin: string) {
           );
         }
         secret = randomToken();
-        // Webhook linking needs a public HTTPS address; otherwise chat ids are entered manually.
-        if (appOrigin.startsWith('https://'))
-          await transport
-            .setWebhook(
-              input.botToken,
-              `${appOrigin}/api/webhooks/telegram/${auth.tenantId}`,
-              secret,
-            )
-            .catch(() => undefined);
       }
+      // Another server's webhook on this bot is kept as it is (never replaced or
+      // removed here); the screen says so and the manual chat ID still works.
+      const token =
+        input.botToken ??
+        (existing ? services.secrets.decrypt(existing.botTokenEnc) : null);
+      const conflict = token
+        ? await foreignWebhook(token, auth.tenantId)
+        : false;
+      // Webhook linking needs a public HTTPS address; a local Kassa reads the bot itself.
+      if (input.botToken && appOrigin.startsWith('https://') && !conflict)
+        await transport
+          .setWebhook(input.botToken, ourWebhook(auth.tenantId), secret!)
+          .catch(() => undefined);
       // Bot ordering needs callback updates: re-register the webhook with a new secret.
       if (
         !input.botToken &&
         existing &&
         (input.ordersEnabled || input.receiptsEnabled) &&
-        appOrigin.startsWith('https://')
+        appOrigin.startsWith('https://') &&
+        !conflict
       ) {
         secret = randomToken();
         await transport
           .setWebhook(
             services.secrets.decrypt(existing.botTokenEnc),
-            `${appOrigin}/api/webhooks/telegram/${auth.tenantId}`,
+            ourWebhook(auth.tenantId),
             secret,
           )
           .catch(() => undefined);
@@ -141,6 +168,8 @@ export function notificationsRouter(services: Services, appOrigin: string) {
         const data = {
           isActive: input.isActive,
           dailySummaryHour: input.dailySummaryHour,
+          dailySummaryMinute: input.dailySummaryMinute,
+          webhookConflict: conflict,
           ordersEnabled: input.ordersEnabled,
           receiptsEnabled: input.receiptsEnabled,
           orderBranchId: input.orderBranchId,
@@ -164,6 +193,8 @@ export function notificationsRouter(services: Services, appOrigin: string) {
             webhookSecretHash: sha256(secret!),
             isActive: input.isActive,
             dailySummaryHour: input.dailySummaryHour,
+            dailySummaryMinute: input.dailySummaryMinute,
+            webhookConflict: conflict,
             ordersEnabled: input.ordersEnabled,
             receiptsEnabled: input.receiptsEnabled,
             orderBranchId: input.orderBranchId,
@@ -183,7 +214,7 @@ export function notificationsRouter(services: Services, appOrigin: string) {
           },
         });
       });
-      res.json({ ok: true, botUsername });
+      res.json({ ok: true, botUsername, webhookConflict: conflict });
     },
   );
 
@@ -191,11 +222,116 @@ export function notificationsRouter(services: Services, appOrigin: string) {
 
   router.get('/notifications/subscribers', ...manage, async (_req, res) => {
     const auth = getAuth(res);
+    const at = now();
     const subscribers = await db.notificationSubscriber.findMany({
       where: { tenantId: auth.tenantId },
       orderBy: { createdAt: 'asc' },
     });
-    res.json({ subscribers });
+    // Pairing tokens and codes never leave the server; the state does.
+    res.json({
+      subscribers: subscribers.map(
+        ({ linkTokenHash: _hash, linkCode: _code, chatId, ...rest }) => ({
+          ...rest,
+          linked: !!chatId,
+          // The chat number is shown masked (the manual fallback field shows it).
+          chatId: chatId ? `…${chatId.slice(-4)}` : null,
+          state: linkState(
+            {
+              chatId,
+              linkTokenHash: _hash,
+              linkExpiresAt: rest.linkExpiresAt,
+              linkCode: _code,
+            },
+            at,
+          ),
+        }),
+      ),
+    });
+  });
+
+  // «Telegram’da ulash»: a single-use deep link (and the same as a QR code on screen).
+  router.post(
+    '/notifications/subscribers/:id/link',
+    ...manage,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const subscriber = await db.notificationSubscriber.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!subscriber) throw errors.notFound();
+      const config = await db.telegramConfig.findUnique({
+        where: { tenantId: auth.tenantId },
+      });
+      if (!config?.isActive || !config.botUsername)
+        throw new AppError(409, 'TELEGRAM_NOT_CONFIGURED', 'conflict');
+      const { token, expiresAt } = await createLinkToken(db, id, now());
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'notifications.link.start',
+        entityType: 'notification_subscriber',
+        entityId: id,
+      });
+      res.json({
+        url: `https://t.me/${config.botUsername}?start=${token}`,
+        expiresAt,
+        botUsername: config.botUsername,
+        // A local server without HTTPS reads the bot itself; a webhook set elsewhere
+        // blocks that (it is never removed by this server).
+        receiver: appOrigin.startsWith('https://')
+          ? 'WEBHOOK'
+          : config.webhookConflict
+            ? 'CONFLICT'
+            : 'POLLING',
+      });
+    },
+  );
+
+  // «Sinov xabari» for one recipient; the screen follows the message's delivery.
+  router.post(
+    '/notifications/subscribers/:id/test',
+    ...manage,
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const { requestId } = parse(
+        z.object({ requestId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/) }),
+        req.body,
+      );
+      const subscriber = await db.notificationSubscriber.findFirst({
+        where: { id, tenantId: auth.tenantId },
+      });
+      if (!subscriber) throw errors.notFound();
+      if (!subscriber.chatId) throw new AppError(409, 'NOT_LINKED', 'conflict');
+      const dedupeKey = `test:${requestId}`;
+      await notify(db, auth.tenantId, 'test', {}, null, [id], { dedupeKey });
+      const job = await db.notificationJob.findFirst({
+        where: { subscriberId: id, dedupeKey },
+      });
+      // Bot switched off or recipient paused: nothing was queued.
+      if (!job) throw new AppError(409, 'NOT_QUEUED', 'conflict');
+      res.json({ jobId: job.id });
+    },
+  );
+
+  // One message's delivery: «Navbatda», «Telegram qabul qildi» or «Yuborilmadi».
+  router.get('/notifications/jobs/:id', ...manage, async (req, res) => {
+    const auth = getAuth(res);
+    const id = parse(z.uuid(), req.params.id);
+    const job = await db.notificationJob.findFirst({
+      where: { id, tenantId: auth.tenantId },
+      select: {
+        id: true,
+        status: true,
+        attempts: true,
+        lastError: true,
+        sentAt: true,
+        createdAt: true,
+      },
+    });
+    if (!job) throw errors.notFound();
+    res.json(job);
   });
 
   const subscriberInput = z.object({
@@ -204,6 +340,9 @@ export function notificationsRouter(services: Services, appOrigin: string) {
     events: z.array(eventSchema).max(notificationEvents.length),
     branchIds: z.array(z.uuid()).max(200).default([]),
     isActive: z.boolean().default(true),
+    // Money amounts and employee names (left out: unchanged).
+    financial: z.boolean().optional(),
+    staff: z.boolean().optional(),
   });
 
   async function assertBranches(tenantId: string, branchIds: string[]) {
@@ -225,16 +364,17 @@ export function notificationsRouter(services: Services, appOrigin: string) {
           tenantId: auth.tenantId,
           name: input.name,
           chatId: input.chatId ?? null,
-          linkCode: input.chatId ? null : linkCode(),
           linkedAt: input.chatId ? new Date() : null,
           events: [...new Set(input.events)],
           branchIds: [...new Set(input.branchIds)],
           isActive: input.isActive,
+          ...(input.financial !== undefined
+            ? { financial: input.financial }
+            : {}),
+          ...(input.staff !== undefined ? { staff: input.staff } : {}),
         },
       });
-      res
-        .status(201)
-        .json({ id: subscriber.id, linkCode: subscriber.linkCode });
+      res.status(201).json({ id: subscriber.id });
     } catch (error) {
       if ((error as { code?: string }).code === 'P2002')
         throw errors.conflict();
@@ -258,9 +398,19 @@ export function notificationsRouter(services: Services, appOrigin: string) {
           name: input.name,
           events: [...new Set(input.events)],
           branchIds: [...new Set(input.branchIds)],
+          // «Barcha xabarlarni vaqtincha to‘xtatish»: events and branches are kept.
           isActive: input.isActive,
+          ...(input.financial !== undefined
+            ? { financial: input.financial }
+            : {}),
+          ...(input.staff !== undefined ? { staff: input.staff } : {}),
           ...(input.chatId && input.chatId !== found.chatId
-            ? { chatId: input.chatId, linkCode: null, linkedAt: new Date() }
+            ? {
+                chatId: input.chatId,
+                linkCode: null,
+                linkTokenHash: null,
+                linkedAt: new Date(),
+              }
             : {}),
         },
       });
@@ -338,8 +488,22 @@ export function notificationsRouter(services: Services, appOrigin: string) {
         _count: true,
       }),
     ]);
+    const names = new Map(
+      (
+        await db.notificationSubscriber.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            id: { in: [...new Set(jobs.map((job) => job.subscriberId))] },
+          },
+          select: { id: true, name: true },
+        })
+      ).map((row) => [row.id, row.name]),
+    );
     res.json({
-      jobs,
+      jobs: jobs.map((job) => ({
+        ...job,
+        recipient: names.get(job.subscriberId) ?? null,
+      })),
       counts: Object.fromEntries(counts.map((row) => [row.status, row._count])),
     });
   });
@@ -386,25 +550,19 @@ export function notificationsRouter(services: Services, appOrigin: string) {
       })
       .safeParse(req.body);
     const message = update.success ? update.data.message : undefined;
-    const code = message?.text
-      ?.match(/^\/start\s+([A-Z0-9]{6,12})$/i)?.[1]
-      ?.toUpperCase();
-    if (message && code) {
+    if (message && isLinkStart(message.text)) {
+      // «Start» pressed in the deep link: link this chat (single-use code).
       const chatId = String(message.chat.id);
-      const subscriber = await db.notificationSubscriber.findFirst({
-        where: { tenantId: config.tenantId, linkCode: code },
-      });
-      if (subscriber) {
-        try {
-          await db.notificationSubscriber.update({
-            where: { id: subscriber.id },
-            data: { chatId, linkCode: null, linkedAt: new Date() },
-          });
-          await notify(db, config.tenantId, 'test', {}, null, [subscriber.id]);
-        } catch {
-          // The chat is already linked to another subscriber; ignore.
-        }
-      }
+      const reply = await handleLinkStart(
+        services,
+        config.tenantId,
+        chatId,
+        message.text!,
+      );
+      if (reply)
+        await transport
+          .send(services.secrets.decrypt(config.botTokenEnc), chatId, reply)
+          .catch(() => services.logger.warn('Telegram link reply failed'));
     }
     // Everything else is the customer ordering conversation (when enabled).
     else if (config.ordersEnabled)

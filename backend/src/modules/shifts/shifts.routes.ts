@@ -9,7 +9,10 @@ import {
   parse,
 } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
-import { notifyShiftClosed } from '../notifications/hooks.js';
+import {
+  notifyShiftClosed,
+  notifyShiftOpened,
+} from '../notifications/hooks.js';
 import {
   getAuth,
   requireAuth,
@@ -168,6 +171,13 @@ export function shiftsRouter(services: Services) {
           entityId: created.id,
           data: { openingCash: input.openingCash },
         });
+        await notifyShiftOpened(tx, {
+          id: created.id,
+          tenantId: auth.tenantId,
+          branchId: branch.id,
+          cashier: auth.displayName,
+          opening: input.openingCash,
+        });
         return created;
       });
       res.status(201).json({ id: shift.id });
@@ -277,6 +287,7 @@ export function shiftsRouter(services: Services) {
         },
       });
       await notifyShiftClosed(tx, {
+        id,
         tenantId: auth.tenantId,
         branchId: shift.branchId,
         cashier: auth.displayName,

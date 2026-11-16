@@ -2241,14 +2241,21 @@ export const uz = {
     testQueued: 'Sinov xabari navbatga qo‘yildi',
     addSubscriber: 'Qabul qiluvchi qo‘shish',
     chatId: 'Telegram chat ID',
-    chatIdHint: 'Bo‘sh qoldirilsa, ulash kodi beriladi',
+    chatIdHint:
+      'Faqat «Telegram’da ulash» ishlamasa: qabul qiluvchining chat ID raqami.',
     eventsTitle: 'Qaysi xabarlar yuborilsin',
     events: {
+      'shift.opened': 'Smena ochildi',
+      'shift.closed': 'Smena yopildi',
+      'attendance.in': 'Xodim ishga keldi',
+      'attendance.out': 'Xodim ishdan ketdi',
+      'stock.low': 'Tovar kam qoldi',
+      'stock.out': 'Tovar tugadi',
+      'summary.daily': 'Kunlik hisobot',
+      report: 'Hisobotlar («Telegram’ga yuborish» bosilganda)',
+      'report.auto': 'Tayyorlangan hisobotni avtomatik yuborish',
       'order.online': 'Yangi onlayn buyurtmalar',
       incident: 'Jiddiy hodisalar',
-      'shift.closed': 'Smena yopilishi',
-      'stock.low': 'Kam qoldiq ogohlantirishlari',
-      'summary.daily': 'Kunlik moliyaviy hisobot',
     },
     testEvent: 'Sinov',
     branches: 'Filiallar',
@@ -2256,15 +2263,77 @@ export const uz = {
     linked: 'Ulangan',
     notLinked: 'Ulanmagan',
     linkWith: 'Botga yuboring',
-    linkTitle: 'Telegramni ulash',
+    linkTitle: 'Telegram’da ulash',
     linkInstructions:
-      'Qabul qiluvchi botni ochib, quyidagi buyruqni yuborishi kerak. Shundan so‘ng xabarlar keladi.',
+      'Telefonda QR kodni skaner qiling (yoki havolani oching) va Telegram’dagi «Start» tugmasini bosing. Boshqa hech narsa yozish shart emas.',
+    // Recipient linking states.
+    states: {
+      LINKED: 'Qabul qiluvchi ulandi',
+      PENDING: 'Ulash kutilmoqda',
+      EXPIRED: 'Ulash kodi eskirgan',
+      NOT_LINKED: 'Ulanmagan',
+    },
+    botReady: 'Bot sozlangan',
+    linkButton: 'Telegram’da ulash',
+    openTelegram: 'Telegram’ni ochish',
+    linkExpires: 'Kod {time} gacha amal qiladi (bir marta ishlatiladi).',
+    linkDone: 'Qabul qiluvchi ulandi! Telegram’ga tasdiq xabari yuborildi.',
+    linkExpiredNow: 'Ulash kodi eskirdi. «Telegram’da ulash» ni qayta bosing.',
+    receiver: {
+      WEBHOOK: 'Telegram xabarlari server manziliga (webhook) keladi.',
+      POLLING:
+        'Kassa serveri Telegram’ni o‘zi so‘rab turadi (ochiq HTTPS manzil shart emas).',
+      CONFLICT:
+        'Bu botga boshqa server webhook o‘rnatgan. U o‘zgartirilmadi. Ulash uchun «Qo‘shimcha sozlamalar → Telegram chat ID» dan foydalaning yoki boshqa bot yarating.',
+    },
+    advanced: 'Qo‘shimcha sozlamalar',
+    financial: 'Moliyaviy summalarni ko‘rsatish (smena, tushum, hisobot)',
+    staff: 'Xodimlar haqida xabarlar (ishga keldi / ketdi)',
+    staffOff: 'Xodim ma’lumotini ko‘rsatish o‘chiq',
+    pause: 'Barcha xabarlarni vaqtincha to‘xtatish',
+    paused: 'To‘xtatilgan',
+    pausedHint: 'Tanlangan xabarlar va filiallar saqlanib qoladi.',
+    testOne: 'Sinov xabari',
+    testState: {
+      PENDING: 'Navbatda',
+      SENT: 'Telegram qabul qildi',
+      FAILED: 'Yuborilmadi',
+    },
+    summaryMinute: 'Daqiqa',
+    recipient: 'Qabul qiluvchi',
+    errors: {
+      TG_NETWORK:
+        'Internet yoki Telegram bilan aloqa yo‘q. Aloqa tiklanganda qayta yuboriladi.',
+      TG_BLOCKED:
+        'Qabul qiluvchi botni bloklagan yoki chatni o‘chirgan. Telegram’da botni ochib «Start» ni bosing.',
+      TG_CHAT_NOT_FOUND:
+        'Chat topilmadi. Qabul qiluvchini «Telegram’da ulash» orqali qayta ulang.',
+      TG_TOKEN_INVALID:
+        'Bot tokeni noto‘g‘ri yoki bekor qilingan. «Telegram bot» bo‘limida yangi token kiriting.',
+      TG_RATE_LIMIT: 'Telegram vaqtincha cheklov qo‘ydi. Biroz keyin qayta yuboriladi.',
+      TG_WEBHOOK_CONFLICT:
+        'Bu botga boshqa server webhook o‘rnatgan. Xabar yuborish ishlaydi, lekin ulash uchun chat ID qo‘lda kiritiladi.',
+      TG_DISABLED: 'Telegram bildirishnomalari o‘chirilgan.',
+      NOT_LINKED: 'Qabul qiluvchi hali ulanmagan.',
+      PAUSED: 'Qabul qiluvchi uchun xabarlar vaqtincha to‘xtatilgan.',
+      TG_FAILED: 'Yuborishda xato. Keyinroq qayta uriniladi.',
+      other: 'Telegram xatosi ({code}).',
+    },
     templateHint:
       'O‘rinbosarlar: {{branch}}, {{total}}, {{number}}, {{title}}, {{revenue}} va boshqalar. Bo‘sh saqlansa, standart matn tiklanadi.',
     resetTemplate: 'Standartga qaytarish',
-    status: { PENDING: 'Navbatda', SENT: 'Yuborildi', FAILED: 'Xato' },
+    status: {
+      PENDING: 'Navbatda',
+      SENT: 'Telegram qabul qildi',
+      FAILED: 'Yuborilmadi',
+    },
     attempts: 'Urinishlar',
     retry: 'Qayta yuborish',
+    // Report screen.
+    sendReport: 'Telegram’ga yuborish',
+    reportSent: 'Hisobot Telegram’ga navbatga qo‘yildi',
+    noReportRecipients:
+      'Hisobot oladigan qabul qiluvchi yo‘q. «Bildirishnomalar → Qabul qiluvchilar» da «Hisobotlar» ni yoqing.',
   },
   developer: {
     title: 'Integratsiyalar',

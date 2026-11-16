@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Services } from '../../context.js';
-import { parse } from '../../http/errors.js';
+import { AppError, parse } from '../../http/errors.js';
 import { audit } from '../audit/audit.js';
+import { money, notify } from '../notifications/notify.js';
 import { getAuth, requireAuth, requirePermission } from '../auth/session.js';
 import {
   buildReportDoc,
@@ -33,6 +34,78 @@ const formats = {
 export function reportsRouter(services: Services) {
   const { db } = services;
   const router = Router();
+
+  /**
+   * Queues the report's key figures for the Telegram recipients of `event` in the
+   * report's branch (money only for recipients allowed to see it).
+   */
+  const queueReport = async (
+    auth: ReturnType<typeof getAuth>,
+    query: z.infer<typeof salesQuery>,
+    event: 'report' | 'report.auto',
+    dedupeKey: string,
+    format = '',
+  ) => {
+    const { branch, report } = await loadSales(services, auth, query);
+    const period =
+      report.from === report.to ? report.from : `${report.from} — ${report.to}`;
+    return notify(
+      db,
+      auth.tenantId,
+      event,
+      {
+        period,
+        branch: branch.name,
+        orders: report.orders,
+        sales: money(report.salesTotal),
+        average: money(report.averageCheck),
+        collected: money(report.collected),
+        cancelled: report.cancelledOrders,
+        format: format.toUpperCase(),
+      },
+      branch.id,
+      undefined,
+      { dedupeKey, financialKeys: ['sales', 'average', 'collected'] },
+    );
+  };
+
+  // «Telegram’ga yuborish» on the report screen (a retried tap sends once).
+  router.post(
+    '/reports/telegram',
+    requireAuth(),
+    requirePermission('reports.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const input = parse(
+        salesQuery.extend({
+          requestId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
+        }),
+        req.body,
+      );
+      const { requestId, ...query } = input;
+      const dedupeKey = `report:${requestId}`;
+      const queued = await queueReport(auth, query, 'report', dedupeKey);
+      if (queued === 0) {
+        // A repeated tap: already queued, nothing new to send.
+        const earlier = await db.notificationJob.count({
+          where: { tenantId: auth.tenantId, dedupeKey },
+        });
+        if (earlier > 0) {
+          res.json({ queued: earlier, repeated: true });
+          return;
+        }
+        throw new AppError(409, 'NO_REPORT_RECIPIENTS', 'conflict');
+      }
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        actorUserId: auth.userId,
+        action: 'reports.telegram',
+        entityType: 'report',
+        data: { recipients: queued },
+      });
+      res.json({ queued });
+    },
+  );
 
   // Sales summary for a branch over business dates (inclusive). Money in so‘m.
   router.get(
@@ -191,6 +264,17 @@ export function reportsRouter(services: Services) {
         entityType: 'report',
         data: { format: query.format, period: doc.period },
       });
+      // «Tayyorlangan hisobotni avtomatik yuborish»: only now, after the file was
+      // made successfully (never for merely opening the Reports page). The same
+      // export repeated within a minute is sent once; Telegram never delays the file.
+      const { format: kind, ...range } = query;
+      void queueReport(
+        auth,
+        range,
+        'report.auto',
+        `report.auto:${auth.userId}:${doc.period}:${kind}:${Math.floor(Date.now() / 60_000)}`,
+        kind,
+      ).catch(() => services.logger.warn('Report Telegram queue failed'));
       const stamp = doc.period.replace(/[^0-9-]+/g, '_');
       res
         .status(200)
