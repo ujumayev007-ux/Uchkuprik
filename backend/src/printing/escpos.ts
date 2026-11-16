@@ -221,6 +221,8 @@ export type KitchenTicket = {
   delivery?: boolean;
   // Changed order: "DIQQAT! CHEK YANGILANDI", version and removed items.
   update?: boolean;
+  // Printed again on purpose (staff asked): "QAYTA CHOP ETILDI".
+  reprint?: boolean;
   version?: number;
   waiter?: string | null;
   changedBy?: string | null;
@@ -313,6 +315,13 @@ export function kitchenTicket(ticket: KitchenTicket): Uint8Array<ArrayBuffer> {
     alerts: () => {
       if (ticket.delivery)
         doc.size(2, 2).bold(true).line('! DOSTAVKA !').size(1, 1).bold(false);
+      if (ticket.reprint)
+        doc
+          .bold(true)
+          .rule('*')
+          .line('QAYTA CHOP ETILDI')
+          .rule('*')
+          .bold(false);
       if (ticket.update)
         doc
           .bold(true)

@@ -23,6 +23,7 @@ import {
 import { useRealtime } from '../lib/realtime';
 import { shellAllows, shellKind, type ShellKind } from '../lib/shell';
 import { WalkinAlerts } from './WalkinAlerts';
+import { ReadyAlerts } from './ReadyAlerts';
 import {
   LicenseLock,
   licenseBlocks,
@@ -846,6 +847,7 @@ export function AppShell() {
             <HostRenameBanner />
           )}
           <WalkinAlerts />
+          <ReadyAlerts />
           {licenseBlocks(license.data) ? (
             <LicenseLock license={license.data!} />
           ) : menuDisabled ? (

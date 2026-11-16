@@ -24,8 +24,12 @@ const OPEN_STATUSES = [
  * other request; nothing but order numbers travels here.
  *
  * Events: config (what to play), snapshot (guests still waiting for a table, sent on
- * every connect so a reconnect cannot miss one), walkin, assigned, bye.
+ * every connect so a reconnect cannot miss one), walkin, assigned, bye; for the
+ * waiter of an order: ready (dishes the kitchen just marked ready) and readySnapshot
+ * (ready dishes not picked up yet, on every connect). The device shows each dish once.
  */
+// Ready dishes older than this are not re-announced after a reconnect.
+const READY_WINDOW_MS = 3 * 60 * 60_000;
 export function alertsRouter(services: Services) {
   const { db } = services;
   const router = Router();
@@ -33,8 +37,15 @@ export function alertsRouter(services: Services) {
 
   router.get('/live/alerts', requireAuth(), async (req, res) => {
     const auth = getAuth(res);
-    if (!auth.ordering.waiterAlerts.enabled)
+    // Walk-in guests (when switched on) and the ready dishes of one's own orders.
+    // Waiters: they take orders but are not the cashier (Kassa sees every order itself).
+    const takesOrders = (a: typeof auth) =>
+      (a.permissions.has('orders.create') ||
+        a.permissions.has('orders.edit')) &&
+      !a.permissions.has('pos.access');
+    if (!auth.ordering.waiterAlerts.enabled && !takesOrders(auth))
       throw new AppError(403, 'FEATURE_DISABLED', 'featureDisabled');
+    let walkins = auth.ordering.waiterAlerts.enabled;
     const branchId = auth.activeBranchId;
     if (!branchId) throw errors.validation([{ path: 'branchId' }]);
 
@@ -55,24 +66,65 @@ export function alertsRouter(services: Services) {
       send('config', { ...value, serverTime: now().toISOString() });
 
     config(auth.ordering.waiterAlerts);
-    const waiting = await db.order.findMany({
-      where: {
-        tenantId: auth.tenantId,
-        branchId,
-        type: 'DINE_IN',
-        tableId: null,
-        status: { in: [...OPEN_STATUSES] },
-        createdAt: { gte: new Date(now().getTime() - SNAPSHOT_WINDOW_MS) },
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
-      select: { id: true, number: true, createdAt: true },
-    });
+    const waiting = !walkins
+      ? []
+      : await db.order.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            branchId,
+            type: 'DINE_IN',
+            tableId: null,
+            status: { in: [...OPEN_STATUSES] },
+            createdAt: { gte: new Date(now().getTime() - SNAPSHOT_WINDOW_MS) },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 20,
+          select: { id: true, number: true, createdAt: true },
+        });
     send('snapshot', {
       orders: waiting.map((order) => ({
         orderId: order.id,
         number: order.number,
         createdAt: order.createdAt.toISOString(),
+      })),
+    });
+
+    // Ready dishes of this waiter's open orders that nobody picked up yet.
+    const ready = await db.orderItem.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        status: 'ACTIVE',
+        kitchenStatus: 'READY',
+        readyAt: { gte: new Date(now().getTime() - READY_WINDOW_MS) },
+        order: {
+          branchId,
+          createdById: auth.userId,
+          status: { in: [...OPEN_STATUSES] },
+        },
+      },
+      orderBy: { readyAt: 'asc' },
+      take: 50,
+      select: {
+        id: true,
+        productName: true,
+        variantName: true,
+        quantity: true,
+        order: {
+          select: { id: true, number: true, table: { select: { name: true } } },
+        },
+      },
+    });
+    send('readySnapshot', {
+      items: ready.map((item) => ({
+        id: item.id,
+        orderId: item.order.id,
+        number: item.order.number,
+        table: item.order.table?.name ?? null,
+        name:
+          item.variantName && item.variantName !== 'Standart'
+            ? `${item.productName} (${item.variantName})`
+            : item.productName,
+        quantity: item.quantity,
       })),
     });
 
@@ -99,11 +151,12 @@ export function alertsRouter(services: Services) {
         return;
       }
       const settings = result.auth.ordering.waiterAlerts;
-      if (!settings.enabled) {
+      if (!settings.enabled && !takesOrders(result.auth)) {
         send('bye', { reason: 'DISABLED' });
         finish();
         return;
       }
+      walkins = settings.enabled;
       config(settings);
     };
     const revalidate = setInterval(() => void refresh(), REVALIDATE_MS);
@@ -116,6 +169,18 @@ export function alertsRouter(services: Services) {
       }
       if (event.tenantId !== auth.tenantId) return;
       if (!('branchId' in event) || event.branchId !== branchId) return;
+      if (event.type === 'order.items_ready') {
+        if (event.waiterId !== auth.userId) return;
+        send('ready', {
+          orderId: event.orderId,
+          number: event.number,
+          table: event.table,
+          items: event.items,
+          allReady: event.allReady,
+        });
+        return;
+      }
+      if (!walkins) return;
       if (event.type === 'order.table_needed') {
         // Never alert the person who just took the order.
         if (event.byUserId === auth.userId) return;

@@ -620,6 +620,117 @@ tr.clickable {
   white-space: normal;
 }
 
+/* Waiter: «Tayyor» banner at the top of every screen (never covers the cart bar). */
+.ready-alerts {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 16px));
+  z-index: 1200;
+  display: grid;
+  gap: 8px;
+}
+.ready-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--green, #1f8a4c);
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  font-size: 1.05rem;
+}
+.ready-alert-muted {
+  background: var(--warning-soft);
+  color: inherit;
+}
+.ready-alert-text {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+.ready-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ready-alert .btn {
+  min-height: 44px;
+}
+.ready-alert .icon-button {
+  color: inherit;
+  background: transparent;
+  border: 2px solid currentColor;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 1.1rem;
+}
+
+/* Waiter: tables in words and colour, «Tayyor» list for one-hand use. */
+.waiter-page .table-tile {
+  min-height: 92px;
+  border-width: 2px;
+}
+.waiter-page .table-tile .table-state {
+  font-weight: 600;
+}
+.waiter-page .table-free {
+  border-color: var(--line);
+}
+.waiter-page .table-busy {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.waiter-page .table-ready {
+  border-color: var(--green, #1f8a4c);
+  background: color-mix(in srgb, var(--green, #1f8a4c) 14%, transparent);
+}
+.ready-section .ready-card {
+  border: 2px solid var(--green, #1f8a4c);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+.ready-card-title {
+  font-size: 1.1rem;
+}
+.ready-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ready-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.ready-list li .btn {
+  min-height: 44px;
+}
+.ready-list li.is-highlight,
+tr.is-highlight td {
+  background: color-mix(in srgb, var(--green, #1f8a4c) 22%, transparent);
+  animation: ff-flash 1.2s ease-in-out 3;
+}
+@keyframes ff-flash {
+  50% {
+    background: color-mix(in srgb, var(--green, #1f8a4c) 45%, transparent);
+  }
+}
+.kitchen-prints ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
 /* Payment provider settings */
 .card h2.provider-title {
   text-transform: none;

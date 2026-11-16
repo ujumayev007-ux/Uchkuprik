@@ -627,10 +627,11 @@ export function PosPage() {
         className="pos-cartbar"
         onClick={() => setCartOpen(true)}
       >
+        {/* «Savat · 3 ta · 125 000 so‘m» */}
         <span>
           🛒 {t.pos.cart}
           {cart.length > 0
-            ? ` · ${cart.reduce((sum, line) => sum + line.quantity, 0)}`
+            ? ` · ${cart.reduce((sum, line) => sum + line.quantity, 0)} ta`
             : ''}
         </span>
         <span>{formatMoney(subtotal)}</span>

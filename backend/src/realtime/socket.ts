@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import type { Services } from '../context.js';
 import { decideNetwork } from '../modules/control/network.js';
 import { authenticate, type AuthContext } from '../modules/auth/session.js';
-import { branchRoom, tenantRoom, type EventBus } from './bus.js';
+import { branchRoom, tenantRoom, type EventBus, userRoom } from './bus.js';
 
 const REVALIDATE_MS = 60_000;
 
@@ -68,6 +68,8 @@ export function attachRealtime(
   io.on('connection', (socket) => {
     const auth = socket.data.auth as AuthContext;
     void socket.join(tenantRoom(auth.tenantId));
+    // Personal room: ready dishes of this person's own orders.
+    if (auth.userId) void socket.join(userRoom(auth.tenantId, auth.userId));
     if (auth.activeBranchId && canSeeOrders(auth))
       void socket.join(branchRoom(auth.tenantId, auth.activeBranchId));
     socket.emit('ready', { branchId: auth.activeBranchId });
@@ -137,7 +139,26 @@ export function attachRealtime(
       event.type === 'config.changed'
     )
       io.to(tenantRoom(event.tenantId)).emit(event.type, {});
-    else if (
+    else if (event.type === 'order.items_ready') {
+      // Only the waiter of the order hears about its dishes (on any of their screens);
+      // the screen itself checks that it works in that branch.
+      if (event.waiterId)
+        io.to(userRoom(event.tenantId, event.waiterId)).emit(event.type, {
+          orderId: event.orderId,
+          branchId: event.branchId,
+          number: event.number,
+          table: event.table,
+          items: event.items,
+          allReady: event.allReady,
+        });
+      // Everyone else refreshes the board quietly.
+      io.to(branchRoom(event.tenantId, event.branchId)).emit(
+        'kitchen.changed',
+        {
+          orderId: event.orderId,
+        },
+      );
+    } else if (
       event.type === 'order.table_needed' ||
       event.type === 'order.table_assigned'
     )

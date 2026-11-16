@@ -48,6 +48,19 @@ export type RealtimeEvent =
       number: number;
       byUserId: string | null;
     }
+  | {
+      // The kitchen marked dishes ready: only the order's waiter is told.
+      type: 'order.items_ready';
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      number: number;
+      table: string | null;
+      waiterId: string | null;
+      items: { id: string; name: string; quantity: number }[];
+      // Every active dish of the order is ready now.
+      allReady: boolean;
+    }
   // Owner or Admin changed settings: panels and Android devices reload them.
   | { type: 'config.changed'; tenantId: string }
   // Owner (or delegated Admin) changed the design or advertising: screens reload it.
@@ -77,3 +90,6 @@ export function createEventBus(): EventBus {
 export const branchRoom = (tenantId: string, branchId: string) =>
   `t:${tenantId}:b:${branchId}`;
 export const tenantRoom = (tenantId: string) => `t:${tenantId}`;
+// One person's open screens (ready dishes go only to the order's waiter).
+export const userRoom = (tenantId: string, userId: string) =>
+  `t:${tenantId}:u:${userId}`;

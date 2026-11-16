@@ -1776,6 +1776,88 @@ export function ordersRouter(services: Services) {
     },
   );
 
+  // «Qayta chop etish»: the whole current order again, marked «QAYTA CHOP ETILDI».
+  // A second press (double tap, a network retry) within 10 s gives the same jobs.
+  router.post(
+    '/orders/:id/kitchen-reprint',
+    requireAuth(),
+    requirePermission('orders.edit'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      const order = await load(auth, id);
+      if (['DRAFT', 'PENDING', 'CANCELLED'].includes(order.status))
+        throw new AppError(409, 'INVALID_TRANSITION', 'invalidTransition');
+      const recent = await db.printJob.count({
+        where: {
+          orderId: id,
+          kind: 'KITCHEN',
+          purpose: 'REPRINT',
+          reprintOfId: null,
+          createdAt: { gte: new Date(Date.now() - 10_000) },
+        },
+      });
+      if (recent > 0) {
+        res.json({ jobs: recent, repeated: true });
+        return;
+      }
+      const before = await db.printJob.count({
+        where: { orderId: id, kind: 'KITCHEN' },
+      });
+      await enqueueKitchenTickets(services, id, { reprint: true });
+      const after = await db.printJob.count({
+        where: { orderId: id, kind: 'KITCHEN' },
+      });
+      await audit(db, req, {
+        tenantId: auth.tenantId,
+        branchId: order.branchId,
+        actorUserId: auth.userId,
+        action: 'order.kitchen_reprint',
+        entityType: 'order',
+        entityId: id,
+        data: { jobs: after - before },
+      });
+      res.json({ jobs: after - before });
+    },
+  );
+
+  // Kitchen tickets of an order and where each one is (for the waiter / cashier).
+  router.get(
+    '/orders/:id/kitchen-prints',
+    requireAuth(),
+    requirePermission('orders.view'),
+    async (req, res) => {
+      const auth = getAuth(res);
+      const id = parse(z.uuid(), req.params.id);
+      await load(auth, id);
+      const jobs = await db.printJob.findMany({
+        where: { orderId: id, kind: 'KITCHEN', tenantId: auth.tenantId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          status: true,
+          purpose: true,
+          createdAt: true,
+          sentAt: true,
+          lastError: true,
+          printer: { select: { name: true } },
+        },
+      });
+      res.json({
+        jobs: jobs.map((job) => ({
+          id: job.id,
+          status: job.status,
+          purpose: job.purpose,
+          createdAt: job.createdAt,
+          sentAt: job.sentAt,
+          error: job.lastError,
+          printer: job.printer.name,
+        })),
+      });
+    },
+  );
+
   // A refund slip again (Qaytarish cheki), on a chosen printer.
   router.post(
     '/orders/:id/refunds/:refundId/print',

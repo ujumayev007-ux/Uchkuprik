@@ -11,6 +11,7 @@ import { can, hasFeature, useMe, type Me } from './auth/session';
 import { AppShell } from './components/AppShell';
 import { BrandingHost, PublicBrandingHost } from './components/BrandingHost';
 import { isPanelShell, shellKind } from './lib/shell';
+import { rememberTarget, takeTarget } from './lib/after-login';
 import { DeviceSetup } from './components/DeviceSetup';
 import { ServerWake } from './components/ServerWake';
 import { ErrorState, LoadingState, ToastProvider } from './components/ui';
@@ -104,7 +105,9 @@ function RequireSession() {
     return <ErrorState error={me.error} onRetry={() => void me.refetch()} />;
   // Kassa, Oshxona and Ofitsiant start with the staff PIN pad, never the password form;
   // the Queue TV needs no sign-in at all.
-  if (!me.data)
+  if (!me.data) {
+    // Opened from a notification while signed out: open it after the PIN.
+    rememberTarget(window.location.pathname + window.location.search);
     return (
       <Navigate
         to={
@@ -113,6 +116,7 @@ function RequireSession() {
         replace
       />
     );
+  }
   const step = pendingStep(me.data);
   if (step) return <Navigate to={step} replace />;
   return <AppShell />;
@@ -170,6 +174,9 @@ function manages(me: Me | null | undefined) {
 
 function Home() {
   const { data: me } = useMe();
+  // Signed in after opening a notification: that page first.
+  const target = me ? takeTarget() : null;
+  if (target) return <Navigate to={target} replace />;
   if (me?.tenantKind === 'PLATFORM')
     return <Navigate to="/platforma/bizneslar" replace />;
   // A fresh Kassa/Oshxona/Ofitsiant application is registered once by the administrator.

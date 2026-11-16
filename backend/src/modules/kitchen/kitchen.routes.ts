@@ -419,8 +419,8 @@ export function kitchenRouter(services: Services) {
     itemIds: string[] | null,
     stationId: string | undefined,
     status: 'QUEUED' | 'PREPARING' | 'READY',
-  ) =>
-    db.$transaction(async (tx) => {
+  ) => {
+    const result = await db.$transaction(async (tx) => {
       const order = await lockOrder(tx, auth.tenantId, orderId);
       await resolveBranch(tx, auth, order.branchId);
       if (!['PLACED', 'PREPARING', 'READY'].includes(order.status))
@@ -454,6 +454,22 @@ export function kitchenRouter(services: Services) {
         ...(itemIds ? { id: { in: itemIds } } : {}),
         ...(stationId ? { OR: [{ stationId }, { stationId: null }] } : {}),
       };
+      // Dishes becoming ready now (each is announced to the waiter once).
+      const becoming =
+        status === 'READY'
+          ? await tx.orderItem.findMany({
+              where: {
+                ...where,
+                kitchenStatus: { notIn: ['READY', 'SERVED'] },
+              },
+              select: {
+                id: true,
+                productName: true,
+                variantName: true,
+                quantity: true,
+              },
+            })
+          : [];
       const result = await tx.orderItem.updateMany({
         where,
         data: {
@@ -480,7 +496,46 @@ export function kitchenRouter(services: Services) {
         stationId: stationId ?? null,
       });
       await syncKitchenStatus(tx, orderId, at);
+      const left = await tx.orderItem.count({
+        where: {
+          orderId,
+          status: 'ACTIVE',
+          kitchenStatus: { notIn: ['READY', 'SERVED'] },
+        },
+      });
+      const table = order.tableId
+        ? await tx.diningTable.findUnique({
+            where: { id: order.tableId },
+            select: { name: true },
+          })
+        : null;
+      return {
+        order,
+        becoming,
+        allReady: left === 0,
+        table: table?.name ?? null,
+      };
     });
+    if (result.becoming.length)
+      services.events?.publish({
+        type: 'order.items_ready',
+        tenantId: result.order.tenantId,
+        branchId: result.order.branchId,
+        orderId,
+        number: result.order.number,
+        table: result.table,
+        waiterId: result.order.createdById,
+        items: result.becoming.map((item) => ({
+          id: item.id,
+          name:
+            item.variantName && item.variantName !== 'Standart'
+              ? `${item.productName} (${item.variantName})`
+              : item.productName,
+          quantity: item.quantity,
+        })),
+        allReady: result.allReady,
+      });
+  };
 
   router.post(
     '/kitchen/items/:id/status',
@@ -711,6 +766,116 @@ export function kitchenRouter(services: Services) {
       const served = input.status === 'READY' && (await autoServe(auth, id));
       await notify(id);
       res.json({ ok: true, ...(served ? { served: true } : {}) });
+    },
+  );
+
+  // «Tayyor»: this waiter's dishes the kitchen finished and nobody picked up yet.
+  // (Not under /orders/: that prefix is taken by /orders/:id.)
+  router.get('/waiter/ready-items', requireAuth(), async (_req, res) => {
+    const auth = getAuth(res);
+    if (!can(auth, 'orders.create', 'orders.edit')) throw errors.forbidden();
+    const branchId = auth.activeBranchId;
+    const items = await db.orderItem.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        status: 'ACTIVE',
+        kitchenStatus: 'READY',
+        order: {
+          createdById: auth.userId,
+          ...(branchId ? { branchId } : {}),
+          status: { in: ['PLACED', 'PREPARING', 'READY', 'SERVED'] },
+        },
+      },
+      orderBy: { readyAt: 'asc' },
+      take: 100,
+      select: {
+        id: true,
+        productName: true,
+        variantName: true,
+        quantity: true,
+        readyAt: true,
+        order: {
+          select: {
+            id: true,
+            number: true,
+            table: { select: { name: true } },
+          },
+        },
+      },
+    });
+    res.json({
+      items: items.map((item) => ({
+        id: item.id,
+        orderId: item.order.id,
+        number: item.order.number,
+        table: item.order.table?.name ?? null,
+        name:
+          item.variantName && item.variantName !== 'Standart'
+            ? `${item.productName} (${item.variantName})`
+            : item.productName,
+        quantity: item.quantity,
+        readyAt: item.readyAt,
+      })),
+    });
+  });
+
+  // «Olib ketildi»: the waiter took ready dishes to the table (READY -> SERVED per
+  // dish); when every dish is served the order becomes SERVED too.
+  router.post(
+    '/orders/:id/items/picked-up',
+    requireAuth(),
+    async (req, res) => {
+      const auth = getAuth(res);
+      if (!can(auth, 'orders.edit', 'orders.create', 'kitchen.access'))
+        throw errors.forbidden();
+      const id = parse(z.uuid(), req.params.id);
+      const { itemIds } = parse(
+        z.object({ itemIds: z.array(z.uuid()).min(1).max(100) }),
+        req.body,
+      );
+      const changed = await db.$transaction(async (tx) => {
+        const order = await lockOrder(tx, auth.tenantId, id);
+        await resolveBranch(tx, auth, order.branchId);
+        const result = await tx.orderItem.updateMany({
+          where: {
+            orderId: id,
+            id: { in: itemIds },
+            status: 'ACTIVE',
+            kitchenStatus: 'READY',
+          },
+          data: { kitchenStatus: 'SERVED' },
+        });
+        // Pressed twice: nothing left to change, nothing recorded twice.
+        if (result.count === 0) return 0;
+        await addEvent(tx, auth.tenantId, id, auth.userId, 'picked_up', {
+          items: itemIds,
+        });
+        const open = await tx.orderItem.count({
+          where: {
+            orderId: id,
+            status: 'ACTIVE',
+            kitchenStatus: { not: 'SERVED' },
+          },
+        });
+        if (open === 0 && order.status === 'READY') {
+          assertTransition(order.status, 'SERVED');
+          await tx.order.update({
+            where: { id },
+            data: { status: 'SERVED', version: { increment: 1 } },
+          });
+          await addEvent(tx, auth.tenantId, id, auth.userId, 'status', {
+            from: order.status,
+            to: 'SERVED',
+          });
+        } else
+          await tx.order.update({
+            where: { id },
+            data: { version: { increment: 1 } },
+          });
+        return result.count;
+      });
+      if (changed) await notify(id);
+      res.json({ ok: true, changed });
     },
   );
 

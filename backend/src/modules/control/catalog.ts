@@ -101,6 +101,9 @@ export const featureCatalog: FeatureDef[] = [
       'GET /orders',
       'GET /orders/:id',
       'GET /orders/:id/events',
+      // Kitchen ticket states of an order; the waiter's ready dishes («Tayyor»).
+      'GET /orders/:id/kitchen-prints',
+      'GET /waiter/ready-items',
       // Workflow summary for staff screens; banquets and scheduled orders.
       'GET /workflow/active',
       'GET /scheduled-orders',
@@ -129,6 +132,9 @@ export const featureCatalog: FeatureDef[] = [
       'POST /orders/:id/place',
       'POST /orders/:id/schedule',
       'POST /orders/:id/kitchen-print',
+      'POST /orders/:id/kitchen-reprint',
+      // «Olib ketildi»: ready dishes taken to the table.
+      'POST /orders/:id/items/picked-up',
     ],
   }),
   f({

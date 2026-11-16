@@ -80,6 +80,13 @@ export function useRealtime(branchId: string | null | undefined) {
       void client.invalidateQueries({ queryKey: ['queue'] });
       for (const listener of listeners) listener('kitchen.changed', payload);
     });
+    // Dishes of this waiter's own orders became ready (sent only to them).
+    socket.on('order.items_ready', (payload: Record<string, unknown>) => {
+      void client.invalidateQueries({ queryKey: ['waiter-ready'] });
+      for (const key of LIVE_KEYS)
+        void client.invalidateQueries({ queryKey: [key] });
+      for (const listener of listeners) listener('order.items_ready', payload);
+    });
     socket.on('inventory.changed', () => {
       void client.invalidateQueries({ queryKey: ['inventory'] });
       void client.invalidateQueries({ queryKey: ['recipe'] });

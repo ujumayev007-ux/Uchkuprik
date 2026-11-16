@@ -86,12 +86,72 @@ export function PaymentBadge({
 
 type Action = 'cancel' | 'refund' | 'discount' | 'pay' | 'note' | null;
 
+type KitchenPrintJob = {
+  id: string;
+  status: 'PENDING' | 'PRINTING' | 'SENT' | 'FAILED' | 'UNKNOWN';
+  purpose: string;
+  createdAt: string;
+  error: string | null;
+  printer: string;
+};
+
+const printTone = {
+  PENDING: 'neutral',
+  PRINTING: 'neutral',
+  SENT: 'success',
+  FAILED: 'danger',
+  UNKNOWN: 'warning',
+} as const;
+
+/**
+ * Where the order's kitchen tickets are: «Navbatda», «Printerga yuborildi» or
+ * «Chop etishda xato». A network kitchen printer does not confirm the paper, so
+ * «Chop etildi» is never claimed for it.
+ */
+function KitchenPrints({ orderId }: { orderId: string }) {
+  const jobs = useQuery({
+    queryKey: ['orders', 'kitchen-prints', orderId],
+    queryFn: () =>
+      api<{ jobs: KitchenPrintJob[] }>(`/orders/${orderId}/kitchen-prints`).then(
+        (data) => data.jobs,
+      ),
+    refetchInterval: (query) =>
+      query.state.data?.some((job) =>
+        ['PENDING', 'PRINTING'].includes(job.status),
+      )
+        ? 3_000
+        : 30_000,
+  });
+  if (!jobs.data || jobs.data.length === 0) return null;
+  return (
+    <div className="kitchen-prints small">
+      <strong>{t.kitchenPrint.title}:</strong>
+      <ul>
+        {jobs.data.slice(0, 5).map((job) => (
+          <li key={job.id}>
+            {formatDateTime(job.createdAt)} ·{' '}
+            {t.kitchenPrint[job.purpose as 'NEW' | 'UPDATE' | 'REPRINT'] ??
+              job.purpose}{' '}
+            · {job.printer}{' '}
+            <Badge tone={printTone[job.status]}>
+              {t.kitchenPrint[job.status]}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function OrderDetail({
   orderId,
   onClose,
+  highlight,
 }: {
   orderId: string;
   onClose: () => void;
+  // Dishes to point out (opened from a «Tayyor» alert).
+  highlight?: Set<string>;
 }) {
   const { data: me } = useMe();
   const ordering = useOrdering();
@@ -257,12 +317,21 @@ export function OrderDetail({
                 .join(' · ')}
             </p>
           )}
+          {['PLACED', 'PREPARING', 'READY', 'SERVED'].includes(o.status) && (
+            <KitchenPrints orderId={o.id} />
+          )}
           <table className="table compact">
             <tbody>
               {o.items.map((item) => (
                 <tr
                   key={item.id}
-                  className={item.status === 'CANCELLED' ? 'is-inactive' : ''}
+                  className={
+                    item.status === 'CANCELLED'
+                      ? 'is-inactive'
+                      : highlight?.has(item.id)
+                        ? 'is-highlight'
+                        : ''
+                  }
                 >
                   <td>
                     <strong>{item.productName}</strong>{' '}
@@ -641,6 +710,19 @@ export function OrderDetail({
                     }
                   >
                     {t.printRules.kitchenPrint}
+                  </Button>
+                  {/* The whole order again, marked «QAYTA CHOP ETILDI». */}
+                  <Button
+                    busy={busy}
+                    onClick={() => {
+                      if (!window.confirm(t.kitchenPrint.reprintAsk)) return;
+                      void run(async () => {
+                        await post(`/orders/${o.id}/kitchen-reprint`);
+                        toast(t.kitchenPrint.reprinted);
+                      });
+                    }}
+                  >
+                    {t.kitchenPrint.reprint}
                   </Button>
                   <Button
                     variant="ghost"

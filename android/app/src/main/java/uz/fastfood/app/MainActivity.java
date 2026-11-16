@@ -192,6 +192,7 @@ public class MainActivity extends Activity {
     }
 
     private void showSetup(String error) {
+        inForeground = false;
         handler.removeCallbacks(watchdog);
         if (web != null) {
             web.destroy();
@@ -547,6 +548,7 @@ public class MainActivity extends Activity {
         failures = 0;
         handler.removeCallbacks(watchdog);
         handler.postDelayed(watchdog, 15_000);
+        inForeground = resumed;
     }
 
     @Override
@@ -568,17 +570,22 @@ public class MainActivity extends Activity {
 
     // In the foreground: the setup screen looks for the computer more often.
     private boolean resumed = false;
+    // The app is on screen (with its page): the page shows «Tayyor» banners itself, so
+    // the alert service does not add a system notification.
+    static volatile boolean inForeground = false;
 
     @Override
     protected void onResume() {
         super.onResume();
         resumed = true;
+        inForeground = web != null;
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         resumed = false;
+        inForeground = false;
         CookieManager.getInstance().flush();
     }
 

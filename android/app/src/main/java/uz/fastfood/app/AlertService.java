@@ -51,6 +51,8 @@ public class AlertService extends Service {
     static final String PREFS = "fastfood_alerts";
     static final String CHANNEL = "walkin_alerts";
     static final String CHANNEL_SERVICE = "alerts_service";
+    // Dishes of the waiter's own orders the kitchen marked ready.
+    static final String CHANNEL_READY = "ready_alerts";
     static final String EXTRA_PATH = "path";
     private static final int SERVICE_NOTIFICATION = 7001;
     private static final long SEEN_TTL_MS = 3L * 60 * 60 * 1000;
@@ -167,6 +169,11 @@ public class AlertService extends Service {
         alert.setDescription("Stol belgilanmagan mijoz buyurtmasi haqida ogohlantirish");
         alert.enableVibration(true);
         manager.createNotificationChannel(alert);
+        NotificationChannel ready = new NotificationChannel(
+            CHANNEL_READY, "Tayyor taomlar", NotificationManager.IMPORTANCE_HIGH);
+        ready.setDescription("Oshxona sizning buyurtmangizdagi taomni tayyor qilganda xabar beradi");
+        ready.enableVibration(true);
+        manager.createNotificationChannel(ready);
     }
 
     private PendingIntent openApp(String path, int requestCode) {
@@ -184,8 +191,8 @@ public class AlertService extends Service {
             : new Notification.Builder(this);
         return builder
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle("FastFood: mijoz xabarlari yoqilgan")
-            .setContentText("Yangi mijoz buyurtmasi haqida ovozli ogohlantirish beriladi.")
+            .setContentTitle("FastFood: xabarlar yoqilgan")
+            .setContentText("Tayyor taomlar va yangi mijozlar haqida xabar beriladi.")
             .setOngoing(true)
             .setContentIntent(openApp(null, 1))
             .build();
@@ -287,6 +294,41 @@ public class AlertService extends Service {
                 case "assigned":
                     resolve(json.getString("orderId"));
                     break;
+                case "ready":
+                    readyArrived(
+                        json.getString("orderId"),
+                        json.optInt("number", 0),
+                        json.isNull("table") ? null : json.optString("table", null),
+                        json.optJSONArray("items"),
+                        json.optBoolean("allReady", false));
+                    break;
+                case "readySnapshot": {
+                    // Ready dishes not picked up yet (sent on every connect): each one is
+                    // shown once, so a reconnect only shows what was missed.
+                    JSONArray items = json.optJSONArray("items");
+                    Map<String, JSONArray> byOrder = new LinkedHashMap<>();
+                    Map<String, JSONObject> heads = new LinkedHashMap<>();
+                    if (items != null)
+                        for (int i = 0; i < items.length(); i++) {
+                            JSONObject item = items.getJSONObject(i);
+                            String orderId = item.getString("orderId");
+                            if (!byOrder.containsKey(orderId)) {
+                                byOrder.put(orderId, new JSONArray());
+                                heads.put(orderId, item);
+                            }
+                            byOrder.get(orderId).put(item);
+                        }
+                    for (Map.Entry<String, JSONArray> entry : byOrder.entrySet()) {
+                        JSONObject head = heads.get(entry.getKey());
+                        readyArrived(
+                            entry.getKey(),
+                            head.optInt("number", 0),
+                            head.isNull("table") ? null : head.optString("table", null),
+                            entry.getValue(),
+                            false);
+                    }
+                    break;
+                }
                 case "bye":
                     // Session ended or the feature was switched off by the Owner/Admin.
                     running = false;
@@ -376,6 +418,65 @@ public class AlertService extends Service {
             .setContentIntent(open)
             .addAction(action);
         manager.notify(id, builder.build());
+    }
+
+    // ---- ready dishes -------------------------------------------------------------
+
+    /**
+     * «7-stol · №142 — 2 ta osh tayyor». Each dish once per device; «Buyurtma to‘liq
+     * tayyor» once per order. With the app on screen the page shows its own banner, so
+     * only the "seen" mark is kept here (no second alert later from a reconnect).
+     */
+    private void readyArrived(String orderId, int number, String table, JSONArray items, boolean allReady) {
+        if (items == null) return;
+        StringBuilder names = new StringBuilder();
+        StringBuilder ids = new StringBuilder();
+        boolean any = false;
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.optJSONObject(i);
+            if (item == null) continue;
+            String id = item.optString("id", "");
+            if (id.isEmpty() || !firstTime("r:" + id)) continue;
+            if (any) {
+                names.append(", ");
+                ids.append(',');
+            }
+            names.append(item.optInt("quantity", 1)).append(" ta ")
+                .append(item.optString("name", "").toLowerCase(new Locale("uz")));
+            ids.append(id);
+            any = true;
+        }
+        boolean allNew = allReady && firstTime("ra:" + orderId);
+        if (!any && !allNew) return;
+        if (MainActivity.inForeground) return;
+        if (!notificationsAllowed(this)) {
+            Log.d(TAG, "Notifications are not allowed; ready alert not shown");
+            return;
+        }
+        String where = (table != null && !table.isEmpty() ? table + " · " : "") + formatNumber(number);
+        String text = any ? where + " — " + names + " tayyor" : where;
+        String title = allReady ? "Buyurtma to‘liq tayyor" : "Taom tayyor";
+        String path = "/ofitsiant?buyurtma=" + orderId + (ids.length() > 0 ? "&tayyor=" + ids : "");
+        int id = ("ready:" + orderId + ":" + ids).hashCode();
+        PendingIntent open = openApp(path, id);
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? new Notification.Builder(this, CHANNEL_READY)
+            : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+                .setDefaults(Notification.DEFAULT_SOUND);
+        builder
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(new Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .addAction(new Notification.Action.Builder(null, "Ko‘rish", open).build());
+        manager.notify(id, builder.build());
+        main.post(this::vibrate);
     }
 
     private void vibrate() {

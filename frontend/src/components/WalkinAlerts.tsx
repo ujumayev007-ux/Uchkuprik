@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useMe } from '../auth/session';
+import { can, useMe } from '../auth/session';
 import { Button } from './ui';
 import { t } from '../i18n';
 import { api } from '../lib/api';
@@ -62,14 +62,21 @@ export function WalkinAlerts() {
   const reminders = useRef(0);
   const enabled = !!settings?.enabled;
 
+  // Waiters also get «Tayyor» notifications through the same native service.
+  const takesOrders =
+    (can(me, 'orders.create') || can(me, 'orders.edit')) &&
+    !can(me, 'pos.access');
+
   // Android: give the native service the settings decided centrally.
   useEffect(() => {
     if (!native) return;
-    if (enabled && settings) {
-      native.configureAlerts(JSON.stringify(settings));
+    if ((enabled || takesOrders) && settings) {
+      native.configureAlerts(
+        JSON.stringify({ ...settings, enabled: true, walkin: enabled }),
+      );
       setStatus(androidAlertStatus());
     } else native.stopAlerts();
-  }, [native, enabled, settings]);
+  }, [native, enabled, takesOrders, settings]);
 
   // The Android permission dialog finished: read the status again.
   useEffect(() => {

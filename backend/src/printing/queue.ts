@@ -56,7 +56,9 @@ export async function enqueueKitchenTickets(
   services: Services,
   orderId: string,
   // Staff pressed «Oshxonaga chop etish»: rules waiting for a manual print go out too.
-  options: { force?: boolean } = {},
+  // reprint: the whole current order again, marked «QAYTA CHOP ETILDI»; nothing is
+  // marked as printed (additions and cancellations still print once, later).
+  options: { force?: boolean; reprint?: boolean } = {},
 ) {
   const { db } = services;
   await db.$transaction(async (tx) => {
@@ -67,16 +69,18 @@ export async function enqueueKitchenTickets(
         table: { select: { name: true } },
         branch: { select: { timezone: true } },
         items: {
-          where: {
-            OR: [
-              { status: 'ACTIVE', kitchenPrintedAt: null },
-              {
-                status: 'CANCELLED',
-                kitchenPrintedAt: { not: null },
-                cancelPrintedAt: null,
+          where: options.reprint
+            ? { status: 'ACTIVE' }
+            : {
+                OR: [
+                  { status: 'ACTIVE', kitchenPrintedAt: null },
+                  {
+                    status: 'CANCELLED',
+                    kitchenPrintedAt: { not: null },
+                    cancelPrintedAt: null,
+                  },
+                ],
               },
-            ],
-          },
         },
       },
     });
@@ -118,13 +122,16 @@ export async function enqueueKitchenTickets(
         ? []
         : order.items.filter((item) => item.status === 'ACTIVE');
     // A cancelled order still tells the kitchen to stop (all printed items removed).
-    const removed = order.items.filter((item) => item.status === 'CANCELLED');
+    const removed = options.reprint
+      ? []
+      : order.items.filter((item) => item.status === 'CANCELLED');
     if (order.status === 'CANCELLED' && removed.length === 0) return;
     const printedBefore =
-      removed.length > 0 ||
-      (await tx.orderItem.count({
-        where: { orderId, kitchenPrintedAt: { not: null } },
-      })) > 0;
+      !options.reprint &&
+      (removed.length > 0 ||
+        (await tx.orderItem.count({
+          where: { orderId, kitchenPrintedAt: { not: null } },
+        })) > 0);
     const settings = await loadOrderSettings(tx, order.tenantId);
     const people = await tx.user.findMany({
       where: {
@@ -174,6 +181,7 @@ export async function enqueueKitchenTickets(
     // Waits for a manual print, or for the full payment.
     const deferred = (rule: ReturnType<typeof ruleFor>) =>
       !options.force &&
+      !options.reprint &&
       !!rule &&
       (rule.trigger === 'MANUAL' ||
         (rule.trigger === 'AFTER_PAYMENT' && !paid));
@@ -265,6 +273,7 @@ export async function enqueueKitchenTickets(
         cancelled: cancelled.map((item) => toLine(item, showPrices)),
         delivery: order.type === 'DELIVERY',
         update,
+        reprint: !!options.reprint,
         version: order.version,
         waiter: nameOf(order.createdById),
         changedBy: update ? changedBy : null,
@@ -289,11 +298,12 @@ export async function enqueueKitchenTickets(
           printerId: printer.id,
           orderId: order.id,
           kind: 'KITCHEN',
-          purpose: update ? 'UPDATE' : 'NEW',
+          purpose: options.reprint ? 'REPRINT' : update ? 'UPDATE' : 'NEW',
           payload,
         },
       });
     }
+    if (options.reprint) return;
     // Items waiting only for deferred printers stay unprinted for a later pass.
     const done = (item: { id: string }) =>
       handled.has(item.id) || !targeted.has(item.id);
