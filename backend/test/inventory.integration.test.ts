@@ -225,9 +225,14 @@ describe('Bozorlik: several places in one save', () => {
       ['Ulgurji ombor', 75000, 'RECEIVED'],
     ]);
     const payments = await ctx.db.supplierPayment.findMany({
-      where: { tenantId: s.tenantId, note: 'Bozorlik' },
+      // The note names the payment method: "Bozorlik (Naqd)" / "Bozorlik (Karta)".
+      where: { tenantId: s.tenantId, note: { startsWith: 'Bozorlik' } },
     });
     expect(payments.map((p) => p.amount).sort()).toEqual([210000, 75000]);
+    const expenses = await ctx.db.expense.findMany({
+      where: { tenantId: s.tenantId, category: 'Bozorlik' },
+    });
+    expect(expenses.map((e) => e.amount).sort()).toEqual([210000, 75000]);
     // An unknown unit is still refused (nothing saved).
     await send(s.owner, 'post', '/purchases/market', {
       lines: [
@@ -240,6 +245,50 @@ describe('Bozorlik: several places in one save', () => {
       ],
     }).expect(400);
     expect(riceRow.quantity.toString()).toBe('5000');
+  });
+
+  it('saves decimal kilograms and grams priced per kilogram', async () => {
+    const s = await setup();
+    const onion = await send(s.owner, 'post', '/inventory/items', {
+      name: 'Piyoz',
+      baseUnit: 'G',
+      minStock: 0,
+    }).expect(201);
+    // 1.5 kg at 8 000 so‘m/kg and 750 g at 8 000 so‘m/kg (what the Bozorlik screen sends).
+    const saved = await send(s.owner, 'post', '/purchases/market', {
+      supplierName: 'Bozor',
+      paid: true,
+      paymentMethod: 'CARD',
+      lines: [
+        {
+          stockItemId: onion.body.id,
+          quantity: '1.5',
+          unitName: 'kg',
+          lineTotal: 12000,
+        },
+        {
+          stockItemId: onion.body.id,
+          quantity: '750',
+          unitName: 'g',
+          lineTotal: 6000,
+        },
+      ],
+    }).expect(201);
+    expect(saved.body.total).toBe(18000);
+    const row = await ctx.db.stockBalance.findFirstOrThrow({
+      where: { stockItemId: onion.body.id },
+    });
+    expect(row.quantity.toString()).toBe('2250');
+    expect(row.avgCost.toString()).toBe('8');
+    const payment = await ctx.db.supplierPayment.findFirstOrThrow({
+      where: { tenantId: s.tenantId, note: 'Bozorlik (Karta)' },
+    });
+    expect(payment.amount).toBe(18000);
+    const expense = await ctx.db.expense.findFirstOrThrow({
+      where: { tenantId: s.tenantId, category: 'Bozorlik' },
+    });
+    expect(expense.amount).toBe(18000);
+    expect(expense.fromCash).toBe(false);
   });
 });
 

@@ -769,7 +769,12 @@ function buildMenu() {
           { label: 'Yangilash (F5)', role: 'reload' },
           { label: 'To‘liq ekran', role: 'togglefullscreen' },
           { type: 'separator' },
-          { label: 'Chiqish', role: 'quit' },
+          // Closing the window keeps the server (and every terminal) running.
+          {
+            label: 'Oynani yopish (server ishlayveradi)',
+            click: () => win?.hide(),
+          },
+          { label: 'Serverni to‘xtatish…', click: () => void confirmStop() },
         ],
       },
       {
@@ -808,15 +813,28 @@ function startLan() {
   }
 }
 
+/** This program's exe and ports: what the firewall rules must name. */
+const firewallTarget = () => ({
+  exe: process.execPath,
+  appPort: APP_PORT,
+  discoveryPort: LAN_PORT,
+});
+
 async function enableNetwork() {
-  const result = await lan.enableFirewall({
-    exe: process.execPath,
-    appPort: APP_PORT,
-    discoveryPort: LAN_PORT,
-  });
-  log(`lan firewall rules ${result.ok ? 'added' : 'not added'}`);
+  const result = await lan.enableFirewall(firewallTarget());
+  log(
+    `lan firewall rules ${result.ok ? 'added' : `not added (${result.reason})`}`,
+  );
   return result.ok;
 }
+
+const FIREWALL_TEXT = {
+  missing: 'Tarmoq ruxsati: berilmagan — boshqa kompyuterlar va telefonlar bu serverga ulana olmaydi.',
+  stale:
+    'Tarmoq ruxsati: eski dastur (boshqa papka yoki versiya) uchun berilgan — bu server uchun yangilash kerak.',
+  blocked:
+    'Tarmoq ruxsati: Windows bu dasturni bloklagan (avval «Bekor qilish» bosilgan bo‘lishi mumkin).',
+};
 
 /** Once a day at most, until the network permission is given. */
 async function askNetworkPermission() {
@@ -824,7 +842,9 @@ async function askNetworkPermission() {
   // Started silently: ask when the window is opened from the tray instead.
   if (!win || !win.isVisible()) return;
   try {
-    if ((await lan.firewallState()).ok) return;
+    const state = await lan.firewallState(firewallTarget());
+    log(`lan firewall ${state.ok ? 'ok' : state.reason}`);
+    if (state.ok) return;
     const today = new Date().toISOString().slice(0, 10);
     const last = safeJson.readJson?.(LAN_ASKED, {}) ?? {};
     if (last.asked === today) return;
@@ -847,7 +867,15 @@ async function askNetworkPermission() {
 }
 
 async function showAutoConnect() {
-  const firewall = await lan.firewallState();
+  // Another FastFood server on this network (e.g. the old one still running on the
+  // Admin computer) splits the terminals between two databases: shown here.
+  const [firewall, others] = await Promise.all([
+    lan.firewallState(firewallTarget()),
+    lan
+      .discover({ port: LAN_PORT, timeoutMs: 2000 })
+      .then((found) => found.filter((server) => server.key !== beacon?.key))
+      .catch(() => []),
+  ]);
   const addresses = lanAddresses();
   const { response } = await dialog.showMessageBox(win, {
     type: 'info',
@@ -863,9 +891,20 @@ async function showAutoConnect() {
         : 'Kompyuter tarmoqqa ulanmagan.',
       firewall.ok
         ? 'Tarmoq ruxsati: berilgan.'
-        : 'Tarmoq ruxsati: berilmagan — boshqa kompyuterlar buni topa olmasligi mumkin.',
+        : (FIREWALL_TEXT[firewall.reason] ?? FIREWALL_TEXT.missing),
+      ...(others.length
+        ? [
+            '',
+            `DIQQAT: tarmoqda yana ${others.length} ta FastFood server bor:`,
+            ...others.map(
+              (server) =>
+                `  • ${server.name} (${server.host}) — kod ${server.fingerprint}`,
+            ),
+            'Asosiy server bitta bo‘lishi kerak: eski serverni (masalan Admin kompyuterida) yopib, u yerga Terminal o‘rnating.',
+          ]
+        : []),
       '',
-      'Kassa, Ofitsiant va Admin dasturlarida «Avtomatik ulanish» tugmasini bosing: ular shu kodni ko‘rsatadi.',
+      'Admin, Kassa, Ofitsiant, Oshxona va TV dasturlarida «Avtomatik ulanish» tugmasini bosing: ular shu kodni ko‘rsatadi.',
     ]
       .filter(Boolean)
       .join('\n'),
@@ -1132,10 +1171,35 @@ async function createTray() {
         },
       },
       { type: 'separator' },
-      { label: 'Chiqish', click: () => app.quit() },
+      { label: 'Serverni to‘xtatish…', click: () => void confirmStop() },
     ]),
   );
   tray.on('double-click', showWindow);
+}
+
+/**
+ * Stopping the server disconnects every terminal (Admin, Kassa, Ofitsiant, Oshxona, TV),
+ * so it is asked first; the usual wish, closing the window, is the default answer.
+ */
+async function confirmStop() {
+  const parent = win && !win.isDestroyed() && win.isVisible() ? win : null;
+  const options = {
+    type: 'warning',
+    title: 'Serverni to‘xtatish',
+    message: 'Server to‘xtatilsinmi?',
+    detail:
+      'Server to‘xtasa Admin, Kassa, Ofitsiant, Oshxona va TV ulanishi uziladi.\n' +
+      'Faqat oynani yopmoqchi bo‘lsangiz «Oynani yopish» ni bosing — server fonda ishlayveradi.',
+    buttons: ['Oynani yopish', 'Serverni to‘xtatish', 'Bekor qilish'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  };
+  const { response } = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+  if (response === 0) win?.hide();
+  else if (response === 1) app.quit();
 }
 
 /**

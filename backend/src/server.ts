@@ -3,6 +3,7 @@ import {
   startTelegramPolling,
 } from './modules/telegram/bot.js';
 import { existsSync } from 'node:fs';
+import { ensureHubTriggers } from './modules/replication/engine.js';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
@@ -147,6 +148,11 @@ async function main(): Promise<void> {
     services.controlView = cloudViewProvider(
       prisma,
       () => services.now?.() ?? new Date(),
+    );
+  // Central server: capture changes of restaurants replicated with their Kassa server.
+  if (config.CONTROL_PLANE)
+    await ensureHubTriggers(prisma).catch((error: unknown) =>
+      services.logger.error({ error }, 'Replication triggers failed'),
     );
   const stopControl = services.controlRuntime
     ? services.controlRuntime.start()

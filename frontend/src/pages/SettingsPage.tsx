@@ -19,6 +19,7 @@ import { LoyaltyRulesCard } from './LoyaltyRulesCard';
 import { FiscalCard } from './FiscalCard';
 import { MenuVisibilityCard } from './MenuVisibilityCard';
 import { BackupsCard } from './BackupsCard';
+import { SyncCard } from './SyncCard';
 
 type Settings = {
   name: string;
@@ -278,6 +279,7 @@ export function SettingsPage() {
       <LoyaltyRulesCard editable={editable} />
       {editable && <FiscalCard />}
       <MenuVisibilityCard editable={editable} />
+      {editable && <SyncCard />}
       {editable && <BackupsCard />}
     </>
   );

@@ -18,15 +18,22 @@ export const PASSWORD = 'Xavfsiz-parol-2026';
 export const ORIGIN = 'http://localhost:5173';
 
 export function createTestContext(
-  options: { control?: Services['control']; selfHosted?: boolean } = {},
+  options: {
+    control?: Services['control'];
+    selfHosted?: boolean;
+    // A second server in one test (replication): its own database and server key.
+    databaseUrl?: string | undefined;
+    secretKey?: string;
+  } = {},
 ) {
   const config = loadConfig();
-  const db = createPrisma(config.DATABASE_URL);
-  const probe = createDatabase(config.DATABASE_URL);
+  const url = options.databaseUrl ?? config.DATABASE_URL;
+  const db = createPrisma(url);
+  const probe = createDatabase(url);
   const clock = { offsetMs: 0 };
   const services: Services = {
     db,
-    secrets: createSecretBox(config.APP_SECRET_KEY),
+    secrets: createSecretBox(options.secretKey ?? config.APP_SECRET_KEY),
     logger: createLogger('silent'),
     secureCookies: false,
     ...(options.control ? { control: options.control } : {}),

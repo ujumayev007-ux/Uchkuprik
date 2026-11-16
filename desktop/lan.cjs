@@ -415,9 +415,73 @@ const runFile = (file, args) =>
     ),
   );
 
-/** Are this program's inbound rules present? (reading rules needs no administrator.) */
-async function firewallState() {
+const psQuote = (text) => `'${String(text).replace(/'/g, "''")}'`;
+
+// Inbound Block rules (enabled) whose program is this exe. Windows creates them when its
+// "allow access?" alert is cancelled; a Block rule wins over every Allow rule.
+// Sets $blockRules (one filter query for all Block rules: a query per rule is slow).
+const blockRulesScript = (exe) =>
+  `$all = @(Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True -ErrorAction SilentlyContinue); ` +
+  `$ids = @($all | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue | ` +
+  `Where-Object { $_.Program -and ([Environment]::ExpandEnvironmentVariables($_.Program) -ieq ${psQuote(exe)}) } | ` +
+  `ForEach-Object { $_.InstanceID }); ` +
+  `$blockRules = @($all | Where-Object { $ids -contains $_.Name })`;
+
+/**
+ * Do this program's inbound rules let the other computers in? (Reading rules needs no
+ * administrator.) Not only present: they must name THIS exe (an update or another
+ * install folder leaves rules for an old path) and its ports, and no Block rule for
+ * this exe may exist. `reason`: 'missing' | 'stale' | 'blocked' | null.
+ */
+async function firewallState({
+  exe,
+  appPort,
+  discoveryPort = DISCOVERY_PORT,
+} = {}) {
   if (process.platform !== 'win32') return { applicable: false, ok: true };
+  if (exe && appPort) {
+    const rule = (name) =>
+      `$r = Get-NetFirewallRule -DisplayName ${psQuote(name)} -ErrorAction SilentlyContinue | ` +
+      `Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } | Select-Object -First 1; ` +
+      `if ($r) { @{ program = [Environment]::ExpandEnvironmentVariables(($r | Get-NetFirewallApplicationFilter).Program); ` +
+      `ports = @(($r | Get-NetFirewallPortFilter).LocalPort) -join ',' } } else { $null }`;
+    const script =
+      `$ErrorActionPreference = 'SilentlyContinue'; ` +
+      `$tcp = & { ${rule(RULE_TCP)} }; $udp = & { ${rule(RULE_UDP)} }; ` +
+      `${blockRulesScript(exe)}; $blocked = @($blockRules | ForEach-Object { $_.DisplayName }); ` +
+      `@{ tcp = $tcp; udp = $udp; blocked = $blocked } | ConvertTo-Json -Compress -Depth 4`;
+    const result = await runFile('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ]);
+    let data = null;
+    try {
+      data = JSON.parse(result.out.trim());
+    } catch {
+      data = null; // PowerShell unavailable: fall back to the rule names below
+    }
+    if (data) {
+      const ports = (r) => String(r?.ports || '').split(',');
+      const same = (r) =>
+        String(r?.program || '').toLowerCase() === String(exe).toLowerCase();
+      const blocked = [].concat(data.blocked || []).filter(Boolean);
+      const reason =
+        !data.tcp || !data.udp
+          ? 'missing'
+          : !same(data.tcp) ||
+              !same(data.udp) ||
+              !ports(data.tcp).includes(String(appPort)) ||
+              !ports(data.tcp).includes(String(discoveryPort)) ||
+              !ports(data.udp).includes(String(discoveryPort))
+            ? 'stale'
+            : blocked.length
+              ? 'blocked'
+              : null;
+      return { applicable: true, ok: reason === null, reason, blocked };
+    }
+  }
   const [tcp, udp] = await Promise.all(
     [RULE_TCP, RULE_UDP].map((name) =>
       runFile('netsh', [
@@ -429,7 +493,8 @@ async function firewallState() {
       ]),
     ),
   );
-  return { applicable: true, ok: tcp.ok && udp.ok };
+  const ok = tcp.ok && udp.ok;
+  return { applicable: true, ok, reason: ok ? null : 'missing', blocked: [] };
 }
 
 /**
@@ -452,6 +517,9 @@ async function enableFirewall({
   const script = [
     rule(RULE_TCP, 'TCP', `${appPort},${discoveryPort}`),
     rule(RULE_UDP, 'UDP', discoveryPort),
+    // Block rules for THIS program only (a cancelled Windows alert) are switched off,
+    // not deleted; rules of other programs are not touched.
+    `${blockRulesScript(exe)}; if ($blockRules.Count) { $blockRules | Disable-NetFirewallRule }`,
   ].join('; ');
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   await runFile('powershell', [
@@ -460,8 +528,8 @@ async function enableFirewall({
     '-Command',
     `Start-Process -FilePath powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-EncodedCommand','${encoded}'`,
   ]);
-  const state = await firewallState();
-  return { ok: state.ok };
+  const state = await firewallState({ exe, appPort, discoveryPort });
+  return { ok: state.ok, reason: state.reason };
 }
 
 module.exports = {

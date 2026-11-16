@@ -97,10 +97,21 @@ export function cloudViewProvider(
     const hit = policyCache.get(tenantId);
     if (hit && at - hit.at < POLICY_TTL_MS) policy = hit.value;
     else {
-      const customer = await db.controlCustomer.findUnique({
+      const replicated = await db.replicationTenant.findUnique({
         where: { tenantId },
-        include: { policy: true },
+        select: { customerId: true, role: true },
       });
+      // A restaurant replicated from its Kassa server follows its licence's customer.
+      const customer =
+        replicated?.role === 'hub' && replicated.customerId
+          ? await db.controlCustomer.findUnique({
+              where: { id: replicated.customerId },
+              include: { policy: true },
+            })
+          : await db.controlCustomer.findUnique({
+              where: { tenantId },
+              include: { policy: true },
+            });
       policy = customer
         ? {
             ...defaultPolicy(),

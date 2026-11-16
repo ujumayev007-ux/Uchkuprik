@@ -1,4 +1,4 @@
-import { useReducer, useState } from 'react';
+import { useReducer, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Dialog, useToast } from './ui';
 
@@ -104,6 +104,48 @@ async function copyText(text: string) {
 export function CalculatorButton() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="icon-button"
+        aria-label={t.calc.open}
+        title={t.calc.open}
+        onClick={() => setOpen(true)}
+      >
+        🧮
+      </button>
+      <Dialog open={open} title={t.calc.open} onClose={() => setOpen(false)}>
+        <CalculatorPanel
+          extra={(result) => (
+            <button
+              type="button"
+              className="btn btn-secondary calc-copy"
+              disabled={result === null}
+              onClick={async () => {
+                if (result === null) return;
+                await copyText(String(result));
+                toast(t.calc.copied);
+              }}
+            >
+              📋 {t.calc.copy}
+            </button>
+          )}
+        />
+      </Dialog>
+    </>
+  );
+}
+
+/**
+ * Display and keys. `extra` renders below the keys with the value to use: the result
+ * of "=", or the number being typed; null when there is none (or ÷ 0).
+ */
+export function CalculatorPanel({
+  extra,
+}: {
+  extra?: (value: number | null) => ReactNode;
+}) {
   // Every key works on the latest state, so quick taps are never lost.
   const [{ tokens, result }, dispatch] = useReducer(calculate, {
     tokens: [],
@@ -111,6 +153,14 @@ export function CalculatorButton() {
   });
   const press = (key: string) => () => dispatch(key);
   const shown = result ?? (tokens.length ? tokens.join(' ') : '0');
+  const value =
+    result !== null
+      ? result === t.calc.error
+        ? null
+        : Number(result)
+      : tokens.length
+        ? evaluate(tokens)
+        : null;
 
   const keys: [string, () => void, string?][] = [
     [t.calc.clear, press('C'), 'calc-key-muted'],
@@ -134,51 +184,27 @@ export function CalculatorButton() {
   ];
 
   return (
-    <>
-      <button
-        type="button"
-        className="icon-button"
-        aria-label={t.calc.open}
-        title={t.calc.open}
-        onClick={() => setOpen(true)}
-      >
-        🧮
-      </button>
-      <Dialog open={open} title={t.calc.open} onClose={() => setOpen(false)}>
-        <div className="calc">
-          {result !== null && result !== t.calc.error && (
-            <div className="calc-expression">{tokens.join(' ')} =</div>
-          )}
-          <output className="calc-display" aria-live="polite">
-            {shown}
-          </output>
-          <div className="calc-keys">
-            {keys.map(([label, onPress, className]) => (
-              <button
-                key={label}
-                type="button"
-                className={`calc-key ${className ?? ''}`}
-                aria-label={label === '⌫' ? t.calc.back : label}
-                onClick={onPress}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+    <div className="calc">
+      {result !== null && result !== t.calc.error && (
+        <div className="calc-expression">{tokens.join(' ')} =</div>
+      )}
+      <output className="calc-display" aria-live="polite">
+        {shown}
+      </output>
+      <div className="calc-keys">
+        {keys.map(([label, onPress, className]) => (
           <button
+            key={label}
             type="button"
-            className="btn btn-secondary calc-copy"
-            disabled={result === null || result === t.calc.error}
-            onClick={async () => {
-              if (result === null) return;
-              await copyText(result);
-              toast(t.calc.copied);
-            }}
+            className={`calc-key ${className ?? ''}`}
+            aria-label={label === '⌫' ? t.calc.back : label}
+            onClick={onPress}
           >
-            📋 {t.calc.copy}
+            {label}
           </button>
-        </div>
-      </Dialog>
-    </>
+        ))}
+      </div>
+      {extra?.(value)}
+    </div>
   );
 }

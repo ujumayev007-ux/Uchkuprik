@@ -7,6 +7,7 @@ import {
   templateSettingsOf,
 } from '../../printing/receipt-template.js';
 import { hashSecret } from '../../lib/crypto.js';
+import { hashPin } from '../../lib/pin.js';
 import { audit } from '../audit/audit.js';
 import { passwordSchema, pinSchema } from '../auth/auth.routes.js';
 import { orderSettingsOf } from '../orders/settings.js';
@@ -356,7 +357,7 @@ export function dataRouter(services: Services) {
       );
       await secretTarget(customerId, tenantId, userId);
       const pinHash = pin
-        ? await hashSecret(services.secrets.pepperPin(userId, pin))
+        ? await hashPin(db, services.secrets, tenantId, userId, pin)
         : null;
       await db.$transaction(async (tx) => {
         await tx.user.update({

@@ -67,6 +67,7 @@ import { ordersRouter } from './modules/orders/orders.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
 import { shiftsRouter } from './modules/shifts/shifts.routes.js';
 import { settingsRouter } from './modules/settings/settings.routes.js';
+import { replicationRouter } from './modules/replication/replication.routes.js';
 import { platformRouter } from './modules/tenants/platform.routes.js';
 import { rolesRouter } from './modules/users/roles.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
@@ -245,6 +246,8 @@ export function createApp({
     app.use('/api/settings/qr-payment', express.json({ limit: '600kb' }));
     // Results of the Owner's remote operations (menu, staff… snapshots) are larger.
     app.use('/api/control/device/op-result', express.json({ limit: '4mb' }));
+    // Replication batches (up to ~1.5 MB of changes per request).
+    app.use('/api/control/device/replicate', express.json({ limit: '4mb' }));
     // Off-device backup copies arrive in 1 MB chunks (base64).
     app.use('/api/control/device/backup-chunk', express.json({ limit: '2mb' }));
     app.use('/api', express.json({ limit: '100kb' }));
@@ -300,6 +303,7 @@ export function createApp({
       operationsRouter,
       assetsRouter,
       peopleRouter,
+      replicationRouter,
     ])
       app.use('/api', router(services));
     // Central control plane (SUPER_OWNER): owner sign-in, management, device channel.

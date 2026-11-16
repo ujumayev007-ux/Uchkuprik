@@ -20,6 +20,11 @@ import {
 import { controlAudit } from './owner.js';
 import { recordEvent } from './registry.js';
 import { buildBundle } from '../branding/bundle.js';
+import {
+  receiveFromSpoke,
+  ReplicationError,
+  type ReplicatePayload,
+} from '../replication/engine.js';
 import { AD_PANELS } from '../branding/bundle.js';
 
 const publicKeySchema = z.string().regex(/^[A-Za-z0-9_-]{40,200}$/);
@@ -277,7 +282,14 @@ export function deviceRouter(services: Services) {
   /** Verifies the device signature, freshness and counter; returns the activation. */
   async function authenticateDevice(
     req: Request,
-    type: 'heartbeat' | 'sync' | 'media' | 'rekey' | 'op-result' | 'backup',
+    type:
+      | 'heartbeat'
+      | 'sync'
+      | 'media'
+      | 'rekey'
+      | 'op-result'
+      | 'backup'
+      | 'replicate',
   ) {
     const body = parse(envelope, req.body);
     const at = now();
@@ -1088,6 +1100,61 @@ export function deviceRouter(services: Services) {
         seq: body.seq,
         serverTime: at.toISOString(),
         results,
+      }),
+    });
+  });
+
+  // Two-way replication of a restaurant between its Kassa server and this centre.
+  const changeSchema = z.object({
+    seq: z.number().int().positive(),
+    tbl: z.string().regex(/^[a-z_]{1,63}$/),
+    pk: z.record(z.string(), z.unknown()),
+    op: z.enum(['I', 'U', 'D', 'S']),
+    row: z.record(z.string(), z.unknown()).nullable(),
+    delta: z.record(z.string(), z.number()).nullable(),
+    changedAt: z.iso.datetime({ offset: true }),
+    origin: z.string().max(40),
+  });
+  const replicateSchema = z.object({
+    tenantId: z.uuid(),
+    nodeId: z.string().max(40),
+    pinKey: z.string().regex(/^[A-Za-z0-9+/=]{40,60}$/).optional(),
+    changes: z.array(changeSchema).max(500),
+    since: z.number().int().min(0),
+  });
+  router.post('/control/device/replicate', beatLimiter, async (req, res) => {
+    const { activation, body, at } = await authenticateDevice(req, 'replicate');
+    if (
+      activation.status !== 'ACTIVE' ||
+      activation.license.status !== 'ACTIVE' ||
+      activation.customer.status !== 'ACTIVE'
+    )
+      throw new AppError(403, 'DEVICE_BLOCKED', 'deviceBlocked');
+    const key = services.control?.signingKeyPem;
+    if (!key) throw errors.forbidden();
+    const payload = parse(replicateSchema, body.payload);
+    let result;
+    try {
+      result = await receiveFromSpoke(
+        db,
+        services.secrets,
+        activation.customerId,
+        payload as ReplicatePayload,
+      );
+    } catch (error) {
+      if (error instanceof ReplicationError)
+        throw new AppError(409, error.code, 'conflict', {
+          message: error.message,
+        });
+      throw error;
+    }
+    res.json({
+      response: signDocument(key, {
+        t: 'replicate',
+        activationId: activation.id,
+        seq: body.seq,
+        serverTime: at.toISOString(),
+        ...result,
       }),
     });
   });
